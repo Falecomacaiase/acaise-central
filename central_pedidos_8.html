@@ -1,0 +1,1516 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<title>Açaí-Se | Central de Pedidos</title>
+<style>
+  * { box-sizing: border-box; }
+  body { font-family: Arial, Helvetica, sans-serif; margin: 0; background: #F5F2FA; color: #2C2C2A; }
+  .topbar { background: #5B2D8E; color: #fff; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; }
+  .topbar h1 { font-size: 18px; margin: 0; font-weight: 600; }
+  .topbar .sub { font-size: 12px; opacity: .85; margin-top: 2px; }
+  .container { max-width: 900px; margin: 0 auto; padding: 20px; }
+  .card { background: #fff; border-radius: 10px; padding: 20px; margin-bottom: 16px; box-shadow: 0 1px 3px rgba(0,0,0,.08); }
+  .btn { background: #5B2D8E; color: #fff; border: none; padding: 10px 18px; border-radius: 6px; font-size: 14px; cursor: pointer; font-weight: 600; }
+  .btn:hover { background: #4A2473; }
+  .btn-secondary { background: #eee; color: #333; }
+  .btn-secondary:hover { background: #ddd; }
+  input, select { padding: 8px 10px; border: 1px solid #ccc; border-radius: 6px; font-size: 14px; width: 100%; }
+  label { font-size: 13px; font-weight: 600; color: #555; display: block; margin-bottom: 4px; }
+  .field { margin-bottom: 14px; }
+  .cat-title { background: #5B2D8E; color: #fff; padding: 8px 14px; border-radius: 6px; font-size: 14px; font-weight: 600; margin: 18px 0 8px; }
+  .item-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 6px; border-bottom: 1px solid #eee; }
+  .item-row:last-child { border-bottom: none; }
+  .item-name { font-size: 14px; }
+  .item-qtd { width: 70px; text-align: center; }
+  table { width: 100%; border-collapse: collapse; font-size: 13px; }
+  th, td { padding: 8px 10px; border-bottom: 1px solid #eee; text-align: left; }
+  th { background: #ECEFF1; font-weight: 600; color: #455A64; }
+  .badge { padding: 2px 8px; border-radius: 12px; font-size: 11px; font-weight: 600; }
+  .badge-red { background: #FFEBEE; color: #C62828; }
+  .badge-green { background: #E8F5E9; color: #2E7D32; }
+  .badge-yellow { background: #FFFDE7; color: #F57F17; }
+  .hidden { display: none; }
+  .error { color: #C62828; font-size: 13px; margin-top: 6px; }
+  .small { font-size: 12px; color: #777; }
+  .flex-between { display: flex; justify-content: space-between; align-items: center; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 2px solid #eee; }
+  .tab-btn { background: none; border: none; padding: 10px 16px; font-size: 14px; font-weight: 600; color: #888; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
+  .tab-btn.active { color: #5B2D8E; border-bottom: 2px solid #5B2D8E; }
+  .entry-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 13px; }
+  .toggle-wrap { display:flex;align-items:center;gap:8px; }
+  .toggle { position:relative;display:inline-block;width:40px;height:22px; }
+  .toggle input { opacity:0;width:0;height:0; }
+  .slider { position:absolute;cursor:pointer;top:0;left:0;right:0;bottom:0;background:#ccc;border-radius:22px;transition:.3s; }
+  .slider:before { position:absolute;content:"";height:16px;width:16px;left:3px;bottom:3px;background:#fff;border-radius:50%;transition:.3s; }
+  input:checked + .slider { background:#5B2D8E; }
+  input:checked + .slider:before { transform:translateX(18px); }
+  .item-disabled { opacity: 0.4; pointer-events: none; }
+  .btn-xs { padding:4px 10px;font-size:12px;border-radius:4px; }
+  @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+  @media print {
+    body > *:not(#romaneioOverlay) { display:none !important; }
+    #romaneioOverlay { position:static !important; background:none !important; padding:0 !important; display:block !important; }
+    #romaneioConteudo { box-shadow:none !important; border-radius:0 !important; }
+    .no-print { display:none !important; }
+  }
+</style>
+</head>
+<body>
+
+<div class="topbar">
+  <div>
+    <h1>Açaí-Se — Central de Pedidos</h1>
+    <div class="sub" id="topbarSub">Protótipo</div>
+  </div>
+  <button class="btn btn-secondary" id="logoutBtn" onclick="logout()" style="display:none">Sair</button>
+</div>
+
+<div class="container">
+
+  <!-- LOGIN -->
+  <div id="loginScreen" class="card">
+    <h2 style="margin-top:0">Acessar</h2>
+    <div class="field">
+      <label>Selecione sua unidade</label>
+      <select id="loginUnit"></select>
+    </div>
+    <div class="field">
+      <label>Senha</label>
+      <input type="password" id="loginPass" placeholder="Digite a senha">
+    </div>
+    <button class="btn" onclick="doLogin()">Entrar</button>
+    <div class="error" id="loginError"></div>
+    <p class="small" style="margin-top:14px">Acesso da franqueadora: selecione "Franqueadora (Admin)" na lista.</p>
+  </div>
+
+  <!-- INVENTÁRIO -->
+  <div id="inventarioScreen" class="card hidden">
+    <div style="background:#5B2D8E;color:#fff;border-radius:8px;padding:14px 18px;margin-bottom:16px">
+      <div style="font-size:18px;font-weight:700">📦 Contagem de Inventário — Central</div>
+      <div style="font-size:12px;opacity:.85;margin-top:3px">Preencha a quantidade real de cada item. Ao finalizar, clique em Salvar contagem.</div>
+    </div>
+    <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+      <select id="invFiltroCat" onchange="renderInventario()" style="flex:1;min-width:180px"></select>
+      <input type="text" id="invBusca" placeholder="🔍 Buscar item..." oninput="renderInventario()" style="flex:1;min-width:180px">
+    </div>
+    <div id="invProgresso" style="margin-bottom:12px"></div>
+    <div id="inventarioTabela"></div>
+    <div style="position:sticky;bottom:0;background:#fff;padding:16px 0 4px;margin-top:16px;border-top:2px solid #5B2D8E;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <button class="btn" onclick="salvarInventario()" style="font-size:15px;padding:12px 24px">💾 Salvar contagem</button>
+      <div id="invMsg" class="small"></div>
+    </div>
+  </div>
+
+  <div id="orderScreen" class="card hidden">
+    <div class="flex-between">
+      <h2 style="margin:0">Pedido semanal — <span id="orderUnitName"></span></h2>
+    </div>
+    <div style="background:#EDE7F6;border-left:4px solid #5B2D8E;padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0;">
+      <span style="font-size:13px;color:#5B2D8E;font-weight:600;">⏱ As entregas são realizadas em até 48h após a confirmação do pedido.</span>
+    </div>
+    <div class="field" style="margin-top:8px">
+      <label>Tipo de entrega</label>
+      <div style="display:flex;gap:20px;margin-top:6px">
+        <label style="display:flex;align-items:center;gap:6px;font-weight:400;color:#333;font-size:14px;cursor:pointer;">
+          <input type="radio" name="tipoEntrega" id="tipoEntrega_entrega" value="Entrega" checked style="width:auto"> 🚚 Entrega na unidade
+        </label>
+        <label style="display:flex;align-items:center;gap:6px;font-weight:400;color:#333;font-size:14px;cursor:pointer;">
+          <input type="radio" name="tipoEntrega" id="tipoEntrega_retirada" value="Retirada" style="width:auto"> 🏪 Retirada na central
+        </label>
+      </div>
+    </div>
+    <p class="small" style="margin-top:0">Marque as quantidades que sua unidade precisa. Itens indisponíveis aparecem desabilitados.</p>
+    <div id="catalog"></div>
+    <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+      <button class="btn" onclick="submitOrder(false)">📋 Enviar pedido</button>
+      <button class="btn" onclick="submitOrder(true)" style="background:#C62828;">🚨 PEDIDO URGÊNCIA</button>
+    </div>
+    <div style="font-size:12px;color:#C62828;margin-top:6px">⚠️ Urgência = retirada no mesmo dia. Use apenas quando realmente necessário.</div>
+    <div id="orderMsg" class="small" style="margin-top:8px"></div>
+  </div>
+
+  <!-- ADMIN -->
+  <div id="adminScreen" class="card hidden">
+    <h2 style="margin-top:0">Painel da Franqueadora</h2>
+
+    <div class="tabs">
+      <button class="tab-btn active" id="tabBtnPedidos" onclick="switchAdminTab('pedidos')">📋 Pedidos das Lojas</button>
+      <button class="tab-btn" id="tabBtnEntradas" onclick="switchAdminTab('entradas')">📦 Entradas de Estoque</button>
+      <button class="tab-btn" id="tabBtnItens" onclick="switchAdminTab('itens')">⚙️ Gestão de Itens</button>
+      <button class="tab-btn" id="tabBtnCadastros" onclick="switchAdminTab('cadastros')">📝 Cadastros</button>
+    </div>
+
+    <div id="tabPedidos">
+      <p class="small">Pedidos consolidados de todas as unidades. Itens em vermelho indicam que o total pedido ultrapassa o estoque atual da central.</p>
+      <div class="flex-between" style="margin:14px 0;flex-wrap:wrap;gap:8px">
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn btn-secondary" onclick="loadAdminData()">🔄 Atualizar</button>
+          <span id="novoPedidoBadge" style="display:none;background:#C62828;color:#fff;padding:3px 10px;border-radius:12px;font-size:12px;font-weight:700;animation:pulse 1s infinite">● Novos pedidos!</span>
+        </div>
+        <span class="small" id="lastUpdate"></span>
+      </div>
+      <div id="adminConsolidado"></div>
+      <h3>Pedidos por unidade</h3>
+      <div id="adminPorUnidade"></div>
+    </div>
+
+    <div id="tabEntradas" class="hidden">
+      <p class="small">Registre entradas no estoque central (produção ou recebimento de fornecedor) e defina o saldo inicial real de cada item.</p>
+
+      <!-- SALDO INICIAL -->
+      <div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:16px;margin-bottom:20px">
+        <h4 style="margin:0 0 6px;color:#F57F17">📋 Definir saldo atual do estoque</h4>
+        <p class="small" style="margin:0 0 12px">Use esta seção para informar as quantidades reais que você tem agora em cada item. Isso é a "largada" do sistema — a partir daí, entradas somam e despachos subtraem automaticamente.</p>
+        <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+          <select id="saldoFiltroCat" onchange="renderSaldoInicial()" style="flex:1;min-width:180px"></select>
+          <input type="text" id="saldoBusca" placeholder="Buscar item..." oninput="renderSaldoInicial()" style="flex:1;min-width:180px">
+        </div>
+        <div id="saldoInicialTable"></div>
+        <button class="btn" style="margin-top:12px;background:#F57F17" onclick="salvarSaldoInicial()">💾 Salvar saldos</button>
+        <div id="saldoMsg" class="small" style="margin-top:6px"></div>
+      </div>
+
+      <!-- ENTRADA -->
+      <div class="field">
+        <label>Tipo de entrada</label>
+        <select id="entradaTipo">
+          <option value="Produção">🏭 Produção interna</option>
+          <option value="Recebimento">🚚 Recebimento de fornecedor</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>Categoria</label>
+        <select id="entradaCategoria" onchange="popularItensEntrada()"></select>
+      </div>
+      <div class="field">
+        <label>Item</label>
+        <select id="entradaItem"></select>
+      </div>
+      <div class="field">
+        <label>Quantidade</label>
+        <input type="number" min="0" id="entradaQtd" value="0">
+      </div>
+      <div class="field">
+        <label>Fornecedor</label>
+        <div style="display:flex;gap:8px">
+          <select id="entradaFornecedor" style="flex:1">
+            <option value="">Selecione ou digite abaixo...</option>
+          </select>
+          <input type="text" id="entradaFornecedorCustom" placeholder="Novo fornecedor..." style="flex:1">
+        </div>
+        <p class="small" style="margin:4px 0 0">Selecione um cadastrado ou digite um novo nome.</p>
+      </div>
+      <div class="field">
+        <label>Observação (opcional — ex: nº nota fiscal, lote)</label>
+        <input type="text" id="entradaObs" placeholder="Ex: NF 12345">
+      </div>
+      <button class="btn" onclick="registrarEntrada()">Registrar entrada</button>
+      <div id="entradaMsg" class="small" style="margin-top:8px"></div>
+
+      <h3 style="margin-top:24px">Estoque atual da central</h3>
+      <div id="estoqueAtualTable"></div>
+
+      <h3 style="margin-top:24px">Últimas movimentações</h3>
+      <div id="historicoEntradas"></div>
+
+      <h3 style="margin-top:28px">📊 Compras por fornecedor</h3>
+      <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">
+        <select id="fornecedorFiltroPeriodo" onchange="renderRelatorioFornecedor()" style="flex:1;min-width:160px">
+          <option value="mes">Este mês</option>
+          <option value="semana">Esta semana</option>
+          <option value="tudo">Todo o período</option>
+        </select>
+      </div>
+      <div id="relatorioFornecedor"></div>
+    </div>
+
+    <!-- ABA: GESTÃO DE ITENS -->
+    <div id="tabItens" class="hidden">
+      <p class="small">Ative ou desative itens, edite preços e cadastre novos produtos.</p>
+
+      <!-- NOVO PRODUTO -->
+      <div style="background:#EDE7F6;border-radius:8px;padding:16px;margin-bottom:20px">
+        <h4 style="margin:0 0 12px;color:#5B2D8E">➕ Cadastrar novo produto</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <label>Nome do produto</label>
+            <input type="text" id="novoProdNome" placeholder="Ex: Açaí Art 10Kg">
+          </div>
+          <div class="field">
+            <label>Categoria</label>
+            <select id="novoProdCat">
+              <option value="">Selecione...</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Preço de custo (R$)</label>
+            <input type="number" id="novoProdCusto" min="0" step="0.01" placeholder="0,00">
+          </div>
+          <div class="field">
+            <label>Preço de venda ao franqueado (R$)</label>
+            <input type="number" id="novoProdVenda" min="0" step="0.01" placeholder="0,00">
+          </div>
+        </div>
+        <div class="field">
+          <label>
+            <input type="checkbox" id="novoProdVisivel" checked style="width:auto;margin-right:6px">
+            Visível para os franqueados imediatamente
+          </label>
+        </div>
+        <button class="btn" onclick="cadastrarNovoProduto()">Cadastrar produto</button>
+        <div id="novoProdMsg" class="small" style="margin-top:6px"></div>
+      </div>
+
+      <div class="field" style="max-width:260px">
+        <label>Filtrar por categoria</label>
+        <select id="filtroCategoria" onchange="renderGestaoItens()"></select>
+      </div>
+
+      <div id="gestaoItensTable"></div>
+
+      <!-- Modal inline de edição de preço -->
+      <div id="editPrecoBox" class="hidden" style="background:#F5F0FB;border:1px solid #C5B3E6;border-radius:8px;padding:16px;margin-top:16px">
+        <h4 style="margin:0 0 12px">Editar preços — <span id="editNomeItem"></span></h4>
+        <input type="hidden" id="editItemId">
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <label>Preço de custo (R$)</label>
+            <input type="number" id="editCusto" min="0" step="0.01">
+          </div>
+          <div class="field">
+            <label>Preço de venda ao franqueado (R$)</label>
+            <input type="number" id="editVenda" min="0" step="0.01">
+          </div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn" onclick="salvarPrecos()">Salvar preços</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('editPrecoBox').classList.add('hidden')">Cancelar</button>
+        </div>
+        <div id="editPrecoMsg" class="small" style="margin-top:6px"></div>
+      </div>
+    </div>
+
+    <!-- ABA: CADASTROS -->
+    <div id="tabCadastros" class="hidden">
+      <p class="small">Cadastre novas unidades, produtos e categorias. Tudo que for cadastrado aqui entra no sistema automaticamente.</p>
+
+      <!-- NOVA UNIDADE -->
+      <div style="background:#EDE7F6;border-radius:8px;padding:16px;margin-bottom:20px">
+        <h4 style="margin:0 0 12px;color:#5B2D8E">🏪 Cadastrar nova unidade</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <label>Nome da unidade</label>
+            <input type="text" id="novaUnidNome" placeholder="Ex: OLINDA" oninput="previewSenha()">
+          </div>
+          <div class="field">
+            <label>Tipo</label>
+            <select id="novaUnidTipo">
+              <option value="Franquia">Franquia</option>
+              <option value="Própria">Própria</option>
+              <option value="Licenciada">Licenciada</option>
+              <option value="Revenda">Revenda</option>
+              <option value="Eventos">Eventos</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Nome do franqueado / responsável</label>
+            <input type="text" id="novaUnidResponsavel" placeholder="Ex: João Silva">
+          </div>
+          <div class="field">
+            <label>Senha de acesso (gerada automaticamente)</label>
+            <input type="text" id="novaUnidSenha" readonly style="background:#f5f5f5;color:#555" placeholder="Digite o nome da unidade acima">
+          </div>
+        </div>
+        <button class="btn" onclick="cadastrarUnidade()">Cadastrar unidade</button>
+        <div id="novaUnidMsg" class="small" style="margin-top:6px"></div>
+      </div>
+
+      <!-- NOVO PRODUTO -->
+      <div style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:8px;padding:16px;margin-bottom:20px">
+        <h4 style="margin:0 0 12px;color:#2E7D32">➕ Cadastrar novo produto</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <label>Nome do produto</label>
+            <input type="text" id="novoProdNome" placeholder="Ex: Açaí Art 10Kg">
+          </div>
+          <div class="field">
+            <label>Categoria</label>
+            <select id="novoProdCat"><option value="">Selecione...</option></select>
+          </div>
+          <div class="field">
+            <label>Preço de custo (R$)</label>
+            <input type="number" id="novoProdCusto" min="0" step="0.01" placeholder="0,00">
+          </div>
+          <div class="field">
+            <label>Preço de venda ao franqueado (R$)</label>
+            <input type="number" id="novoProdVenda" min="0" step="0.01" placeholder="0,00">
+          </div>
+        </div>
+        <div class="field">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;cursor:pointer">
+            <input type="checkbox" id="novoProdVisivel" checked style="width:auto">
+            Visível para os franqueados imediatamente
+          </label>
+        </div>
+        <button class="btn" style="background:#2E7D32" onclick="cadastrarNovoProduto()">Cadastrar produto</button>
+        <div id="novoProdMsg" class="small" style="margin-top:6px"></div>
+      </div>
+
+      <!-- UNIDADES CADASTRADAS -->
+      <h3>Unidades cadastradas</h3>
+      <div id="listaUnidades"></div>
+    </div>
+
+  </div>
+
+</div>
+
+<!-- ROMANEIO PARA IMPRESSÃO -->
+<div id="romaneioOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+  <div id="romaneioConteudo" style="background:#fff;border-radius:10px;padding:32px;max-width:700px;width:100%">
+    <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:16px;flex-wrap:wrap" class="no-print">
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <button class="btn" id="btnDespachar" onclick="confirmarDespacho()" style="background:#2E7D32">✅ Confirmar despacho e imprimir</button>
+        <button class="btn btn-secondary" onclick="window.print()">🖨️ Só imprimir</button>
+      </div>
+      <button class="btn btn-secondary" onclick="fecharRomaneio()">✕ Fechar</button>
+    </div>
+    <div id="romaneioStatusMsg" class="small" style="margin-bottom:8px"></div>
+    <div id="romaneioBody"></div>
+  </div>
+</div>
+
+<script>
+const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
+
+// Senha simples por unidade (trocar depois por sistema real)
+const SENHAS = {};
+UNIDADES.forEach(u => SENHAS[u] = (u.replace(/[\s.]/g,'').toLowerCase() + "2026"));
+SENHAS["Franqueadora (Admin)"] = "acaise2026admin";
+SENHAS["INVENTÁRIO"] = "inventario2026";
+
+// Catálogo de exemplo — estrutura de 7 categorias (substituir pelos 123 itens reais)
+const CATALOGO = {"Produtos Acabados": [{"id": "Prod.Acab245", "nome": "Açaí Art 08Kg", "preco": 185.11, "estoqueCentral": 50}, {"id": "Prod.Acab89", "nome": "Açaí Mel 07Kg", "preco": 161.28, "estoqueCentral": 50}, {"id": "Prod.Acab246", "nome": "Açaí Mel 08Kg", "preco": 184.32, "estoqueCentral": 50}, {"id": "Prod.Acab96", "nome": "Açaí Pote 1,5Lt", "preco": 28.0, "estoqueCentral": 50}, {"id": "Prod.Acab97", "nome": "Açaí Pote 1,5Lt Nuts", "preco": 30.0, "estoqueCentral": 50}, {"id": "Prod.Acab92", "nome": "Açaí Puro Barra X%", "preco": 115.0, "estoqueCentral": 50}, {"id": "Prod.Acab192", "nome": "Barrinhas Vitanuts c/12", "preco": 114.0, "estoqueCentral": 50}, {"id": "Prod.Acab95", "nome": "Creme de Cupuaçú 5Lt", "preco": 80.0, "estoqueCentral": 50}, {"id": "Prod.Acab262", "nome": "Creme de Morango", "preco": 80.0, "estoqueCentral": 50}, {"id": "Prod.Acab263", "nome": "Creme de Ninho", "preco": 80.0, "estoqueCentral": 50}, {"id": "Prod.Acab264", "nome": "Creme de Paçoca", "preco": 80.0, "estoqueCentral": 50}, {"id": "Prod.Acab265", "nome": "Creme de Tapioca", "preco": 80.0, "estoqueCentral": 50}, {"id": "Prod.Acab91", "nome": "Mel 10Kg", "preco": 230.4, "estoqueCentral": 50}, {"id": "Prod.Acab98", "nome": "Picolé c/24", "preco": 120.0, "estoqueCentral": 50}, {"id": "Prod.Acab93", "nome": "Polpa Açaí 10X100g", "preco": 31.0, "estoqueCentral": 50}, {"id": "Prod.Acab94", "nome": "Polpa Açaí 4X100g", "preco": 12.0, "estoqueCentral": 50}, {"id": "Prod.Acab196", "nome": "Polpa Coco Power c/10", "preco": 20.0, "estoqueCentral": 50}, {"id": "Prod.Acab206", "nome": "Polpa de Acerola c/10", "preco": 20.0, "estoqueCentral": 50}, {"id": "Prod.Acab205", "nome": "Polpa de Cajá c/10", "preco": 24.0, "estoqueCentral": 50}, {"id": "Prod.Acab207", "nome": "Polpa de Goiaba c/10", "preco": 20.0, "estoqueCentral": 50}, {"id": "Prod.Acab208", "nome": "Polpa de Manga c/10", "preco": 20.0, "estoqueCentral": 50}], "Proteínas e Lanches": [{"id": "Prod259", "nome": "Camarão Porção c/05", "preco": 35.0, "estoqueCentral": 50}, {"id": "Prod270", "nome": "Carne Desfiada 100g c/05", "preco": 26.45, "estoqueCentral": 50}, {"id": "Prod285", "nome": "Carne Grelhada 100g c/05", "preco": 38.8, "estoqueCentral": 50}, {"id": "Prod286", "nome": "Carne Tapioca 50g c/05", "preco": 13.8, "estoqueCentral": 50}, {"id": "Prod233", "nome": "Disco Wrap 80g c/10", "preco": 20.0, "estoqueCentral": 50}, {"id": "Prod232", "nome": "Farofa de Bacon", "preco": 21.0, "estoqueCentral": 50}, {"id": "Prod293", "nome": "Filé Mingnon c/05", "preco": 51.17, "estoqueCentral": 50}, {"id": "Prod128", "nome": "Frango Desfiado 70g c/05", "preco": 19.3, "estoqueCentral": 50}, {"id": "Prod235", "nome": "Frango Grelhado 100g", "preco": 20.8, "estoqueCentral": 50}, {"id": "Prod287", "nome": "Frango Tapioca 50g", "preco": 13.8, "estoqueCentral": 50}, {"id": "Prod231", "nome": "Molho Mostarda e Mel 500g", "preco": 16.0, "estoqueCentral": 50}, {"id": "Prod240", "nome": "Molho Pesto 500g", "preco": 14.0, "estoqueCentral": 50}, {"id": "Prod229", "nome": "Mollho de Queijos 500g", "preco": 15.0, "estoqueCentral": 50}, {"id": "Prod237", "nome": "Pasta de Gorgonzola 500g", "preco": 25.0, "estoqueCentral": 50}, {"id": "Prod238", "nome": "Pasta de Ricota 500g", "preco": 24.0, "estoqueCentral": 50}, {"id": "Prod239", "nome": "Pão Ciabata", "preco": 40.78, "estoqueCentral": 50}, {"id": "Prod280", "nome": "Queijo de Coalho 500g", "preco": 26.5, "estoqueCentral": 50}], "Acompanhamentos": [{"id": "Acomp51", "nome": "Abacaxi", "preco": 7.5, "estoqueCentral": 50}, {"id": "Acomp76", "nome": "Amendoim", "preco": 18.0, "estoqueCentral": 50}, {"id": "Acomp47", "nome": "Bananas Prata", "preco": 0.5, "estoqueCentral": 50}, {"id": "Acomp57", "nome": "Castanha de Caju 200g", "preco": 20.0, "estoqueCentral": 50}, {"id": "Acomp60", "nome": "Castanha do Pará 200g", "preco": 44.0, "estoqueCentral": 50}, {"id": "Acomp71", "nome": "Coquinho Tia Sônia", "preco": 19.75, "estoqueCentral": 50}, {"id": "Acomp73", "nome": "Farinha de Tapioca", "preco": 8.0, "estoqueCentral": 50}, {"id": "Acomp65", "nome": "Granola Pct 1,5Kg", "preco": 53.0, "estoqueCentral": 50}, {"id": "Acomp64", "nome": "Granola tradicional 30g", "preco": 1.31, "estoqueCentral": 50}, {"id": "Acomp52", "nome": "Kiwi Uni", "preco": 4.2, "estoqueCentral": 50}, {"id": "Acomp61", "nome": "Leite Condensado Uni", "preco": 7.3, "estoqueCentral": 50}, {"id": "Acomp62", "nome": "Leite em Pó 200g", "preco": 8.3, "estoqueCentral": 50}, {"id": "Acomp55", "nome": "Manga Tomy", "preco": 4.2, "estoqueCentral": 50}, {"id": "Acomp56", "nome": "Mel 1Lt", "preco": 13.0, "estoqueCentral": 50}, {"id": "Acomp48", "nome": "Morango Bdj", "preco": 12.0, "estoqueCentral": 50}, {"id": "Acomp70", "nome": "Pasta Amend. Croc. 450g", "preco": 30.0, "estoqueCentral": 50}, {"id": "Acomp68", "nome": "Pasta Nuts Côco 450g", "preco": 40.0, "estoqueCentral": 50}, {"id": "Acomp58", "nome": "Paçoca Pote", "preco": 20.0, "estoqueCentral": 50}, {"id": "Acomp50", "nome": "Uva Cx", "preco": 12.0, "estoqueCentral": 50}, {"id": "Acomp191", "nome": "Whey Protein 1Kg", "preco": 170.0, "estoqueCentral": 50}, {"id": "Acomp74", "nome": "Xerém de Amendoim", "preco": 16.5, "estoqueCentral": 50}], "Bebidas": [{"id": "Beb146", "nome": "Coca Lata", "preco": 4.15, "estoqueCentral": 50}, {"id": "Beb147", "nome": "Coca Zero Lata", "preco": 4.15, "estoqueCentral": 50}, {"id": "Beb151", "nome": "Redbull", "preco": 9.49, "estoqueCentral": 50}, {"id": "Beb143", "nome": "Água Min. c/ Gás 500", "preco": 2.4, "estoqueCentral": 50}, {"id": "Beb142", "nome": "Água Mineral 500", "preco": 1.15, "estoqueCentral": 50}], "Embalagens": [{"id": "Emb234", "nome": "Bowl da Salada c/10", "preco": 24.12, "estoqueCentral": 50}, {"id": "Emb4", "nome": "Copo + Tampa Molho c/50", "preco": 19.0, "estoqueCentral": 50}, {"id": "Emb22", "nome": "Copo Acompa. c/100", "preco": 10.5, "estoqueCentral": 50}, {"id": "Emb13", "nome": "Copo Blendse 300ml c/30", "preco": 29.0, "estoqueCentral": 50}, {"id": "Emb15", "nome": "Copo Blendse 500ml c/30", "preco": 37.0, "estoqueCentral": 50}, {"id": "Emb9", "nome": "Copo Pap. 240ml c/37", "preco": 26.64, "estoqueCentral": 50}, {"id": "Emb10", "nome": "Copo Pap. 300ml c/34", "preco": 25.16, "estoqueCentral": 50}, {"id": "Emb11", "nome": "Copo Pap. 500ml c/45", "preco": 40.5, "estoqueCentral": 50}, {"id": "Emb12", "nome": "Copo Pap. 700ml c/40", "preco": 40.4, "estoqueCentral": 50}, {"id": "Emb8", "nome": "Copo Pap. 80ml c/40", "preco": 19.6, "estoqueCentral": 50}, {"id": "Emb14", "nome": "Copo Smothie 400ml c/30", "preco": 27.82, "estoqueCentral": 50}, {"id": "Emb5", "nome": "Copo Térm. 300ml c/25", "preco": 20.0, "estoqueCentral": 50}, {"id": "Emb6", "nome": "Copo Térm. 500ml c/25", "preco": 23.9, "estoqueCentral": 50}, {"id": "Emb7", "nome": "Copo Térm. 700ml c/15", "preco": 20.5, "estoqueCentral": 50}, {"id": "Emb25", "nome": "Durex c/10", "preco": 18.5, "estoqueCentral": 50}, {"id": "Emb258", "nome": "Etiqueta Lacre Acai-Se c/1000", "preco": 37.5, "estoqueCentral": 50}, {"id": "Emb223", "nome": "Garrafinha Suco 300ml c/10", "preco": 15.0, "estoqueCentral": 50}, {"id": "Emb31", "nome": "Papel Manteiga Sand c/100", "preco": 10.0, "estoqueCentral": 50}, {"id": "Emb1", "nome": "Rolo Filme Gde", "preco": 95.0, "estoqueCentral": 50}, {"id": "Emb24", "nome": "Saco Kraft Uni c/100", "preco": 59.0, "estoqueCentral": 50}, {"id": "Emb3", "nome": "Saco Talher c/500", "preco": 22.0, "estoqueCentral": 50}, {"id": "Emb27", "nome": "Sacola P c/100", "preco": 12.5, "estoqueCentral": 50}, {"id": "Emb202", "nome": "T. Copo 240 c/50", "preco": 30.0, "estoqueCentral": 50}, {"id": "Emb288", "nome": "T. Copo Pap 300", "preco": 32.0, "estoqueCentral": 50}, {"id": "Emb16", "nome": "Tampa 300ml c/60", "preco": 13.5, "estoqueCentral": 50}, {"id": "Emb17", "nome": "Tampa 500ml c/60", "preco": 20.5, "estoqueCentral": 50}, {"id": "Emb194", "nome": "Tampa 80ml c/75", "preco": 28.12, "estoqueCentral": 50}, {"id": "Emb23", "nome": "Tampa Acompa. c/100", "preco": 11.5, "estoqueCentral": 50}, {"id": "Emb195", "nome": "Tampa Smothie 400 c/75", "preco": 27.4, "estoqueCentral": 50}], "Descartáveis": [{"id": "Desc200", "nome": "Base Copo c/50", "preco": 40.5, "estoqueCentral": 50}, {"id": "Desc38", "nome": "Canudo p/ Smothie c/100", "preco": 7.0, "estoqueCentral": 50}, {"id": "Desc41", "nome": "Colher Longa c/50", "preco": 10.9, "estoqueCentral": 50}, {"id": "Desc40", "nome": "Colher Média c/50", "preco": 8.55, "estoqueCentral": 50}, {"id": "Desc37", "nome": "Copo 50ml c/100", "preco": 3.5, "estoqueCentral": 50}, {"id": "Desc248", "nome": "Faca Descartável", "preco": 7.0, "estoqueCentral": 50}, {"id": "Desc249", "nome": "Garfo Descatável", "preco": 8.3, "estoqueCentral": 50}, {"id": "Desc43", "nome": "Guardanapos Cx c/1000", "preco": 220.0, "estoqueCentral": 50}, {"id": "Desc35", "nome": "Luvas c/100", "preco": 29.5, "estoqueCentral": 50}, {"id": "Desc214", "nome": "Papel Mant. Metálico c/100", "preco": 41.5, "estoqueCentral": 50}, {"id": "Desc197", "nome": "Papel Manteiga Sand c/100", "preco": 20.0, "estoqueCentral": 50}, {"id": "Desc46", "nome": "Papel Toalha Interf. c/3", "preco": 17.5, "estoqueCentral": 50}], "Limpeza": [{"id": "Limp163", "nome": "Alcool 70%", "preco": 11.0, "estoqueCentral": 50}, {"id": "Limp166", "nome": "Bucha de Pratos", "preco": 4.0, "estoqueCentral": 50}, {"id": "Limp260", "nome": "Detergente Liq. 5Lt", "preco": 15.0, "estoqueCentral": 50}, {"id": "Limp162", "nome": "Multiuso", "preco": 5.5, "estoqueCentral": 50}, {"id": "Limp164", "nome": "Pano de Chão", "preco": 9.0, "estoqueCentral": 50}, {"id": "Limp160", "nome": "Perfex", "preco": 15.0, "estoqueCentral": 50}, {"id": "Limp161", "nome": "Saco Lixo 100Lt 1Kg", "preco": 15.5, "estoqueCentral": 50}], "Material de Escritório": [{"id": "Mat. Esc.177", "nome": "Bobina Maquineta", "preco": 3.2, "estoqueCentral": 50}, {"id": "Mat. Esc.176", "nome": "Bobina Tér. Impres.", "preco": 5.8, "estoqueCentral": 50}, {"id": "Mat. Esc.181", "nome": "Grampos", "preco": 10.0, "estoqueCentral": 50}], "Diversos": [{"id": "Div193", "nome": "Camisas Fardamento", "preco": 55.0, "estoqueCentral": 50}, {"id": "Div254", "nome": "Gás Maçarico", "preco": 17.0, "estoqueCentral": 50}], "Produção / Insumos": [{"id": "Prod216", "nome": "Alface Americana", "preco": 5.0, "estoqueCentral": 50}, {"id": "Prod134", "nome": "Alface Roxa", "preco": 5.0, "estoqueCentral": 50}, {"id": "Prod102", "nome": "Açúcar Cristal 1Kg", "preco": 4.5, "estoqueCentral": 50}, {"id": "Prod213", "nome": "Barbecue", "preco": 18.0, "estoqueCentral": 50}, {"id": "Prod227", "nome": "Batata Chips 200Kg", "preco": 16.5, "estoqueCentral": 50}, {"id": "Prod250", "nome": "Cebola em Conservas", "preco": 10.0, "estoqueCentral": 50}, {"id": "Prod115", "nome": "Cenoura", "preco": 9.5, "estoqueCentral": 50}, {"id": "Prod230", "nome": "Contra Filé 100g c/05", "preco": 38.8, "estoqueCentral": 50}, {"id": "Prod284", "nome": "Croutons", "preco": 5.0, "estoqueCentral": 50}, {"id": "Prod273", "nome": "Goma de Tapioca 500g", "preco": 6.3, "estoqueCentral": 50}, {"id": "Prod117", "nome": "Hortelã", "preco": 4.5, "estoqueCentral": 50}, {"id": "Prod114", "nome": "Milho Verde", "preco": 5.5, "estoqueCentral": 50}, {"id": "Prod135", "nome": "Pepino Japa", "preco": 7.99, "estoqueCentral": 50}, {"id": "Prod103", "nome": "Tomate Rasteiro", "preco": 12.0, "estoqueCentral": 50}, {"id": "Prod217", "nome": "Óleo Composto", "preco": 16.0, "estoqueCentral": 50}]};
+
+let currentUser = null;
+let currentRole = null; // 'loja' ou 'admin'
+
+// Camada de armazenamento com fallback em memória (caso window.storage não esteja disponível,
+// por exemplo quando o arquivo é aberto fora do ambiente de chat)
+const memoryStore = {};
+async function safeSet(key, value, shared) {
+  try {
+    if (window.storage) return await window.storage.set(key, value, shared);
+  } catch (e) {}
+  memoryStore[key] = value;
+  return { key, value, shared };
+}
+async function safeGet(key, shared) {
+  try {
+    if (window.storage) return await window.storage.get(key, shared);
+  } catch (e) {}
+  if (key in memoryStore) return { key, value: memoryStore[key], shared };
+  throw new Error("not found");
+}
+async function safeList(prefix, shared) {
+  try {
+    if (window.storage) return await window.storage.list(prefix, shared);
+  } catch (e) {}
+  const keys = Object.keys(memoryStore).filter(k => k.startsWith(prefix));
+  return { keys, prefix, shared };
+}
+
+function populateUnitSelect() {
+  const sel = document.getElementById('loginUnit');
+  sel.innerHTML = "";
+  UNIDADES.forEach(u => {
+    const opt = document.createElement('option');
+    opt.value = u; opt.textContent = u;
+    sel.appendChild(opt);
+  });
+  const optInv = document.createElement('option');
+  optInv.value = "INVENTÁRIO"; optInv.textContent = "📦 Contagem de Inventário";
+  sel.appendChild(optInv);
+  const optAdmin = document.createElement('option');
+  optAdmin.value = "Franqueadora (Admin)"; optAdmin.textContent = "🔐 Franqueadora (Admin)";
+  sel.appendChild(optAdmin);
+}
+populateUnitSelect();
+
+function switchAdminTab(tab) {
+  ['Pedidos','Entradas','Itens','Cadastros'].forEach(t => {
+    const el = document.getElementById('tab'+t);
+    const btn = document.getElementById('tabBtn'+t);
+    if(el) el.classList.toggle('hidden', tab !== t.toLowerCase());
+    if(btn) btn.classList.toggle('active', tab === t.toLowerCase());
+  });
+  if (tab === 'entradas') { iniciarEntradas(); }
+  if (tab === 'itens') { iniciarGestaoItens(); }
+  if (tab === 'cadastros') { iniciarCadastros(); }
+}
+
+// ─── CADASTROS ───────────────────────────────────────────────────────────────
+// Unidades extras cadastradas dinamicamente (além das fixas em UNIDADES)
+let extraUnidades = []; // [{nome, tipo, responsavel, senha}]
+
+async function loadExtraUnidades() {
+  try {
+    const r = await safeGet('extraUnidades', true);
+    if (r && r.value) extraUnidades = JSON.parse(r.value);
+  } catch(e) {}
+}
+
+async function saveExtraUnidades() {
+  await safeSet('extraUnidades', JSON.stringify(extraUnidades), true);
+}
+
+function gerarSenha(nome) {
+  return nome.toLowerCase().replace(/[\s\.\-\/áàãâäéèêëíìîïóòõôöúùûüç]/g, c => {
+    const map = {á:'a',à:'a',ã:'a',â:'a',ä:'a',é:'e',è:'e',ê:'e',ë:'e',í:'i',ì:'i',î:'i',ï:'i',ó:'o',ò:'o',õ:'o',ô:'o',ö:'o',ú:'u',ù:'u',û:'u',ü:'u',ç:'c',' ':'','.':'','-':'','/':''};
+    return map[c] !== undefined ? map[c] : '';
+  }).replace(/[^a-z0-9]/g,'') + '2026';
+}
+
+function previewSenha() {
+  const nome = document.getElementById('novaUnidNome').value;
+  document.getElementById('novaUnidSenha').value = nome ? gerarSenha(nome) : '';
+}
+
+async function cadastrarUnidade() {
+  const nome = document.getElementById('novaUnidNome').value.trim().toUpperCase();
+  const tipo = document.getElementById('novaUnidTipo').value;
+  const responsavel = document.getElementById('novaUnidResponsavel').value.trim();
+  const senha = gerarSenha(nome);
+  const msgEl = document.getElementById('novaUnidMsg');
+
+  if (!nome) { msgEl.textContent = 'Informe o nome da unidade.'; return; }
+  const todosNomes = [...UNIDADES, ...extraUnidades.map(u=>u.nome)];
+  if (todosNomes.includes(nome)) { msgEl.textContent = 'Unidade já cadastrada.'; return; }
+
+  const nova = { nome, tipo, responsavel, senha };
+  extraUnidades.push(nova);
+  UNIDADES.push(nome);
+  SENHAS[nome] = senha;
+
+  await saveExtraUnidades();
+  populateUnitSelect();
+
+  msgEl.style.color = '#2E7D32';
+  msgEl.textContent = `✅ Unidade "${nome}" cadastrada! Senha: ${senha}`;
+  document.getElementById('novaUnidNome').value = '';
+  document.getElementById('novaUnidResponsavel').value = '';
+  document.getElementById('novaUnidSenha').value = '';
+  renderListaUnidades();
+}
+
+async function iniciarCadastros() {
+  await loadExtraUnidades();
+  // Populate novoProdCat select
+  const sel = document.getElementById('novoProdCat');
+  if (sel.options.length <= 1) {
+    Object.keys(CATALOGO).forEach(cat => {
+      const opt = document.createElement('option');
+      opt.value = cat; opt.textContent = cat;
+      sel.appendChild(opt);
+    });
+  }
+  renderListaUnidades();
+}
+
+function renderListaUnidades() {
+  const tipos = {'Franquia':'badge-green','Própria':'badge-blue','Licenciada':'badge-yellow','Revenda':'badge-yellow','Eventos':'badge-red'};
+  const fixas = UNIDADES.filter(n => !extraUnidades.find(e=>e.nome===n));
+  let html = `<table><thead><tr><th>Unidade</th><th>Tipo</th><th>Responsável</th><th>Senha</th></tr></thead><tbody>`;
+  // Extra (dynamic)
+  extraUnidades.forEach(u => {
+    html += `<tr><td><strong>${u.nome}</strong> <span class="badge badge-green" style="font-size:10px">nova</span></td><td><span class="badge ${tipos[u.tipo]||'badge-gray'}">${u.tipo}</span></td><td>${u.responsavel||'—'}</td><td><code>${u.senha}</code></td></tr>`;
+  });
+  // Fixed
+  fixas.forEach(n => {
+    html += `<tr><td>${n}</td><td><span class="badge badge-gray">Franquia</span></td><td>—</td><td><code>${SENHAS[n]||'—'}</code></td></tr>`;
+  });
+  html += `</tbody></table>`;
+  document.getElementById('listaUnidades').innerHTML = html;
+}
+
+async function cadastrarNovoProduto() {
+  const nome = document.getElementById('novoProdNome').value.trim();
+  const cat = document.getElementById('novoProdCat').value;
+  const custo = parseFloat(document.getElementById('novoProdCusto').value) || 0;
+  const venda = parseFloat(document.getElementById('novoProdVenda').value) || 0;
+  const visivel = document.getElementById('novoProdVisivel').checked;
+  const msgEl = document.getElementById('novoProdMsg');
+
+  if (!nome || !cat || venda <= 0) { msgEl.textContent = 'Preencha nome, categoria e preço de venda.'; return; }
+
+  const id = cat.replace(/\s/g,'').slice(0,4) + '_' + Date.now();
+  const novoItem = { id, nome, preco: venda, estoqueCentral: 0 };
+  if (!CATALOGO[cat]) CATALOGO[cat] = [];
+  CATALOGO[cat].push(novoItem);
+  itemState[id] = { disponivel: visivel, custo: custo||null, venda };
+  await saveItemState();
+
+  msgEl.style.color = '#2E7D32';
+  msgEl.textContent = `✅ Produto "${nome}" cadastrado em ${cat}!`;
+  document.getElementById('novoProdNome').value = '';
+  document.getElementById('novoProdCusto').value = '';
+  document.getElementById('novoProdVenda').value = '';
+}
+
+// ─── ROMANEIO ─────────────────────────────────────────────────────────────────
+let pedidoAtualRomaneio = null;
+
+function abrirRomaneio(pedido) {
+  pedidoAtualRomaneio = pedido;
+  const jaDespachou = pedido.despachado === true;
+  const btnDespachar = document.getElementById('btnDespachar');
+  const statusMsg = document.getElementById('romaneioStatusMsg');
+
+  if (jaDespachou) {
+    btnDespachar.disabled = true;
+    btnDespachar.style.background = '#aaa';
+    btnDespachar.textContent = '✅ Já despachado';
+    statusMsg.style.color = '#2E7D32';
+    statusMsg.textContent = `Despachado em ${new Date(pedido.dataDespacho).toLocaleString('pt-BR')} — estoque já foi descontado.`;
+  } else {
+    btnDespachar.disabled = false;
+    btnDespachar.style.background = '#2E7D32';
+    btnDespachar.textContent = '✅ Confirmar despacho e imprimir';
+    statusMsg.textContent = '';
+  }
+
+  const total = Object.values(pedido.itens).reduce((s,i)=>s+(i.total||0),0);
+  const dataFormatada = new Date(pedido.dataEnvio).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  const tipoIcon = pedido.tipoEntrega === 'Retirada' ? '🏪' : '🚚';
+
+  let linhas = '';
+  Object.values(pedido.itens).forEach((it,i) => {
+    const bg = i%2===0 ? '#fff' : '#F9F6FF';
+    linhas += `<tr style="background:${bg}">
+      <td style="padding:7px 10px;border-bottom:1px solid #eee">${it.nome}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:center">${it.qtd}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right">R$ ${(it.preco||0).toFixed(2).replace('.',',')}</td>
+      <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right"><strong>R$ ${(it.total||0).toFixed(2).replace('.',',')}</strong></td>
+    </tr>`;
+  });
+
+  document.getElementById('romaneioBody').innerHTML = `
+    <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid #5B2D8E;padding-bottom:16px">
+      <div style="font-size:26px;font-weight:800;color:#5B2D8E;letter-spacing:1px">AÇAÍ-SE</div>
+      <div style="font-size:13px;color:#777;margin-top:4px">ROMANEIO DE PEDIDO${jaDespachou ? ' — DESPACHADO ✓' : ''}</div>
+    </div>
+    <table style="width:100%;font-size:13px;margin-bottom:16px">
+      <tr><td style="padding:4px 0"><strong>Unidade:</strong></td><td>${pedido.unidade}</td><td><strong>Data:</strong></td><td>${dataFormatada}</td></tr>
+      <tr><td style="padding:4px 0"><strong>Tipo:</strong></td><td>${tipoIcon} ${pedido.tipoEntrega||'Entrega'}</td><td><strong>Semana:</strong></td><td>${pedido.semana}</td></tr>
+    </table>
+    <table style="width:100%;border-collapse:collapse;font-size:13px">
+      <thead><tr style="background:#5B2D8E;color:#fff">
+        <th style="padding:8px 10px;text-align:left">Item</th>
+        <th style="padding:8px 10px;text-align:center">Qtd</th>
+        <th style="padding:8px 10px;text-align:right">Preço unit.</th>
+        <th style="padding:8px 10px;text-align:right">Total</th>
+      </tr></thead>
+      <tbody>${linhas}</tbody>
+    </table>
+    <div style="display:flex;justify-content:flex-end;margin-top:12px;padding:12px 10px;background:#F5F0FB;border-radius:6px">
+      <span style="font-size:15px;font-weight:700;color:#5B2D8E">TOTAL: R$ ${total.toFixed(2).replace('.',',')}</span>
+    </div>
+    <div style="margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:40px">
+      <div><div style="border-top:1.5px solid #333;padding-top:6px;text-align:center;font-size:12px;color:#555">Responsável pela separação</div></div>
+      <div><div style="border-top:1.5px solid #333;padding-top:6px;text-align:center;font-size:12px;color:#555">Franqueado — Confirmação de recebimento</div></div>
+    </div>
+    <div style="margin-top:8px;text-align:center;font-size:11px;color:#aaa">Açaí-Se Franquias • ${new Date().toLocaleString('pt-BR')}</div>
+  `;
+  document.getElementById('romaneioOverlay').style.display = 'flex';
+}
+
+async function confirmarDespacho() {
+  if (!pedidoAtualRomaneio || pedidoAtualRomaneio.despachado) return;
+  const btn = document.getElementById('btnDespachar');
+  btn.disabled = true;
+  btn.textContent = 'Processando...';
+
+  // Dar baixa no estoque
+  const itens = pedidoAtualRomaneio.itens;
+  try {
+    // Load current saldos
+    let saldos = {};
+    try { const r = await safeGet('saldoInicial', true); if(r&&r.value) saldos = JSON.parse(r.value); } catch(e) {}
+
+    Object.entries(itens).forEach(([id, it]) => {
+      if (saldos[id] === undefined) saldos[id] = 0;
+      saldos[id] = Math.max(0, (saldos[id] || 0) - it.qtd);
+    });
+    await safeSet('saldoInicial', JSON.stringify(saldos), true);
+
+    // Registrar saída no histórico
+    const saida = {
+      tipo: 'Saída',
+      unidade: pedidoAtualRomaneio.unidade,
+      itens,
+      data: new Date().toISOString()
+    };
+    await safeSet(`saida:${Date.now()}`, JSON.stringify(saida), true);
+
+    // Marcar pedido como despachado
+    pedidoAtualRomaneio.despachado = true;
+    pedidoAtualRomaneio.dataDespacho = new Date().toISOString();
+    const weekKey = pedidoAtualRomaneio.semana;
+    await safeSet(`pedido:${weekKey}:${pedidoAtualRomaneio.unidade}`, JSON.stringify(pedidoAtualRomaneio), true);
+
+    // Atualizar cache
+    Object.values(CATALOGO).flat().forEach(item => {
+      if (saldos[item.id] !== undefined) item._estoqueAtual = saldos[item.id];
+    });
+
+    const statusMsg = document.getElementById('romaneioStatusMsg');
+    statusMsg.style.color = '#2E7D32';
+    statusMsg.textContent = '✅ Estoque descontado! Imprimindo...';
+    btn.textContent = '✅ Já despachado';
+    btn.style.background = '#aaa';
+
+    setTimeout(() => window.print(), 400);
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '✅ Confirmar despacho e imprimir';
+    document.getElementById('romaneioStatusMsg').textContent = 'Erro ao descontar estoque: ' + e.message;
+  }
+}
+
+function fecharRomaneio() {
+  document.getElementById('romaneioOverlay').style.display = 'none';
+  loadAdminData(); // Refresh pedidos list to show dispatched status
+}
+
+// ─── FORNECEDORES ─────────────────────────────────────────────────────────────
+let fornecedoresCadastrados = ["Ultra","Macropac","Tia Sônia","Hortifruti","Distribuidora Local"];
+
+async function loadFornecedores() {
+  try {
+    const r = await safeGet('fornecedores', true);
+    if (r && r.value) fornecedoresCadastrados = JSON.parse(r.value);
+  } catch(e) {}
+}
+
+async function saveFornecedores() {
+  await safeSet('fornecedores', JSON.stringify(fornecedoresCadastrados), true);
+}
+
+function popularSelectFornecedor() {
+  const sel = document.getElementById('entradaFornecedor');
+  if (!sel) return;
+  sel.innerHTML = '<option value="">Selecione...</option>';
+  fornecedoresCadastrados.forEach(f => {
+    const opt = document.createElement('option'); opt.value = f; opt.textContent = f; sel.appendChild(opt);
+  });
+}
+
+function getFornecedorSelecionado() {
+  const custom = document.getElementById('entradaFornecedorCustom')?.value?.trim();
+  const sel = document.getElementById('entradaFornecedor')?.value;
+  return custom || sel || '';
+}
+
+async function adicionarFornecedorSeNovo(nome) {
+  if (nome && !fornecedoresCadastrados.includes(nome)) {
+    fornecedoresCadastrados.push(nome);
+    fornecedoresCadastrados.sort();
+    await saveFornecedores();
+    popularSelectFornecedor();
+  }
+}
+
+async function renderRelatorioFornecedor() {
+  const periodo = document.getElementById('fornecedorFiltroPeriodo')?.value || 'mes';
+  const now = new Date();
+  let dataCorte;
+  if (periodo === 'mes') dataCorte = new Date(now.getFullYear(), now.getMonth(), 1);
+  else if (periodo === 'semana') { dataCorte = new Date(now); dataCorte.setDate(now.getDate() - 7); }
+  else dataCorte = new Date(0);
+
+  let entradas = [];
+  try {
+    const list = await safeList('entrada:', true);
+    if (list && list.keys) {
+      for (const k of list.keys) {
+        try { const r = await safeGet(k, true); if(r&&r.value) entradas.push(JSON.parse(r.value)); } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  const porFornecedor = {};
+  entradas.filter(e => new Date(e.data) >= dataCorte && e.fornecedor).forEach(e => {
+    if (!porFornecedor[e.fornecedor]) porFornecedor[e.fornecedor] = { itens: 0, valor: 0, entradas: [] };
+    porFornecedor[e.fornecedor].itens += e.qtd;
+    porFornecedor[e.fornecedor].valor += (e.qtd * (e.precoUnitario || 0));
+    porFornecedor[e.fornecedor].entradas.push(e);
+  });
+
+  const el = document.getElementById('relatorioFornecedor');
+  if (!el) return;
+  if (Object.keys(porFornecedor).length === 0) {
+    el.innerHTML = `<p class="small">Nenhuma entrada com fornecedor registrada no período.</p>`; return;
+  }
+
+  let html = `<table><thead><tr><th>Fornecedor</th><th style="text-align:right">Qtd total</th><th style="text-align:right">Nº de entregas</th></tr></thead><tbody>`;
+  Object.entries(porFornecedor).sort((a,b)=>b[1].itens-a[1].itens).forEach(([nome, dados]) => {
+    html += `<tr><td><strong>${nome}</strong></td><td style="text-align:right">${dados.itens}</td><td style="text-align:right">${dados.entradas.length}</td></tr>`;
+    // Detalhe itens desse fornecedor
+    const itensForn = {};
+    dados.entradas.forEach(e => { itensForn[e.nome] = (itensForn[e.nome]||0) + e.qtd; });
+    Object.entries(itensForn).slice(0,5).forEach(([item,qtd]) => {
+      html += `<tr style="background:#F9F6FF"><td style="padding-left:24px;font-size:12px;color:#666">${item}</td><td style="text-align:right;font-size:12px;color:#666">${qtd}</td><td></td></tr>`;
+    });
+    if(Object.keys(itensForn).length > 5) html += `<tr><td style="padding-left:24px;font-size:11px;color:#aaa" colspan="3">+ ${Object.keys(itensForn).length-5} outros itens</td></tr>`;
+  });
+  html += `</tbody></table>`;
+  el.innerHTML = html;
+}
+
+// ─── INVENTÁRIO ───────────────────────────────────────────────────────────────
+function iniciarInventario() {
+  const sel = document.getElementById('invFiltroCat');
+  if (sel.options.length === 0) {
+    const all = document.createElement('option'); all.value=''; all.textContent='Todas as categorias'; sel.appendChild(all);
+    Object.keys(CATALOGO).forEach(cat => {
+      const opt = document.createElement('option'); opt.value=cat; opt.textContent=cat; sel.appendChild(opt);
+    });
+  }
+  renderInventario();
+}
+
+function renderInventario() {
+  const filtro = document.getElementById('invFiltroCat').value;
+  const busca = document.getElementById('invBusca').value.toLowerCase().trim();
+  const cats = filtro ? { [filtro]: CATALOGO[filtro] } : CATALOGO;
+  const allItems = Object.values(CATALOGO).flat();
+
+  // Progress counter
+  const preenchidos = allItems.filter(i => {
+    const el = document.getElementById('inv_' + i.id);
+    return el ? parseFloat(el.value) > 0 : (saldoAtual[i.id] > 0);
+  }).length;
+  document.getElementById('invProgresso').innerHTML =
+    `<div style="font-size:13px;color:#5B2D8E;font-weight:600">
+      ${preenchidos} de ${allItems.length} itens preenchidos
+      <div style="height:6px;background:#eee;border-radius:4px;margin-top:4px;overflow:hidden">
+        <div style="height:100%;width:${Math.round(preenchidos/allItems.length*100)}%;background:#5B2D8E;border-radius:4px;transition:width .3s"></div>
+      </div>
+    </div>`;
+
+  let html = '';
+  Object.entries(cats).forEach(([cat, items]) => {
+    const filtered = items.filter(i => !busca || i.nome.toLowerCase().includes(busca));
+    if (!filtered.length) return;
+    html += `<div style="background:#5B2D8E;color:#fff;padding:8px 14px;border-radius:6px;font-size:14px;font-weight:600;margin:16px 0 6px">${cat}</div>`;
+    html += `<table style="font-size:14px;width:100%"><tbody>`;
+    filtered.forEach((item, idx) => {
+      const bg = idx % 2 === 0 ? '#fff' : '#F9F6FF';
+      const saldo = saldoAtual[item.id] !== undefined ? saldoAtual[item.id] : 0;
+      html += `<tr style="background:${bg}">
+        <td style="padding:8px 10px">${item.nome}</td>
+        <td style="padding:8px 10px;width:130px">
+          <input type="number" min="0" step="0.1"
+            id="inv_${item.id}"
+            value="${saldo > 0 ? saldo : ''}"
+            placeholder="0"
+            oninput="atualizarProgresso()"
+            style="width:110px;padding:6px 8px;font-size:14px;border:1.5px solid #ddd;border-radius:6px;text-align:right">
+        </td>
+      </tr>`;
+    });
+    html += `</tbody></table>`;
+  });
+  document.getElementById('inventarioTabela').innerHTML = html;
+}
+
+function atualizarProgresso() {
+  const allItems = Object.values(CATALOGO).flat();
+  const preenchidos = allItems.filter(i => {
+    const el = document.getElementById('inv_' + i.id);
+    return el && parseFloat(el.value) > 0;
+  }).length;
+  document.getElementById('invProgresso').innerHTML =
+    `<div style="font-size:13px;color:#5B2D8E;font-weight:600">
+      ${preenchidos} de ${allItems.length} itens preenchidos
+      <div style="height:6px;background:#eee;border-radius:4px;margin-top:4px;overflow:hidden">
+        <div style="height:100%;width:${Math.round(preenchidos/allItems.length*100)}%;background:#5B2D8E;border-radius:4px;transition:width .3s"></div>
+      </div>
+    </div>`;
+}
+
+async function salvarInventario() {
+  const msgEl = document.getElementById('invMsg');
+  msgEl.textContent = 'Salvando...';
+  const allItems = Object.values(CATALOGO).flat();
+  allItems.forEach(item => {
+    const el = document.getElementById('inv_' + item.id);
+    if (el) saldoAtual[item.id] = parseFloat(el.value) || 0;
+  });
+  try {
+    await safeSet('saldoInicial', JSON.stringify(saldoAtual), true);
+    // Registra snapshot no histórico
+    await safeSet(`inventario:${Date.now()}`, JSON.stringify({
+      data: new Date().toISOString(),
+      saldo: { ...saldoAtual }
+    }), true);
+    msgEl.style.color = '#2E7D32';
+    msgEl.textContent = `✅ Contagem salva em ${new Date().toLocaleTimeString('pt-BR')}! O estoque central já está atualizado.`;
+  } catch(e) {
+    msgEl.style.color = '#C62828';
+    msgEl.textContent = 'Erro ao salvar: ' + e.message;
+  }
+}
+
+// ─── SALDO INICIAL ────────────────────────────────────────────────────────────
+let saldoAtual = {}; // { [itemId]: qtd }
+
+async function loadSaldoInicial() {
+  try {
+    const r = await safeGet('saldoInicial', true);
+    if (r && r.value) saldoAtual = JSON.parse(r.value);
+  } catch(e) {}
+}
+
+async function iniciarEntradas() {
+  await loadSaldoInicial();
+  await loadFornecedores();
+  popularSelectFornecedor();
+  // Populate saldo filter
+  const sel = document.getElementById('saldoFiltroCat');
+  if (sel.options.length === 0) {
+    const allOpt = document.createElement('option'); allOpt.value=''; allOpt.textContent='Todas as categorias'; sel.appendChild(allOpt);
+    Object.keys(CATALOGO).forEach(cat => {
+      const opt = document.createElement('option'); opt.value=cat; opt.textContent=cat; sel.appendChild(opt);
+    });
+  }
+  renderSaldoInicial();
+  popularCategoriasEntrada();
+  loadEstoqueEHistorico();
+  renderRelatorioFornecedor();
+}
+
+function renderSaldoInicial() {
+  const filtro = document.getElementById('saldoFiltroCat').value;
+  const busca = (document.getElementById('saldaBusca') || document.getElementById('saldoBusca'))?.value?.toLowerCase() || '';
+  const cats = filtro ? { [filtro]: CATALOGO[filtro] } : CATALOGO;
+  let html = `<div style="max-height:320px;overflow-y:auto;border:1px solid #eee;border-radius:6px"><table style="font-size:13px"><thead><tr><th>Item</th><th style="width:120px">Saldo atual (un.)</th></tr></thead><tbody>`;
+  Object.entries(cats).forEach(([cat, items]) => {
+    items.filter(i => !busca || i.nome.toLowerCase().includes(busca)).forEach(item => {
+      const saldo = saldoAtual[item.id] !== undefined ? saldoAtual[item.id] : item.estoqueCentral;
+      html += `<tr>
+        <td style="padding:5px 10px">${item.nome} <span class="small">(${cat})</span></td>
+        <td style="padding:5px 10px"><input type="number" min="0" value="${saldo}" id="saldo_${item.id}" style="width:90px;padding:4px 6px;font-size:13px"></td>
+      </tr>`;
+    });
+  });
+  html += `</tbody></table></div>`;
+  document.getElementById('saldoInicialTable').innerHTML = html;
+}
+
+async function salvarSaldoInicial() {
+  const allItems = Object.values(CATALOGO).flat();
+  allItems.forEach(item => {
+    const el = document.getElementById('saldo_' + item.id);
+    if (el) saldoAtual[item.id] = parseFloat(el.value) || 0;
+  });
+  await safeSet('saldoInicial', JSON.stringify(saldoAtual), true);
+  // Update in-memory stock
+  allItems.forEach(item => { item._estoqueAtual = saldoAtual[item.id] ?? item.estoqueCentral; });
+  const msg = document.getElementById('saldoMsg');
+  msg.style.color = '#2E7D32';
+  msg.textContent = '✅ Saldos salvos! O estoque central agora reflete os valores reais.';
+  loadEstoqueEHistorico();
+}
+
+// ─── GESTÃO DE ITENS ─────────────────────────────────────────────────────────
+// Estado local de disponibilidade e preços (persiste via storage)
+let itemState = {}; // { [id]: { disponivel: bool, custo: num, venda: num } }
+
+async function loadItemState() {
+  try {
+    const r = await safeGet('itemState', true);
+    if (r && r.value) itemState = JSON.parse(r.value);
+  } catch(e) {}
+  // Preenche defaults para itens sem estado salvo
+  Object.values(CATALOGO).flat().forEach(item => {
+    if (!itemState[item.id]) itemState[item.id] = { disponivel: true, custo: null, venda: item.preco };
+  });
+}
+
+async function saveItemState() {
+  await safeSet('itemState', JSON.stringify(itemState), true);
+}
+
+function getItemState(id, item) {
+  if (!itemState[id]) itemState[id] = { disponivel: true, custo: null, venda: item.preco };
+  return itemState[id];
+}
+
+async function iniciarGestaoItens() {
+  await loadItemState();
+  const sel = document.getElementById('filtroCategoria');
+  if (sel.options.length === 0) {
+    const allOpt = document.createElement('option');
+    allOpt.value = ''; allOpt.textContent = 'Todas as categorias';
+    sel.appendChild(allOpt);
+    // Só categorias visíveis às lojas (+ Produção p/ controle interno)
+    Object.keys(CATALOGO).forEach(cat => {
+      const opt = document.createElement('option');
+      opt.value = cat; opt.textContent = cat;
+      sel.appendChild(opt);
+    });
+  }
+  renderGestaoItens();
+}
+
+function renderGestaoItens() {
+  const filtro = document.getElementById('filtroCategoria').value;
+  const cats = filtro ? { [filtro]: CATALOGO[filtro] } : CATALOGO;
+  let html = `<table><thead><tr>
+    <th>Item</th><th>Categoria</th>
+    <th>Custo (R$)</th><th>Venda (R$)</th>
+    <th>Disponível</th><th>Ação</th>
+  </tr></thead><tbody>`;
+  Object.entries(cats).forEach(([cat, items]) => {
+    items.forEach(item => {
+      const st = getItemState(item.id, item);
+      const disp = st.disponivel;
+      const custo = st.custo !== null ? st.custo.toFixed(2) : '—';
+      const venda = (st.venda || item.preco).toFixed(2);
+      html += `<tr style="${!disp ? 'opacity:.5' : ''}">
+        <td>${item.nome}</td>
+        <td class="small">${cat}</td>
+        <td>R$ ${custo}</td>
+        <td><strong>R$ ${venda}</strong></td>
+        <td>
+          <label class="toggle">
+            <input type="checkbox" ${disp ? 'checked' : ''} onchange="toggleDisponivel('${item.id}', this.checked)">
+            <span class="slider"></span>
+          </label>
+        </td>
+        <td><button class="btn btn-secondary btn-xs" onclick="abrirEditPreco('${item.id}','${item.nome.replace(/'/g,"\\'")}',${st.custo||item.preco},${st.venda||item.preco})">✏️ Preços</button></td>
+      </tr>`;
+    });
+  });
+  html += `</tbody></table>`;
+  document.getElementById('gestaoItensTable').innerHTML = html;
+}
+
+async function toggleDisponivel(itemId, valor) {
+  if (!itemState[itemId]) itemState[itemId] = { disponivel: true, custo: null, venda: null };
+  itemState[itemId].disponivel = valor;
+  await saveItemState();
+}
+
+function abrirEditPreco(itemId, nome, custo, venda) {
+  document.getElementById('editItemId').value = itemId;
+  document.getElementById('editNomeItem').textContent = nome;
+  document.getElementById('editCusto').value = custo;
+  document.getElementById('editVenda').value = venda;
+  document.getElementById('editPrecoMsg').textContent = '';
+  document.getElementById('editPrecoBox').classList.remove('hidden');
+  document.getElementById('editPrecoBox').scrollIntoView({ behavior: 'smooth' });
+}
+
+async function salvarPrecos() {
+  const itemId = document.getElementById('editItemId').value;
+  const custo = parseFloat(document.getElementById('editCusto').value);
+  const venda = parseFloat(document.getElementById('editVenda').value);
+  if (!itemId || isNaN(venda) || venda <= 0) {
+    document.getElementById('editPrecoMsg').textContent = 'Informe valores válidos.';
+    return;
+  }
+  if (!itemState[itemId]) itemState[itemId] = { disponivel: true };
+  itemState[itemId].custo = isNaN(custo) ? null : custo;
+  itemState[itemId].venda = venda;
+  // Atualiza o preço no CATALOGO em memória para afetar pedidos em tempo real
+  const item = Object.values(CATALOGO).flat().find(i => i.id === itemId);
+  if (item) item.preco = venda;
+  await saveItemState();
+  document.getElementById('editPrecoMsg').style.color = '#2E7D32';
+  document.getElementById('editPrecoMsg').textContent = '✅ Preços atualizados!';
+  renderGestaoItens();
+}
+
+// ─── CATÁLOGO — filtros para a visão da loja ──────────────────────────────────
+function popularCategoriasEntrada() {
+  const sel = document.getElementById('entradaCategoria');
+  if (sel.options.length > 0) { popularItensEntrada(); return; }
+  Object.keys(CATALOGO).forEach(cat => {
+    const opt = document.createElement('option');
+    opt.value = cat; opt.textContent = cat;
+    sel.appendChild(opt);
+  });
+  popularItensEntrada();
+}
+
+function popularItensEntrada() {
+  const cat = document.getElementById('entradaCategoria').value;
+  const sel = document.getElementById('entradaItem');
+  sel.innerHTML = "";
+  (CATALOGO[cat] || []).forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item.id; opt.textContent = item.nome;
+    sel.appendChild(opt);
+  });
+}
+
+async function registrarEntrada() {
+  const msgEl = document.getElementById('entradaMsg');
+  const tipo = document.getElementById('entradaTipo').value;
+  const itemId = document.getElementById('entradaItem').value;
+  const qtd = parseFloat(document.getElementById('entradaQtd').value) || 0;
+  const obs = document.getElementById('entradaObs').value;
+  const fornecedor = getFornecedorSelecionado();
+
+  const item = Object.values(CATALOGO).flat().find(i => i.id === itemId);
+  if (!item) { msgEl.textContent = "Selecione um item válido."; return; }
+  if (qtd <= 0) { msgEl.textContent = "Informe uma quantidade maior que zero."; return; }
+
+  const entrada = {
+    itemId, nome: item.nome, tipo, qtd, obs, fornecedor,
+    precoUnitario: itemState[itemId]?.custo || item.preco,
+    data: new Date().toISOString()
+  };
+
+  msgEl.textContent = "Registrando...";
+  try {
+    // Persiste entrada
+    await safeSet(`entrada:${itemId}:${Date.now()}`, JSON.stringify(entrada), true);
+
+    // Atualiza saldo imediatamente
+    await loadSaldoInicial();
+    saldoAtual[itemId] = (saldoAtual[itemId] || 0) + qtd;
+    await safeSet('saldoInicial', JSON.stringify(saldoAtual), true);
+
+    // Salva novo fornecedor se necessário
+    if (fornecedor) await adicionarFornecedorSeNovo(fornecedor);
+
+    msgEl.style.color = "#2E7D32";
+    msgEl.textContent = `✅ +${qtd} ${item.nome}${fornecedor ? ' — ' + fornecedor : ''} registrado!`;
+    document.getElementById('entradaQtd').value = 0;
+    document.getElementById('entradaObs').value = '';
+    document.getElementById('entradaFornecedorCustom').value = '';
+    loadEstoqueEHistorico();
+    renderRelatorioFornecedor();
+  } catch (e) {
+    msgEl.style.color = "#C62828";
+    msgEl.textContent = "Erro ao registrar: " + e.message;
+  }
+}
+
+async function loadEstoqueEHistorico() {
+  await loadSaldoInicial();
+
+  // Load entries (additions)
+  let entradas = [];
+  try {
+    const list = await safeList('entrada:', true);
+    if (list && list.keys) {
+      for (const k of list.keys) {
+        try { const r = await safeGet(k, true); if(r&&r.value) entradas.push(JSON.parse(r.value)); } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  // Load saídas (dispatches)
+  let saidas = [];
+  try {
+    const list = await safeList('saida:', true);
+    if (list && list.keys) {
+      for (const k of list.keys) {
+        try { const r = await safeGet(k, true); if(r&&r.value) saidas.push(JSON.parse(r.value)); } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  const allItems = Object.values(CATALOGO).flat();
+
+  // Current stock = saldoAtual (already accounts for dispatches since we write it there)
+  const VERMELHO_CRITICO = 5;
+  let tableHtml = `<table><thead><tr>
+    <th>Item</th><th style="text-align:right">Saldo real</th><th style="text-align:center">Status</th>
+  </tr></thead><tbody>`;
+  allItems.forEach(item => {
+    const atual = saldoAtual[item.id] !== undefined ? saldoAtual[item.id] : item.estoqueCentral;
+    item._estoqueAtual = atual;
+    const status = atual <= 0 ? `<span class="badge badge-red">Zerado</span>`
+                 : atual <= VERMELHO_CRITICO ? `<span class="badge badge-yellow">Crítico</span>`
+                 : `<span class="badge badge-green">OK</span>`;
+    tableHtml += `<tr>
+      <td>${item.nome}</td>
+      <td style="text-align:right"><strong>${atual}</strong></td>
+      <td style="text-align:center">${status}</td>
+    </tr>`;
+  });
+  tableHtml += `</tbody></table>`;
+  document.getElementById('estoqueAtualTable').innerHTML = tableHtml;
+
+  // Unified history: entradas + saídas
+  const movimentos = [
+    ...entradas.map(e => ({ ...e, _tipo: 'entrada' })),
+    ...saidas.map(s => ({ ...s, _tipo: 'saida' }))
+  ].sort((a,b) => new Date(b.data) - new Date(a.data));
+
+  let histHtml = movimentos.length === 0
+    ? `<p class="small">Nenhuma movimentação registrada ainda.</p>`
+    : movimentos.slice(0,40).map(m => {
+        if (m._tipo === 'entrada') {
+          const icon = m.tipo === 'Produção' ? '🏭' : '🚚';
+          const forn = m.fornecedor ? ` <span class="small" style="color:#5B2D8E">[${m.fornecedor}]</span>` : '';
+          return `<div class="entry-row"><span>${icon} <strong>+${m.qtd}</strong> ${m.nome}${forn}${m.obs?' <span class="small">('+m.obs+')</span>':''}</span><span class="small">${new Date(m.data).toLocaleString('pt-BR')}</span></div>`;
+        } else {
+          const itensStr = Object.values(m.itens||{}).map(i=>`${i.nome} ×${i.qtd}`).join(', ');
+          return `<div class="entry-row"><span>📦 <strong>Despacho → ${m.unidade}</strong> <span class="small">${itensStr}</span></span><span class="small">${new Date(m.data).toLocaleString('pt-BR')}</span></div>`;
+        }
+      }).join('');
+
+  document.getElementById('historicoEntradas').innerHTML = histHtml;
+}
+
+function doLogin() {
+  const unit = document.getElementById('loginUnit').value;
+  const pass = document.getElementById('loginPass').value;
+  const errEl = document.getElementById('loginError');
+  if (SENHAS[unit] !== pass) {
+    errEl.textContent = "Senha incorreta. Tente novamente.";
+    return;
+  }
+  errEl.textContent = "";
+  currentUser = unit;
+  currentRole = unit === "Franqueadora (Admin)" ? "admin" : unit === "INVENTÁRIO" ? "inventario" : "loja";
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('logoutBtn').style.display = 'inline-block';
+
+  if (currentRole === "inventario") {
+    document.getElementById('topbarSub').textContent = "Contagem de Inventário";
+    document.getElementById('inventarioScreen').classList.remove('hidden');
+    loadSaldoInicial().then(iniciarInventario);
+  } else if (currentRole === "admin") {
+    document.getElementById('topbarSub').textContent = "Painel da Franqueadora";
+    document.getElementById('adminScreen').classList.remove('hidden');
+    loadExtraUnidades().then(() => loadAdminData());
+  } else {
+    document.getElementById('topbarSub').textContent = "Unidade: " + unit;
+    document.getElementById('orderUnitName').textContent = unit;
+    document.getElementById('orderScreen').classList.remove('hidden');
+    loadItemState().then(renderCatalog);
+  }
+}
+
+function logout() {
+  currentUser = null; currentRole = null;
+  document.getElementById('orderScreen').classList.add('hidden');
+  document.getElementById('adminScreen').classList.add('hidden');
+  document.getElementById('inventarioScreen').classList.add('hidden');
+  document.getElementById('loginScreen').classList.remove('hidden');
+  document.getElementById('logoutBtn').style.display = 'none';
+  document.getElementById('topbarSub').textContent = "Protótipo";
+  document.getElementById('loginPass').value = "";
+}
+
+function renderCatalog() {
+  const wrap = document.getElementById('catalog');
+  wrap.innerHTML = "";
+  const CATEGORIAS_OCULTAS_LOJA = ["Produção / Insumos"];
+  Object.keys(CATALOGO).forEach(cat => {
+    if (CATEGORIAS_OCULTAS_LOJA.includes(cat)) return;
+    const itensVisiveis = CATALOGO[cat].filter(item => {
+      const st = itemState[item.id];
+      return !st || st.disponivel !== false;
+    });
+    if (itensVisiveis.length === 0) return;
+    const title = document.createElement('div');
+    title.className = "cat-title";
+    title.textContent = cat;
+    wrap.appendChild(title);
+    itensVisiveis.forEach(item => {
+      const preco = (itemState[item.id]?.venda || item.preco);
+      const row = document.createElement('div');
+      row.className = "item-row";
+      row.innerHTML = `
+        <span class="item-name">${item.nome} <span class="small">(R$ ${preco.toFixed(2).replace('.',',')})</span></span>
+        <input type="number" min="0" class="item-qtd" id="qtd_${item.id}" value="0" oninput="updateOrderTotal()">
+      `;
+      wrap.appendChild(row);
+    });
+  });
+  const totalBar = document.createElement('div');
+  totalBar.className = "flex-between";
+  totalBar.style = "margin-top:16px;padding:12px 14px;background:#F5F0FB;border-radius:8px;font-weight:600;";
+  totalBar.innerHTML = `<span>Valor estimado do pedido</span><span id="orderTotalValue">R$ 0,00</span>`;
+  wrap.appendChild(totalBar);
+}
+
+function updateOrderTotal() {
+  let total = 0;
+  Object.values(CATALOGO).flat().forEach(item => {
+    const el = document.getElementById('qtd_' + item.id);
+    if (el) {
+      const preco = itemState[item.id]?.venda || item.preco;
+      total += (parseFloat(el.value) || 0) * preco;
+    }
+  });
+  const el = document.getElementById('orderTotalValue');
+  if (el) el.textContent = "R$ " + total.toFixed(2).replace('.',',');
+}
+
+async function gerarPedidoTeste() {
+  const msgEl = document.getElementById('loginError');
+  msgEl.style.color = "#5B2D8E";
+  msgEl.textContent = "Gerando pedidos de teste...";
+
+  const weekKey = await getCurrentWeekKey();
+  const CATEGORIAS_OCULTAS_LOJA = ["Produção / Insumos"];
+  const allItems = Object.entries(CATALOGO)
+    .filter(([cat]) => !CATEGORIAS_OCULTAS_LOJA.includes(cat))
+    .flatMap(([, items]) => items);
+
+  const exemplos = [
+    { unidade: "PIEDADE", pick: [0, 3, 7, 15, 22], entrega: "Entrega" },
+    { unidade: "FPS", pick: [1, 4, 8, 16, 23, 30], entrega: "Retirada" },
+    { unidade: "CARUARU", pick: [2, 5, 9, 17, 24, 31, 35], entrega: "Entrega" },
+  ];
+
+  for (const ex of exemplos) {
+    const itens = {};
+    ex.pick.forEach((idx, i) => {
+      const item = allItems[idx % allItems.length];
+      const qtd = (i + 1) * 2;
+      const preco = itemState[item.id]?.venda || item.preco;
+      itens[item.id] = { nome: item.nome, qtd, preco, total: +(qtd * preco).toFixed(2) };
+    });
+    const pedido = {
+      unidade: ex.unidade, semana: weekKey,
+      dataEnvio: new Date().toISOString(),
+      tipoEntrega: ex.entrega, itens
+    };
+    try {
+      await safeSet(`pedido:${weekKey}:${ex.unidade}`, JSON.stringify(pedido), true);
+    } catch (e) {
+      msgEl.style.color = "#C62828";
+      msgEl.textContent = "Erro ao gerar pedido de teste: " + e.message;
+      return;
+    }
+  }
+
+  msgEl.textContent = "Pedidos de teste criados! Abrindo o painel...";
+  setTimeout(() => {
+    currentUser = "Franqueadora (Admin)";
+    currentRole = "admin";
+    document.getElementById('loginScreen').classList.add('hidden');
+    document.getElementById('logoutBtn').style.display = 'inline-block';
+    document.getElementById('topbarSub').textContent = "Painel da Franqueadora";
+    document.getElementById('adminScreen').classList.remove('hidden');
+    loadAdminData();
+  }, 600);
+}
+
+async function getCurrentWeekKey() {
+  const now = new Date();
+  const onejan = new Date(now.getFullYear(), 0, 1);
+  const week = Math.ceil((((now - onejan) / 86400000) + onejan.getDay() + 1) / 7);
+  return `${now.getFullYear()}-S${week}`;
+}
+
+async function gerarNumeroPedido() {
+  let counter = 1;
+  try {
+    const r = await safeGet('orderCounter', true);
+    if (r && r.value) counter = parseInt(r.value) + 1;
+  } catch(e) {}
+  await safeSet('orderCounter', String(counter), true);
+  const hoje = new Date();
+  const data = `${hoje.getFullYear()}${String(hoje.getMonth()+1).padStart(2,'0')}${String(hoje.getDate()).padStart(2,'0')}`;
+  return `PED-${data}-${String(counter).padStart(3,'0')}`;
+}
+
+async function submitOrder(urgencia = false) {
+  const msgEl = document.getElementById('orderMsg');
+  msgEl.style.color = '#555';
+  msgEl.textContent = "Enviando...";
+  const weekKey = await getCurrentWeekKey();
+  const tipoEntrega = urgencia ? 'Retirada' : (document.querySelector('input[name="tipoEntrega"]:checked')?.value || 'Entrega');
+  const numeroPedido = await gerarNumeroPedido();
+  const itens = {};
+  Object.values(CATALOGO).flat().forEach(item => {
+    const el = document.getElementById('qtd_' + item.id);
+    if (!el) return;
+    const val = parseFloat(el.value) || 0;
+    const preco = itemState[item.id]?.venda || item.preco;
+    if (val > 0) itens[item.id] = { nome: item.nome, qtd: val, preco, total: +(val * preco).toFixed(2) };
+  });
+
+  if (Object.keys(itens).length === 0) {
+    msgEl.textContent = "Marque ao menos um item antes de enviar.";
+    return;
+  }
+
+  const total = Object.values(itens).reduce((s,i)=>s+(i.total||0),0);
+  const pedido = {
+    numeroPedido,
+    unidade: currentUser,
+    semana: weekKey,
+    dataEnvio: new Date().toISOString(),
+    tipoEntrega,
+    urgencia,
+    total,
+    itens,
+    despachado: false,
+    dataDespacho: null
+  };
+
+  // Pedidos urgência usam chave com timestamp para permitir múltiplos no dia
+  const key = urgencia
+    ? `pedido:${weekKey}:${currentUser}:${Date.now()}`
+    : `pedido:${weekKey}:${currentUser}`;
+
+  try {
+    await safeSet(key, JSON.stringify(pedido), true);
+
+    msgEl.style.color = urgencia ? "#C62828" : "#2E7D32";
+    msgEl.textContent = urgencia
+      ? `🚨 Pedido urgência ${numeroPedido} enviado! Será separado com prioridade máxima.`
+      : `✅ Pedido ${numeroPedido} enviado! Tipo: ${tipoEntrega}. Prazo: até 48h.`;
+
+    // Zera os campos
+    Object.values(CATALOGO).flat().forEach(item => {
+      const el = document.getElementById('qtd_' + item.id);
+      if (el) el.value = 0;
+    });
+    updateOrderTotal();
+  } catch (e) {
+    msgEl.textContent = "Erro ao enviar pedido: " + e.message;
+  }
+}
+
+let _adminPollInterval = null;
+let _ultimosPedidosVisto = new Set();
+
+async function loadAdminData(silencioso = false) {
+  if (!silencioso) document.getElementById('lastUpdate').textContent = "Atualizado em " + new Date().toLocaleTimeString('pt-BR');
+  await loadEstoqueAtualSilencioso();
+  const weekKey = await getCurrentWeekKey();
+  let pedidos = [];
+
+  try {
+    const list = await safeList(`pedido:${weekKey}:`, true);
+    if (list && list.keys) {
+      for (const k of list.keys) {
+        try {
+          const r = await safeGet(k, true);
+          if (r && r.value) pedidos.push(JSON.parse(r.value));
+        } catch (e) {}
+      }
+    }
+  } catch (e) {}
+
+  // Detectar pedidos novos
+  const badge = document.getElementById('novoPedidoBadge');
+  if (badge) {
+    const novos = pedidos.filter(p => !_ultimosPedidosVisto.has(p.numeroPedido));
+    if (novos.length > 0 && _ultimosPedidosVisto.size > 0) {
+      badge.style.display = 'inline';
+      badge.textContent = `● ${novos.length} novo(s) pedido(s)!`;
+    }
+    pedidos.forEach(p => { if(p.numeroPedido) _ultimosPedidosVisto.add(p.numeroPedido); });
+  }
+
+  if (!silencioso) {
+    if (badge) badge.style.display = 'none';
+    renderConsolidado(pedidos);
+    renderPorUnidade(pedidos);
+  }
+
+  // Auto-refresh a cada 2 minutos
+  if (!_adminPollInterval) {
+    _adminPollInterval = setInterval(async () => {
+      await loadAdminData(true);
+    }, 300000); // 5 minutos
+  }
+}
+
+// Carrega apenas o saldo (sem mexer no HTML da aba de entradas) — usado ao abrir a aba de pedidos
+async function loadEstoqueAtualSilencioso() {
+  await loadSaldoInicial();
+  Object.values(CATALOGO).flat().forEach(item => {
+    item._estoqueAtual = saldoAtual[item.id] !== undefined ? saldoAtual[item.id] : item.estoqueCentral;
+  });
+}
+
+function renderConsolidado(pedidos) {
+  const totals = {};
+  let grandTotal = 0;
+  pedidos.forEach(p => {
+    Object.entries(p.itens).forEach(([id, info]) => {
+      if (!totals[id]) totals[id] = { nome: info.nome, qtd: 0, valor: 0 };
+      totals[id].qtd += info.qtd;
+      totals[id].valor += info.total || 0;
+      grandTotal += info.total || 0;
+    });
+  });
+
+  const allItems = Object.values(CATALOGO).flat();
+  let html = `<div class="flex-between" style="margin-bottom:10px;padding:12px 14px;background:#5B2D8E;color:#fff;border-radius:8px;font-weight:600;">
+    <span>Valor total dos pedidos da semana</span><span>R$ ${grandTotal.toFixed(2).replace('.',',')}</span></div>`;
+  html += `<table><thead><tr><th>Item</th><th>Total pedido</th><th>Estoque central</th><th>Valor (R$)</th><th>Status</th></tr></thead><tbody>`;
+  if (Object.keys(totals).length === 0) {
+    html += `<tr><td colspan="5" class="small">Nenhum pedido recebido ainda nesta semana.</td></tr>`;
+  } else {
+    Object.entries(totals).sort((a,b)=>b[1].valor-a[1].valor).forEach(([id, t]) => {
+      const itemRef = allItems.find(i => i.id === id);
+      const estoque = itemRef ? (itemRef._estoqueAtual !== undefined ? itemRef._estoqueAtual : itemRef.estoqueCentral) : 0;
+      let badge = `<span class="badge badge-green">OK</span>`;
+      if (t.qtd > estoque) badge = `<span class="badge badge-red">Insuficiente</span>`;
+      else if (t.qtd > estoque * 0.8) badge = `<span class="badge badge-yellow">Atenção</span>`;
+      html += `<tr><td>${t.nome}</td><td>${t.qtd}</td><td>${estoque}</td><td>R$ ${t.valor.toFixed(2).replace('.',',')}</td><td>${badge}</td></tr>`;
+    });
+  }
+  html += `</tbody></table>`;
+  document.getElementById('adminConsolidado').innerHTML = html;
+}
+
+function renderPorUnidade(pedidos) {
+  const wrap = document.getElementById('adminPorUnidade');
+  if (pedidos.length === 0) {
+    wrap.innerHTML = `<p class="small">Sem pedidos para exibir.</p>`;
+    return;
+  }
+  let html = "";
+  // Urgências primeiro, depois por unidade
+  pedidos.sort((a,b) => (b.urgencia?1:0)-(a.urgencia?1:0) || a.unidade.localeCompare(b.unidade)).forEach(p => {
+    const totalUnidade = Object.values(p.itens).reduce((s,it) => s + (it.total||0), 0);
+    const borderColor = p.urgencia ? '#C62828' : p.despachado ? '#aaa' : '#5B2D8E';
+    const numPedido = p.numeroPedido || '—';
+    html += `<div class="card" style="margin-top:10px;border-left:4px solid ${borderColor}">
+      <div class="flex-between" style="flex-wrap:wrap;gap:6px">
+        <div>
+          <strong>${p.unidade}</strong>
+          <span class="small" style="margin-left:8px;color:#5B2D8E;font-weight:600">${numPedido}</span>
+          ${p.urgencia ? '<span class="badge badge-red" style="margin-left:6px">🚨 URGÊNCIA</span>' : ''}
+          ${p.despachado ? '<span class="badge" style="margin-left:6px;background:#eee;color:#888">✅ Despachado</span>' : ''}
+        </div>
+        <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+          <span class="badge ${p.tipoEntrega === 'Retirada' ? 'badge-yellow' : 'badge-green'}">${p.tipoEntrega === 'Retirada' ? '🏪 Retirada' : '🚚 Entrega'}</span>
+          <span class="small">${new Date(p.dataEnvio).toLocaleString('pt-BR')}</span>
+          <button class="btn btn-secondary btn-xs" onclick='abrirRomaneio(${JSON.stringify(p)})'>🖨️ Romaneio</button>
+        </div>
+      </div>
+      <table style="margin-top:8px"><tbody>`;
+    Object.values(p.itens).forEach(it => {
+      html += `<tr><td>${it.nome}</td><td style="text-align:right">${it.qtd}</td><td style="text-align:right">R$ ${(it.total||0).toFixed(2).replace('.',',')}</td></tr>`;
+    });
+    html += `</tbody></table>
+      <div class="flex-between" style="margin-top:8px;font-weight:600;border-top:1px solid #eee;padding-top:8px">
+        <span>Total</span><span>R$ ${totalUnidade.toFixed(2).replace('.',',')}</span>
+      </div>
+    </div>`;
+  });
+  wrap.innerHTML = html;
+}
+</script>
+
+</body>
+</html>
