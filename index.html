@@ -109,24 +109,40 @@
     <div style="background:#EDE7F6;border-left:4px solid #5B2D8E;padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0;">
       <span style="font-size:13px;color:#5B2D8E;font-weight:600;">⏱ As entregas são realizadas em até 48h após a confirmação do pedido.</span>
     </div>
-    <div class="field" style="margin-top:8px">
-      <label>Tipo de entrega</label>
-      <div style="display:flex;gap:20px;margin-top:6px">
-        <label style="display:flex;align-items:center;gap:6px;font-weight:400;color:#333;font-size:14px;cursor:pointer;">
-          <input type="radio" name="tipoEntrega" id="tipoEntrega_entrega" value="Entrega" checked style="width:auto"> 🚚 Entrega na unidade
-        </label>
-        <label style="display:flex;align-items:center;gap:6px;font-weight:400;color:#333;font-size:14px;cursor:pointer;">
-          <input type="radio" name="tipoEntrega" id="tipoEntrega_retirada" value="Retirada" style="width:auto"> 🏪 Retirada na central
-        </label>
+
+    <div id="ordemBloqueada" class="hidden" style="background:#FFEBEE;border:2px solid #C62828;border-radius:8px;padding:16px;margin:12px 0;text-align:center">
+      <div style="font-size:28px;margin-bottom:8px">🔒</div>
+      <div style="font-weight:700;color:#C62828;font-size:15px">Pedidos bloqueados</div>
+      <div style="font-size:13px;color:#C62828;margin-top:4px">Esta unidade possui boleto(s) em atraso. Entre em contato com a franqueadora para regularizar.</div>
+    </div>
+
+    <div id="ordemConteudo">
+      <div class="field" style="margin-top:8px">
+        <label>Seu nome — quem está realizando este pedido <span style="color:#C62828">*</span></label>
+        <input type="text" id="nomeResponsavel" placeholder="Ex: João Silva" style="border:2px solid #5B2D8E">
       </div>
+      <div class="field">
+        <label>Tipo de entrega</label>
+        <div style="display:flex;gap:20px;margin-top:6px">
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;color:#333;font-size:14px;cursor:pointer;">
+            <input type="radio" name="tipoEntrega" value="Entrega" checked style="width:auto"> 🚚 Entrega na unidade
+          </label>
+          <label style="display:flex;align-items:center;gap:6px;font-weight:400;color:#333;font-size:14px;cursor:pointer;">
+            <input type="radio" name="tipoEntrega" value="Retirada" style="width:auto"> 🏪 Retirada na central
+          </label>
+        </div>
+      </div>
+      <p class="small" style="margin-top:0">Marque as quantidades que sua unidade precisa. Itens indisponíveis aparecem desabilitados.</p>
+      <div id="catalog"></div>
+      <div id="minimoAviso" class="hidden" style="background:#FFF8E1;border-left:3px solid #F57F17;padding:8px 12px;border-radius:4px;margin-top:12px;font-size:13px;color:#F57F17;font-weight:600">
+        ⚠️ Valor mínimo de pedido: R$ 300,00. Total atual: <span id="totalAtual">R$ 0,00</span>
+      </div>
+      <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
+        <button class="btn" id="btnEnviarPedido" onclick="submitOrder(false)">📋 Enviar pedido</button>
+        <button class="btn" id="btnUrgencia" onclick="submitOrder(true)" style="background:#C62828;">🚨 PEDIDO URGÊNCIA</button>
+      </div>
+      <div style="font-size:12px;color:#C62828;margin-top:6px">⚠️ Urgência = retirada prioritária. Requer despacho e assinatura de romaneio.</div>
     </div>
-    <p class="small" style="margin-top:0">Marque as quantidades que sua unidade precisa. Itens indisponíveis aparecem desabilitados.</p>
-    <div id="catalog"></div>
-    <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
-      <button class="btn" onclick="submitOrder(false)">📋 Enviar pedido</button>
-      <button class="btn" onclick="submitOrder(true)" style="background:#C62828;">🚨 PEDIDO URGÊNCIA</button>
-    </div>
-    <div style="font-size:12px;color:#C62828;margin-top:6px">⚠️ Urgência = retirada no mesmo dia. Use apenas quando realmente necessário.</div>
     <div id="orderMsg" class="small" style="margin-top:8px"></div>
   </div>
 
@@ -140,6 +156,7 @@
       <button class="tab-btn" id="tabBtnItens" onclick="switchAdminTab('itens')">⚙️ Gestão de Itens</button>
       <button class="tab-btn" id="tabBtnCadastros" onclick="switchAdminTab('cadastros')">📝 Cadastros</button>
       <button class="tab-btn" id="tabBtnRelatorios" onclick="switchAdminTab('relatorios')">📊 Relatórios</button>
+      <button class="tab-btn" id="tabBtnBoletos" onclick="switchAdminTab('boletos')">💰 Boletos</button>
     </div>
 
     <div id="tabPedidos">
@@ -400,6 +417,51 @@
       <div id="relatorioResultado" style="margin-top:20px"></div>
     </div>
 
+    <!-- ABA: BOLETOS -->
+    <div id="tabBoletos" class="hidden">
+      <p class="small">Controle de cobranças por unidade. Boletos em atraso bloqueiam automaticamente novos pedidos da unidade.</p>
+
+      <!-- NOVO BOLETO -->
+      <div style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:8px;padding:16px;margin-bottom:20px">
+        <h4 style="margin:0 0 12px;color:#2E7D32">➕ Registrar novo boleto</h4>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <label>Unidade</label>
+            <select id="boletoUnidade"></select>
+          </div>
+          <div class="field">
+            <label>Valor (R$)</label>
+            <input type="number" id="boletoValor" min="0" step="0.01" placeholder="0,00">
+          </div>
+          <div class="field">
+            <label>Vencimento</label>
+            <input type="date" id="boletoVencimento">
+          </div>
+          <div class="field">
+            <label>Descrição</label>
+            <input type="text" id="boletoDesc" placeholder="Ex: Royalties Julho/2026">
+          </div>
+        </div>
+        <button class="btn" style="background:#2E7D32" onclick="criarBoleto()">Registrar boleto</button>
+        <div id="boletoMsg" class="small" style="margin-top:6px"></div>
+      </div>
+
+      <!-- FILTRO -->
+      <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <select id="boletoFiltroUnidade" onchange="renderBoletos()" style="flex:1;min-width:160px">
+          <option value="">Todas as unidades</option>
+        </select>
+        <select id="boletoFiltroStatus" onchange="renderBoletos()" style="flex:1;min-width:160px">
+          <option value="">Todos os status</option>
+          <option value="pendente">Pendente</option>
+          <option value="atrasado">Atrasado</option>
+          <option value="pago">Pago</option>
+        </select>
+      </div>
+
+      <div id="boletosLista"></div>
+    </div>
+
   </div>
 
 </div>
@@ -434,30 +496,98 @@ const CATALOGO = {"Produtos Acabados": [{"id": "Prod.Acab245", "nome": "Açaí A
 let currentUser = null;
 let currentRole = null; // 'loja' ou 'admin'
 
-// Camada de armazenamento com fallback em memória (caso window.storage não esteja disponível,
-// por exemplo quando o arquivo é aberto fora do ambiente de chat)
-const memoryStore = {};
+// ─── ARMAZENAMENTO REAL — JSONbin.io ─────────────────────────────────────────
+const JSONBIN_MASTER_KEY = '$2a$10$NwDLmtBksENoq5b7tJLue.KOoa8oMB6CwET2upt.J0/17PS0gQDRq';
+const JSONBIN_ACCESS_KEY = '$2a$10$m5rSeYqs/3lUdxvGZAt5nunE5KBRwZFg6ShVej97Nt6UDBRZ0ftOy';
+const JSONBIN_BASE = 'https://api.jsonbin.io/v3';
+
+// Cache local para evitar requisições desnecessárias
+let _binId = null;
+let _dataCache = null;
+let _dirtyKeys = new Set();
+let _saveTimeout = null;
+
+async function getBinId() {
+  if (_binId) return _binId;
+  const stored = localStorage.getItem('acaise_bin_id');
+  if (stored) { _binId = stored; return _binId; }
+  // Cria um novo bin
+  const res = await fetch(`${JSONBIN_BASE}/b`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Master-Key': JSONBIN_MASTER_KEY,
+      'X-Access-Key': JSONBIN_ACCESS_KEY,
+      'X-Bin-Name': 'acaise-central',
+      'X-Bin-Private': 'false'
+    },
+    body: JSON.stringify({ _init: true })
+  });
+  const data = await res.json();
+  _binId = data.metadata.id;
+  localStorage.setItem('acaise_bin_id', _binId);
+  return _binId;
+}
+
+async function loadAllData() {
+  if (_dataCache) return _dataCache;
+  const binId = await getBinId();
+  const res = await fetch(`${JSONBIN_BASE}/b/${binId}/latest`, {
+    headers: {
+      'X-Master-Key': JSONBIN_MASTER_KEY,
+      'X-Access-Key': JSONBIN_ACCESS_KEY
+    }
+  });
+  if (!res.ok) { _dataCache = {}; return _dataCache; }
+  const json = await res.json();
+  _dataCache = json.record || {};
+  return _dataCache;
+}
+
+async function persistData() {
+  if (!_dataCache) return;
+  const binId = await getBinId();
+  await fetch(`${JSONBIN_BASE}/b/${binId}`, {
+    method: 'PUT',
+    headers: {
+      'Content-Type': 'application/json',
+      'X-Master-Key': JSONBIN_MASTER_KEY,
+      'X-Access-Key': JSONBIN_ACCESS_KEY
+    },
+    body: JSON.stringify(_dataCache)
+  });
+  _dirtyKeys.clear();
+}
+
+function scheduleSave() {
+  if (_saveTimeout) clearTimeout(_saveTimeout);
+  _saveTimeout = setTimeout(persistData, 1500);
+}
+
 async function safeSet(key, value, shared) {
-  try {
-    if (window.storage) return await window.storage.set(key, value, shared);
-  } catch (e) {}
-  memoryStore[key] = value;
+  const data = await loadAllData();
+  data[key] = value;
+  _dirtyKeys.add(key);
+  scheduleSave();
   return { key, value, shared };
 }
+
 async function safeGet(key, shared) {
-  try {
-    if (window.storage) return await window.storage.get(key, shared);
-  } catch (e) {}
-  if (key in memoryStore) return { key, value: memoryStore[key], shared };
-  throw new Error("not found");
+  const data = await loadAllData();
+  if (key in data) return { key, value: data[key], shared };
+  throw new Error('not found: ' + key);
 }
+
 async function safeList(prefix, shared) {
-  try {
-    if (window.storage) return await window.storage.list(prefix, shared);
-  } catch (e) {}
-  const keys = Object.keys(memoryStore).filter(k => k.startsWith(prefix));
+  const data = await loadAllData();
+  const keys = Object.keys(data).filter(k => k.startsWith(prefix));
   return { keys, prefix, shared };
 }
+
+// Força salvar imediatamente (usar antes de fechar a página)
+window.addEventListener('beforeunload', () => {
+  if (_dirtyKeys.size > 0) persistData();
+});
 
 function populateUnitSelect() {
   const sel = document.getElementById('loginUnit');
@@ -477,7 +607,7 @@ function populateUnitSelect() {
 populateUnitSelect();
 
 function switchAdminTab(tab) {
-  ['Pedidos','Entradas','Itens','Cadastros','Relatorios'].forEach(t => {
+  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos'].forEach(t => {
     const el = document.getElementById('tab'+t);
     const btn = document.getElementById('tabBtn'+t);
     if(el) el.classList.toggle('hidden', tab !== t.toLowerCase());
@@ -487,6 +617,7 @@ function switchAdminTab(tab) {
   if (tab === 'itens') { iniciarGestaoItens(); }
   if (tab === 'cadastros') { iniciarCadastros(); }
   if (tab === 'relatorios') { iniciarRelatorios(); }
+  if (tab === 'boletos') { iniciarBoletos(); }
 }
 
 // ─── CADASTROS ───────────────────────────────────────────────────────────────
@@ -1339,7 +1470,14 @@ function doLogin() {
     document.getElementById('topbarSub').textContent = "Unidade: " + unit;
     document.getElementById('orderUnitName').textContent = unit;
     document.getElementById('orderScreen').classList.remove('hidden');
-    loadItemState().then(renderCatalog);
+    loadItemState().then(async () => {
+      renderCatalog();
+      const temAtraso = await verificarBoletosUnidade(unit);
+      if (temAtraso) {
+        document.getElementById('ordemBloqueada').classList.remove('hidden');
+        document.getElementById('ordemConteudo').classList.add('hidden');
+      }
+    });
   }
 }
 
@@ -1387,6 +1525,8 @@ function renderCatalog() {
   wrap.appendChild(totalBar);
 }
 
+const VALOR_MINIMO_PEDIDO = 300;
+
 function updateOrderTotal() {
   let total = 0;
   Object.values(CATALOGO).flat().forEach(item => {
@@ -1398,6 +1538,142 @@ function updateOrderTotal() {
   });
   const el = document.getElementById('orderTotalValue');
   if (el) el.textContent = "R$ " + total.toFixed(2).replace('.',',');
+
+  // Atualiza aviso de mínimo
+  const aviso = document.getElementById('minimoAviso');
+  const totalEl = document.getElementById('totalAtual');
+  const btnEnviar = document.getElementById('btnEnviarPedido');
+  if (aviso && totalEl) {
+    totalEl.textContent = "R$ " + total.toFixed(2).replace('.',',');
+    const abaixoMinimo = total < VALOR_MINIMO_PEDIDO && total > 0;
+    aviso.classList.toggle('hidden', total === 0 || total >= VALOR_MINIMO_PEDIDO);
+    if (btnEnviar) btnEnviar.disabled = abaixoMinimo;
+    if (btnEnviar) btnEnviar.style.opacity = abaixoMinimo ? '0.5' : '1';
+  }
+}
+
+// ─── BOLETOS ──────────────────────────────────────────────────────────────────
+async function iniciarBoletos() {
+  await loadBoletos();
+  const sel = document.getElementById('boletoUnidade');
+  const filtro = document.getElementById('boletoFiltroUnidade');
+  if (sel && sel.options.length === 0) {
+    [...UNIDADES, ...extraUnidades.map(u=>u.nome)].forEach(u => {
+      [sel, filtro].forEach(s => {
+        if(!s) return;
+        const opt = document.createElement('option'); opt.value=u; opt.textContent=u; s.appendChild(opt);
+      });
+    });
+  }
+  // Default vencimento = 7 dias
+  const v = document.getElementById('boletoVencimento');
+  if (v && !v.value) {
+    const d = new Date(); d.setDate(d.getDate()+7);
+    v.value = d.toISOString().split('T')[0];
+  }
+  renderBoletos();
+}
+
+let boletos = [];
+
+async function loadBoletos() {
+  try {
+    const r = await safeGet('boletos', true);
+    if (r && r.value) boletos = JSON.parse(r.value);
+  } catch(e) { boletos = []; }
+  // Auto-atualiza status de atraso
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  boletos.forEach(b => {
+    if (b.status !== 'pago' && new Date(b.vencimento) < hoje) b.status = 'atrasado';
+  });
+}
+
+async function saveBoletos() {
+  await safeSet('boletos', JSON.stringify(boletos), true);
+}
+
+async function criarBoleto() {
+  const unidade = document.getElementById('boletoUnidade').value;
+  const valor = parseFloat(document.getElementById('boletoValor').value) || 0;
+  const venc = document.getElementById('boletoVencimento').value;
+  const desc = document.getElementById('boletoDesc').value.trim();
+  const msg = document.getElementById('boletoMsg');
+
+  if (!unidade || valor <= 0 || !venc) { msg.textContent = 'Preencha unidade, valor e vencimento.'; return; }
+
+  const boleto = {
+    id: Date.now(),
+    unidade, valor, vencimento: venc, descricao: desc,
+    status: 'pendente',
+    dataCriacao: new Date().toISOString()
+  };
+  boletos.push(boleto);
+  await saveBoletos();
+  msg.style.color = '#2E7D32';
+  msg.textContent = `✅ Boleto de R$ ${valor.toFixed(2).replace('.',',')} criado para ${unidade}!`;
+  document.getElementById('boletoValor').value = '';
+  document.getElementById('boletoDesc').value = '';
+  renderBoletos();
+}
+
+async function marcarBoleto(id, status) {
+  const b = boletos.find(b => b.id === id);
+  if (!b) return;
+  b.status = status;
+  if (status === 'pago') b.dataPagamento = new Date().toISOString();
+  await saveBoletos();
+  renderBoletos();
+}
+
+function renderBoletos() {
+  const filtroUnid = document.getElementById('boletoFiltroUnidade')?.value || '';
+  const filtroStatus = document.getElementById('boletoFiltroStatus')?.value || '';
+
+  const filtrados = boletos.filter(b =>
+    (!filtroUnid || b.unidade === filtroUnid) &&
+    (!filtroStatus || b.status === filtroStatus)
+  ).sort((a,b) => new Date(a.vencimento) - new Date(b.vencimento));
+
+  const wrap = document.getElementById('boletosLista');
+  if (!wrap) return;
+  if (filtrados.length === 0) { wrap.innerHTML = `<p class="small">Nenhum boleto encontrado.</p>`; return; }
+
+  const statusConfig = {
+    pendente: { bg: '#FFF8E1', color: '#F57F17', label: '⏳ Pendente' },
+    atrasado: { bg: '#FFEBEE', color: '#C62828', label: '🔴 Atrasado' },
+    pago:     { bg: '#E8F5E9', color: '#2E7D32', label: '✅ Pago' }
+  };
+
+  let html = `<table><thead><tr><th>Unidade</th><th>Descrição</th><th style="text-align:right">Valor</th><th>Vencimento</th><th>Status</th><th>Ações</th></tr></thead><tbody>`;
+  filtrados.forEach(b => {
+    const sc = statusConfig[b.status] || statusConfig.pendente;
+    html += `<tr style="background:${sc.bg}">
+      <td><strong>${b.unidade}</strong></td>
+      <td>${b.descricao||'—'}</td>
+      <td style="text-align:right">R$ ${b.valor.toFixed(2).replace('.',',')}</td>
+      <td>${new Date(b.vencimento+'T12:00:00').toLocaleDateString('pt-BR')}</td>
+      <td><span style="color:${sc.color};font-weight:600">${sc.label}</span></td>
+      <td style="display:flex;gap:4px;flex-wrap:wrap">
+        ${b.status !== 'pago' ? `<button class="btn btn-secondary btn-xs" onclick="marcarBoleto(${b.id},'pago')" style="background:#E8F5E9;color:#2E7D32">✅ Pago</button>` : ''}
+        ${b.status === 'pago' ? `<button class="btn btn-secondary btn-xs" onclick="marcarBoleto(${b.id},'pendente')">↩️ Reabrir</button>` : ''}
+        <button class="btn btn-secondary btn-xs" style="background:#FFEBEE;color:#C62828" onclick="excluirBoleto(${b.id})">🗑️</button>
+      </td>
+    </tr>`;
+  });
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
+}
+
+async function excluirBoleto(id) {
+  if (!confirm('Confirma a exclusão deste boleto?')) return;
+  boletos = boletos.filter(b => b.id !== id);
+  await saveBoletos();
+  renderBoletos();
+}
+
+async function verificarBoletosUnidade(unidade) {
+  await loadBoletos();
+  return boletos.some(b => b.unidade === unidade && b.status === 'atrasado');
 }
 
 async function gerarPedidoTeste() {
@@ -1475,6 +1751,12 @@ async function submitOrder(urgencia = false) {
   msgEl.style.color = '#555';
   msgEl.textContent = "Enviando...";
   const weekKey = await getCurrentWeekKey();
+  const nomeResponsavel = document.getElementById('nomeResponsavel')?.value?.trim();
+  if (!nomeResponsavel) {
+    msgEl.textContent = "Informe seu nome antes de enviar o pedido.";
+    document.getElementById('nomeResponsavel')?.focus();
+    return;
+  }
   const tipoEntrega = urgencia ? 'Retirada' : (document.querySelector('input[name="tipoEntrega"]:checked')?.value || 'Entrega');
   const numeroPedido = await gerarNumeroPedido();
   const itens = {};
@@ -1495,6 +1777,7 @@ async function submitOrder(urgencia = false) {
   const pedido = {
     numeroPedido,
     unidade: currentUser,
+    nomeResponsavel,
     semana: weekKey,
     dataEnvio: new Date().toISOString(),
     tipoEntrega,
@@ -1631,6 +1914,7 @@ function renderPorUnidade(pedidos) {
       <div class="flex-between" style="flex-wrap:wrap;gap:6px">
         <div>
           <strong>${p.unidade}</strong>
+          ${p.nomeResponsavel ? `<span class="small" style="margin-left:6px;color:#555">por ${p.nomeResponsavel}</span>` : ''}
           <span class="small" style="margin-left:8px;color:#5B2D8E;font-weight:600">${numPedido}</span>
           ${p.urgencia ? '<span class="badge badge-red" style="margin-left:6px">🚨 URGÊNCIA</span>' : ''}
           ${p.despachado ? '<span class="badge" style="margin-left:6px;background:#eee;color:#888">✅ Despachado</span>' : ''}
