@@ -2,6 +2,9 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta http-equiv="Pragma" content="no-cache">
+<meta http-equiv="Expires" content="0">
 <title>Açaí-Se | Central de Pedidos</title>
 <style>
   * { box-sizing: border-box; }
@@ -588,6 +591,26 @@ function populateUnitSelect() {
   sel.appendChild(optAdmin);
 }
 populateUnitSelect();
+
+// ─── VERIFICADOR DE VERSÃO ────────────────────────────────────────────────────
+async function verificarAtualizacao() {
+  try {
+    const url = window.location.href.split('?')[0];
+    const res = await fetch(url + '?_=' + Date.now(), { cache: 'no-store' });
+    const texto = await res.text();
+    if (Math.abs(texto.length - document.documentElement.outerHTML.length) > 500) {
+      const aviso = document.createElement('div');
+      aviso.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#2E7D32;color:#fff;padding:12px 16px;text-align:center;font-family:Arial;font-size:14px;font-weight:600;display:flex;justify-content:center;align-items:center;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.3)';
+      aviso.innerHTML = `🔄 Nova versão disponível! <button onclick="window.location.href=window.location.href.split('?')[0]+'?v='+Date.now()" style="background:#fff;color:#2E7D32;border:none;padding:6px 14px;border-radius:4px;font-weight:700;cursor:pointer;font-size:13px">Atualizar agora</button>`;
+      if (!document.getElementById('avisoAtualizacao')) {
+        aviso.id = 'avisoAtualizacao';
+        document.body.prepend(aviso);
+      }
+    }
+  } catch(e) {}
+}
+window.addEventListener('load', () => setTimeout(verificarAtualizacao, 4000));
+setInterval(verificarAtualizacao, 600000);
 
 function switchAdminTab(tab) {
   ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos'].forEach(t => {
