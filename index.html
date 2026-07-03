@@ -1799,6 +1799,8 @@ async function submitOrder(urgencia = false) {
     ? `pedido:${weekKey}:${currentUser}:${Date.now()}`
     : `pedido:${weekKey}:${currentUser}`;
 
+  pedido._key = key; // guarda a chave no próprio pedido para exclusão futura
+
   try {
     await safeSet(key, JSON.stringify(pedido), true);
 
@@ -1872,6 +1874,23 @@ async function loadEstoqueAtualSilencioso() {
   });
 }
 
+async function excluirPedido(key, numeroPedido) {
+  const label = numeroPedido ? `pedido ${numeroPedido}` : 'este pedido';
+  if (!confirm(`Confirma a exclusão do ${label}? Esta ação não pode ser desfeita.`)) return;
+  try {
+    const data = await loadAllData();
+    if (key in data) {
+      delete data[key];
+      await persistData();
+      loadAdminData();
+    } else {
+      alert('Pedido não encontrado. Tente atualizar a lista.');
+    }
+  } catch(e) {
+    alert('Erro ao excluir: ' + e.message);
+  }
+}
+
 function renderConsolidado(pedidos) {
   const totals = {};
   let grandTotal = 0;
@@ -1929,6 +1948,7 @@ function renderPorUnidade(pedidos) {
           <span class="badge ${p.tipoEntrega === 'Retirada' ? 'badge-yellow' : 'badge-green'}">${p.tipoEntrega === 'Retirada' ? '🏪 Retirada' : '🚚 Entrega'}</span>
           <span class="small">${new Date(p.dataEnvio).toLocaleString('pt-BR')}</span>
           <button class="btn btn-secondary btn-xs" onclick='abrirRomaneio(${JSON.stringify(p)})'>🖨️ Romaneio</button>
+          <button class="btn btn-secondary btn-xs" style="background:#FFEBEE;color:#C62828" onclick='excluirPedido(${JSON.stringify(p._key || "pedido:"+p.semana+":"+p.unidade)}, "${p.numeroPedido||""}")'>🗑️ Excluir</button>
         </div>
       </div>
       <table style="margin-top:8px"><tbody>`;
