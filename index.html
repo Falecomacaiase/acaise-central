@@ -1835,7 +1835,11 @@ async function loadAdminData(silencioso = false) {
       for (const k of list.keys) {
         try {
           const r = await safeGet(k, true);
-          if (r && r.value) pedidos.push(JSON.parse(r.value));
+          if (r && r.value) {
+            const p = JSON.parse(r.value);
+            p._storageKey = k; // chave real do armazenamento para exclusão
+            pedidos.push(p);
+          }
         } catch (e) {}
       }
     }
@@ -1877,14 +1881,25 @@ async function loadEstoqueAtualSilencioso() {
 async function excluirPedido(key, numeroPedido) {
   const label = numeroPedido ? `pedido ${numeroPedido}` : 'este pedido';
   if (!confirm(`Confirma a exclusão do ${label}? Esta ação não pode ser desfeita.`)) return;
+  if (!key) { alert('Chave do pedido não identificada. Atualize a lista e tente novamente.'); return; }
   try {
     const data = await loadAllData();
     if (key in data) {
       delete data[key];
       await persistData();
+      _dataCache = null; // limpa cache para forçar recarregamento
       loadAdminData();
     } else {
-      alert('Pedido não encontrado. Tente atualizar a lista.');
+      // Tenta encontrar a chave por varredura
+      const chaveEncontrada = Object.keys(data).find(k => k.includes(key.split(':').slice(-1)[0]));
+      if (chaveEncontrada) {
+        delete data[chaveEncontrada];
+        await persistData();
+        _dataCache = null;
+        loadAdminData();
+      } else {
+        alert('Pedido não encontrado no banco. Atualize a lista e tente novamente.');
+      }
     }
   } catch(e) {
     alert('Erro ao excluir: ' + e.message);
@@ -1948,7 +1963,7 @@ function renderPorUnidade(pedidos) {
           <span class="badge ${p.tipoEntrega === 'Retirada' ? 'badge-yellow' : 'badge-green'}">${p.tipoEntrega === 'Retirada' ? '🏪 Retirada' : '🚚 Entrega'}</span>
           <span class="small">${new Date(p.dataEnvio).toLocaleString('pt-BR')}</span>
           <button class="btn btn-secondary btn-xs" onclick='abrirRomaneio(${JSON.stringify(p)})'>🖨️ Romaneio</button>
-          <button class="btn btn-secondary btn-xs" style="background:#FFEBEE;color:#C62828" onclick='excluirPedido(${JSON.stringify(p._key || "pedido:"+p.semana+":"+p.unidade)}, "${p.numeroPedido||""}")'>🗑️ Excluir</button>
+          <button class="btn btn-secondary btn-xs" style="background:#FFEBEE;color:#C62828" onclick='excluirPedido(${JSON.stringify(p._storageKey || p._key || "")}, "${p.numeroPedido||""}")'>🗑️ Excluir</button>
         </div>
       </div>
       <table style="margin-top:8px"><tbody>`;
