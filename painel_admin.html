@@ -1,0 +1,713 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Açaí-se | Painel Admin</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+  :root{
+    --roxo:#8b52b8;
+    --roxo-escuro:#5c2d8a;
+    --preto:#080507;
+    --fundo:#F7F5FA;
+    --card:#FFFFFF;
+    --texto:#1a1418;
+    --texto-suave:#756a7d;
+    --linha:#E9E1EF;
+    --verde-ok:#2E7D46;
+    --vermelho:#C0392B;
+    --amarelo:#B8860B;
+  }
+  *{box-sizing:border-box; margin:0; padding:0;}
+  body{
+    font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    background: var(--fundo);
+    color: var(--texto);
+  }
+
+  /* ---------- LOGIN ---------- */
+  #tela-login{
+    min-height:100vh;
+    display:flex; align-items:center; justify-content:center;
+    background: linear-gradient(160deg, var(--preto) 0%, var(--roxo-escuro) 100%);
+    padding: 20px;
+  }
+  .card-login{
+    background:#fff; border-radius:18px; padding:32px;
+    width:100%; max-width:380px;
+    box-shadow: 0 20px 50px rgba(0,0,0,0.3);
+  }
+  .card-login h1{ font-size:20px; margin-bottom:4px; }
+  .card-login .sub{ font-size:13px; color:var(--texto-suave); margin-bottom:22px; }
+  .campo{ margin-bottom:14px; }
+  .campo label{ font-size:12.5px; font-weight:600; display:block; margin-bottom:5px; }
+  .campo input, .campo select, .campo textarea{
+    width:100%; padding:10px 12px; border:1.5px solid var(--linha); border-radius:9px;
+    font-size:14px; font-family:inherit;
+  }
+  .campo input:focus, .campo select:focus, .campo textarea:focus{ outline:none; border-color:var(--roxo); }
+  .btn{
+    border:none; border-radius:10px; padding:11px 18px; font-size:13.5px; font-weight:700;
+    cursor:pointer; transition: opacity .15s, background .15s;
+  }
+  .btn-full{ width:100%; }
+  .btn-primario{ background:var(--roxo); color:#fff; }
+  .btn-primario:hover{ background:var(--roxo-escuro); }
+  .btn-secundario{ background:var(--linha); color:var(--texto); }
+  .btn-perigo{ background:#FCEBEA; color:var(--vermelho); }
+  .btn-perigo:hover{ background:#F8D6D3; }
+  .btn:disabled{ opacity:0.5; cursor:not-allowed; }
+  .erro-login{ font-size:12.5px; color:var(--vermelho); margin-top:10px; display:none; }
+
+  /* ---------- APP ---------- */
+  #app{ display:none; min-height:100vh; }
+  header.topo-admin{
+    background: var(--preto); color:#fff;
+    padding: 14px 24px; display:flex; align-items:center; justify-content:space-between;
+  }
+  header.topo-admin .marca-admin{ display:flex; align-items:center; gap:10px; font-weight:700; font-size:14px;}
+  header.topo-admin .marca-admin .ponto{ width:9px; height:9px; border-radius:50%; background:var(--roxo); }
+  header.topo-admin button{ background:rgba(255,255,255,0.12); color:#fff; border:1px solid rgba(255,255,255,0.25); font-size:12px; padding:7px 14px; border-radius:8px; cursor:pointer;}
+  header.topo-admin button:hover{ background:rgba(255,255,255,0.22); }
+
+  nav.abas-admin{
+    display:flex; gap:4px; padding: 14px 24px 0; background:#fff; border-bottom:1px solid var(--linha);
+  }
+  nav.abas-admin .aba-admin{
+    padding: 10px 18px; font-size:13.5px; font-weight:600; color:var(--texto-suave);
+    cursor:pointer; border-bottom: 3px solid transparent; border-radius: 8px 8px 0 0;
+  }
+  nav.abas-admin .aba-admin.ativa{ color:var(--roxo-escuro); border-bottom-color:var(--roxo); background:var(--fundo); }
+
+  main.conteudo-admin{ padding: 22px 24px 60px; max-width: 980px; margin:0 auto; }
+  .cabecalho-secao{ display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; }
+  .cabecalho-secao h2{ font-size:18px; }
+
+  table.tabela-admin{ width:100%; border-collapse:collapse; background:#fff; border-radius:12px; overflow:hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.05); }
+  table.tabela-admin th{ text-align:left; font-size:11.5px; text-transform:uppercase; color:var(--texto-suave); padding:12px 14px; background:var(--fundo); border-bottom:1px solid var(--linha); }
+  table.tabela-admin td{ padding:12px 14px; font-size:13.5px; border-bottom:1px solid var(--linha); vertical-align:middle; }
+  table.tabela-admin tr:last-child td{ border-bottom:none; }
+  .thumb-tabela{ width:38px; height:38px; border-radius:8px; object-fit:cover; background:var(--fundo); display:flex; align-items:center; justify-content:center; font-size:18px; }
+  .badge{ font-size:11px; font-weight:700; padding:3px 9px; border-radius:20px; }
+  .badge.ativo{ background:#E5F4EA; color:var(--verde-ok); }
+  .badge.pausado{ background:#F5E9E9; color:var(--vermelho); }
+  .toggle{ position:relative; width:38px; height:21px; display:inline-block; cursor:pointer; }
+  .toggle input{ display:none; }
+  .toggle .trilho{ position:absolute; inset:0; background:#ccc; border-radius:20px; transition:.2s; }
+  .toggle .trilho::after{ content:''; position:absolute; width:16px; height:16px; border-radius:50%; background:#fff; top:2.5px; left:3px; transition:.2s; }
+  .toggle input:checked + .trilho{ background:var(--verde-ok); }
+  .toggle input:checked + .trilho::after{ transform: translateX(17px); }
+  .acoes-linha{ display:flex; gap:6px; }
+  .acoes-linha button{ font-size:12px; padding:6px 10px; }
+
+  .overlay-admin{ display:none; position:fixed; inset:0; background:rgba(20,15,25,0.5); align-items:center; justify-content:center; z-index:60; padding:20px;}
+  .overlay-admin.aberto{ display:flex; }
+  .modal-admin{ background:#fff; border-radius:16px; width:100%; max-width:560px; max-height:88vh; overflow-y:auto; padding:26px; }
+  .modal-admin h3{ font-size:17px; margin-bottom:18px; }
+  .linha-2col{ display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  .rodape-modal{ display:flex; justify-content:flex-end; gap:10px; margin-top:20px; padding-top:16px; border-top:1px solid var(--linha); }
+
+  .bloco-grupo{ border:1.5px solid var(--linha); border-radius:12px; padding:14px; margin-bottom:12px; }
+  .bloco-grupo .cabecalho-bloco{ display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; }
+  .bloco-grupo .cabecalho-bloco strong{ font-size:13px; }
+  .linha-opcao-admin{ display:flex; gap:8px; margin-bottom:8px; align-items:center; }
+  .linha-opcao-admin input[type=text]{ flex:1; }
+  .linha-opcao-admin input[type=number]{ width:90px; }
+  .link-adicionar{ font-size:12.5px; color:var(--roxo-escuro); font-weight:700; cursor:pointer; }
+  .fab-adicionar{ background:var(--roxo); color:#fff; border:none; border-radius:10px; padding:10px 16px; font-size:13.5px; font-weight:700; cursor:pointer; }
+  .fab-adicionar:hover{ background:var(--roxo-escuro); }
+  .vazio-tabela{ text-align:center; padding:36px; color:var(--texto-suave); font-size:13.5px; }
+  .aviso-topo{ background:#FFF6E5; border:1px solid #F0DBA0; color:#8a6d1c; font-size:12.5px; padding:10px 14px; border-radius:10px; margin-bottom:16px; }
+</style>
+</head>
+<body>
+
+<!-- ============ LOGIN ============ -->
+<div id="tela-login">
+  <div class="card-login">
+    <h1>Painel Açaí-se</h1>
+    <p class="sub">Entre com o login de admin criado no Supabase.</p>
+    <div class="campo">
+      <label>E-mail</label>
+      <input type="email" id="input-email" placeholder="seuemail@exemplo.com">
+    </div>
+    <div class="campo">
+      <label>Senha</label>
+      <input type="password" id="input-senha" placeholder="••••••••">
+    </div>
+    <button class="btn btn-primario btn-full" id="btn-entrar">Entrar</button>
+    <p class="erro-login" id="erro-login"></p>
+  </div>
+</div>
+
+<!-- ============ APP ============ -->
+<div id="app">
+  <header class="topo-admin">
+    <div class="marca-admin"><span class="ponto"></span> Açaí-se · Painel Admin</div>
+    <button id="btn-sair">Sair</button>
+  </header>
+
+  <nav class="abas-admin">
+    <div class="aba-admin ativa" data-aba="produtos">Produtos</div>
+    <div class="aba-admin" data-aba="categorias">Categorias</div>
+    <div class="aba-admin" data-aba="lojas">Lojas</div>
+  </nav>
+
+  <main class="conteudo-admin" id="conteudo-admin"></main>
+</div>
+
+<!-- ============ MODAL PRODUTO ============ -->
+<div class="overlay-admin" id="overlay-produto-admin">
+  <div class="modal-admin" id="modal-produto-admin"></div>
+</div>
+
+<!-- ============ MODAL LOJA ============ -->
+<div class="overlay-admin" id="overlay-loja-admin">
+  <div class="modal-admin" id="modal-loja-admin"></div>
+</div>
+
+<!-- ============ MODAL CATEGORIA ============ -->
+<div class="overlay-admin" id="overlay-categoria-admin">
+  <div class="modal-admin" id="modal-categoria-admin"></div>
+</div>
+
+<script>
+/* =========================================================
+   CONFIGURAÇÃO SUPABASE
+   ========================================================= */
+const SUPABASE_URL = 'https://gltnusallwwgprjgurls.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_SKr_q0eOgjLpb3sYsYndOg_XvEzCSep';
+const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
+
+/* =========================================================
+   ESTADO
+   ========================================================= */
+let abaAtiva = 'produtos';
+let cacheCategorias = [];
+let cacheLojas = [];
+let cacheProdutos = [];
+let produtoEmEdicao = null; // objeto local sendo editado no modal
+
+/* =========================================================
+   LOGIN
+   ========================================================= */
+async function verificarSessao(){
+  const { data } = await sb.auth.getSession();
+  if(data.session){
+    mostrarApp();
+  }
+}
+
+document.getElementById('btn-entrar').addEventListener('click', fazerLogin);
+document.getElementById('input-senha').addEventListener('keydown', e => { if(e.key === 'Enter') fazerLogin(); });
+
+async function fazerLogin(){
+  const email = document.getElementById('input-email').value.trim();
+  const senha = document.getElementById('input-senha').value;
+  const erroEl = document.getElementById('erro-login');
+  erroEl.style.display = 'none';
+
+  const { error } = await sb.auth.signInWithPassword({ email, password: senha });
+  if(error){
+    erroEl.textContent = error.message || 'E-mail ou senha incorretos.';
+    erroEl.style.display = 'block';
+    return;
+  }
+  mostrarApp();
+}
+
+document.getElementById('btn-sair').addEventListener('click', async () => {
+  await sb.auth.signOut();
+  location.reload();
+});
+
+function mostrarApp(){
+  document.getElementById('tela-login').style.display = 'none';
+  document.getElementById('app').style.display = 'block';
+  carregarTudo();
+}
+
+/* =========================================================
+   NAVEGAÇÃO ENTRE ABAS
+   ========================================================= */
+document.querySelectorAll('.aba-admin').forEach(el => {
+  el.addEventListener('click', () => {
+    abaAtiva = el.dataset.aba;
+    document.querySelectorAll('.aba-admin').forEach(a => a.classList.toggle('ativa', a === el));
+    renderizarAbaAtiva();
+  });
+});
+
+async function carregarTudo(){
+  await Promise.all([carregarCategorias(), carregarLojas(), carregarProdutos()]);
+  renderizarAbaAtiva();
+}
+
+function renderizarAbaAtiva(){
+  if(abaAtiva === 'produtos') renderizarProdutos();
+  if(abaAtiva === 'categorias') renderizarCategorias();
+  if(abaAtiva === 'lojas') renderizarLojas();
+}
+
+/* =========================================================
+   CARREGAR DADOS
+   ========================================================= */
+async function carregarCategorias(){
+  const { data, error } = await sb.from('categorias').select('*').order('ordem');
+  if(!error) cacheCategorias = data;
+}
+
+async function carregarLojas(){
+  const { data, error } = await sb.from('lojas').select('*').order('nome');
+  if(!error) cacheLojas = data;
+}
+
+async function carregarProdutos(){
+  const { data, error } = await sb
+    .from('produtos')
+    .select('*, categorias(nome), grupos_opcoes(*, opcoes(*))')
+    .order('ordem');
+  if(!error) cacheProdutos = data;
+}
+
+/* =========================================================
+   PRODUTOS — LISTAGEM
+   ========================================================= */
+function renderizarProdutos(){
+  const cont = document.getElementById('conteudo-admin');
+  cont.innerHTML = `
+    <div class="cabecalho-secao">
+      <h2>Produtos</h2>
+      <button class="fab-adicionar" onclick="abrirModalProduto(null)">+ Novo produto</button>
+    </div>
+    ${cacheProdutos.length === 0 ? '<div class="vazio-tabela">Nenhum produto cadastrado ainda.</div>' : `
+    <table class="tabela-admin">
+      <thead><tr><th></th><th>Nome</th><th>Categoria</th><th>Preço base</th><th>Status</th><th>Ações</th></tr></thead>
+      <tbody>
+        ${cacheProdutos.map(p => `
+          <tr>
+            <td>${p.foto_url ? `<img class="thumb-tabela" src="${p.foto_url}">` : `<div class="thumb-tabela">${p.icone || '🍇'}</div>`}</td>
+            <td><strong>${p.nome}</strong></td>
+            <td>${p.categorias ? p.categorias.nome : '—'}</td>
+            <td>R$ ${Number(p.preco_base).toFixed(2).replace('.',',')}${p.preco_promocional != null ? ` <span style="color:var(--verde-ok); font-weight:700;">→ R$ ${Number(p.preco_promocional).toFixed(2).replace('.',',')}</span>` : ''}</td>
+            <td>
+              <label class="toggle">
+                <input type="checkbox" ${p.ativo ? 'checked' : ''} onchange="alternarAtivoProduto('${p.id}', this.checked)">
+                <span class="trilho"></span>
+              </label>
+            </td>
+            <td class="acoes-linha">
+              <button class="btn btn-secundario" onclick="abrirModalProduto('${p.id}')">Editar</button>
+              <button class="btn btn-perigo" onclick="excluirProduto('${p.id}')">Excluir</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    `}
+  `;
+}
+
+async function alternarAtivoProduto(id, ativo){
+  await sb.from('produtos').update({ ativo }).eq('id', id);
+  await carregarProdutos();
+  renderizarProdutos();
+}
+
+async function excluirProduto(id){
+  if(!confirm('Excluir esse produto e todas as opções dele? Essa ação não pode ser desfeita.')) return;
+  await sb.from('produtos').delete().eq('id', id);
+  await carregarProdutos();
+  renderizarProdutos();
+}
+
+/* =========================================================
+   PRODUTOS — MODAL DE EDIÇÃO/CRIAÇÃO
+   ========================================================= */
+function abrirModalProduto(id){
+  if(id){
+    const original = cacheProdutos.find(p => p.id === id);
+    produtoEmEdicao = {
+      id: original.id,
+      categoria_id: original.categoria_id || '',
+      nome: original.nome,
+      descricao: original.descricao || '',
+      preco_base: original.preco_base,
+      preco_promocional: original.preco_promocional,
+      foto_url: original.foto_url || '',
+      icone: original.icone || '🍇',
+      ativo: original.ativo,
+      grupos: (original.grupos_opcoes || []).map(g => ({
+        titulo: g.titulo, tipo: g.tipo, obrigatorio: g.obrigatorio, qtd_min: g.qtd_min || 0, qtd_max: g.qtd_max,
+        opcoes: (g.opcoes || []).map(o => ({ label: o.label, delta_preco: o.delta_preco }))
+      }))
+    };
+  } else {
+    produtoEmEdicao = { id:null, categoria_id:'', nome:'', descricao:'', preco_base:0, preco_promocional:null, foto_url:'', icone:'🍇', ativo:true, grupos:[] };
+  }
+  renderizarModalProduto();
+  document.getElementById('overlay-produto-admin').classList.add('aberto');
+}
+
+function fecharModalProduto(){
+  document.getElementById('overlay-produto-admin').classList.remove('aberto');
+}
+
+function renderizarModalProduto(){
+  const p = produtoEmEdicao;
+  document.getElementById('modal-produto-admin').innerHTML = `
+    <h3>${p.id ? 'Editar produto' : 'Novo produto'}</h3>
+    <div class="campo">
+      <label>Nome</label>
+      <input type="text" id="campo-nome" value="${p.nome.replace(/"/g,'&quot;')}">
+    </div>
+    <div class="campo">
+      <label>Descrição</label>
+      <textarea id="campo-descricao" rows="2">${p.descricao}</textarea>
+    </div>
+    <div class="linha-2col">
+      <div class="campo">
+        <label>Categoria</label>
+        <select id="campo-categoria">
+          <option value="">Sem categoria</option>
+          ${cacheCategorias.map(c => `<option value="${c.id}" ${c.id === p.categoria_id ? 'selected' : ''}>${c.nome}</option>`).join('')}
+        </select>
+      </div>
+      <div class="campo">
+        <label>Preço base (R$)</label>
+        <input type="number" step="0.01" id="campo-preco" value="${p.preco_base}">
+      </div>
+    </div>
+    <div class="campo">
+      <label>Preço promocional (R$) — deixe vazio se não tiver promoção</label>
+      <input type="number" step="0.01" id="campo-preco-promo" value="${p.preco_promocional != null ? p.preco_promocional : ''}" placeholder="Ex: 28.49">
+    </div>
+    <div class="campo">
+      <label>URL da foto (opcional — deixe vazio para usar emoji)</label>
+      <input type="text" id="campo-foto" placeholder="https://..." value="${p.foto_url}">
+    </div>
+    <div class="campo">
+      <label>Emoji (usado se não tiver foto)</label>
+      <input type="text" id="campo-icone" value="${p.icone}" maxlength="4" style="width:70px;">
+    </div>
+
+    <div class="campo" style="margin-top:18px;">
+      <label style="display:flex; justify-content:space-between; align-items:center;">
+        <span>Opções de personalização (tamanho, toppings, etc.)</span>
+        <span class="link-adicionar" onclick="adicionarGrupoOpcao()">+ novo grupo</span>
+      </label>
+      <div id="lista-grupos-admin">${renderizarGruposAdmin()}</div>
+    </div>
+
+    <div class="rodape-modal">
+      <button class="btn btn-secundario" onclick="fecharModalProduto()">Cancelar</button>
+      <button class="btn btn-primario" onclick="salvarProduto()">Salvar</button>
+    </div>
+  `;
+}
+
+function renderizarGruposAdmin(){
+  if(produtoEmEdicao.grupos.length === 0) return '<p style="font-size:12.5px; color:var(--texto-suave); margin-top:8px;">Nenhuma opção — produto será vendido "puro", sem escolhas.</p>';
+  return produtoEmEdicao.grupos.map((g, gi) => `
+    <div class="bloco-grupo">
+      <div class="cabecalho-bloco">
+        <input type="text" placeholder="Título do grupo (ex: Tamanho)" value="${g.titulo}" oninput="atualizarGrupo(${gi},'titulo',this.value)" style="border:none; border-bottom:1.5px solid var(--linha); font-weight:700; font-size:13px; padding:4px 0; flex:1;">
+        <span class="link-adicionar" style="color:var(--vermelho);" onclick="removerGrupo(${gi})">remover grupo</span>
+      </div>
+      <div class="linha-2col" style="margin-bottom:10px;">
+        <select onchange="atualizarGrupo(${gi},'tipo',this.value)">
+          <option value="radio" ${g.tipo==='radio'?'selected':''}>Escolha única (radio)</option>
+          <option value="checkbox" ${g.tipo==='checkbox'?'selected':''}>Múltipla escolha (checkbox)</option>
+        </select>
+        <label style="display:flex; align-items:center; gap:6px; font-size:13px;">
+          <input type="checkbox" ${g.obrigatorio?'checked':''} onchange="atualizarGrupo(${gi},'obrigatorio',this.checked)"> Obrigatório
+        </label>
+      </div>
+      ${g.tipo === 'checkbox' ? `
+      <div class="linha-2col" style="margin-bottom:10px;">
+        <div>
+          <label style="font-size:11.5px; color:var(--texto-suave);">Mínimo de escolhas</label>
+          <input type="number" min="0" value="${g.qtd_min || 0}" onchange="atualizarGrupo(${gi},'qtd_min',parseInt(this.value||0))">
+        </div>
+        <div>
+          <label style="font-size:11.5px; color:var(--texto-suave);">Máximo (vazio = sem limite)</label>
+          <input type="number" min="0" value="${g.qtd_max != null ? g.qtd_max : ''}" placeholder="sem limite" onchange="atualizarGrupo(${gi},'qtd_max', this.value === '' ? null : parseInt(this.value))">
+        </div>
+      </div>
+      ` : ''}
+      ${g.opcoes.map((o, oi) => `
+        <div class="linha-opcao-admin">
+          <input type="text" placeholder="Opção (ex: 500ml)" value="${o.label}" oninput="atualizarOpcao(${gi},${oi},'label',this.value)">
+          <input type="number" step="0.01" placeholder="+/- R$" value="${o.delta_preco}" oninput="atualizarOpcao(${gi},${oi},'delta_preco',this.value)">
+          <span class="link-adicionar" style="color:var(--vermelho);" onclick="removerOpcao(${gi},${oi})">✕</span>
+        </div>
+      `).join('')}
+      <span class="link-adicionar" onclick="adicionarOpcao(${gi})">+ adicionar opção</span>
+    </div>
+  `).join('');
+}
+
+function adicionarGrupoOpcao(){
+  produtoEmEdicao.grupos.push({ titulo:'', tipo:'radio', obrigatorio:false, qtd_min:0, qtd_max:null, opcoes:[] });
+  document.getElementById('lista-grupos-admin').innerHTML = renderizarGruposAdmin();
+}
+function removerGrupo(gi){
+  produtoEmEdicao.grupos.splice(gi,1);
+  document.getElementById('lista-grupos-admin').innerHTML = renderizarGruposAdmin();
+}
+function atualizarGrupo(gi, campo, valor){
+  produtoEmEdicao.grupos[gi][campo] = valor;
+  if(campo === 'tipo') document.getElementById('lista-grupos-admin').innerHTML = renderizarGruposAdmin();
+}
+function adicionarOpcao(gi){
+  produtoEmEdicao.grupos[gi].opcoes.push({ label:'', delta_preco:0 });
+  document.getElementById('lista-grupos-admin').innerHTML = renderizarGruposAdmin();
+}
+function removerOpcao(gi, oi){
+  produtoEmEdicao.grupos[gi].opcoes.splice(oi,1);
+  document.getElementById('lista-grupos-admin').innerHTML = renderizarGruposAdmin();
+}
+function atualizarOpcao(gi, oi, campo, valor){
+  produtoEmEdicao.grupos[gi].opcoes[oi][campo] = campo === 'delta_preco' ? parseFloat(valor || 0) : valor;
+}
+
+async function salvarProduto(){
+  const precoPromoVal = document.getElementById('campo-preco-promo').value;
+  const dados = {
+    nome: document.getElementById('campo-nome').value.trim(),
+    descricao: document.getElementById('campo-descricao').value.trim(),
+    categoria_id: document.getElementById('campo-categoria').value || null,
+    preco_base: parseFloat(document.getElementById('campo-preco').value || 0),
+    preco_promocional: precoPromoVal === '' ? null : parseFloat(precoPromoVal),
+    foto_url: document.getElementById('campo-foto').value.trim(),
+    icone: document.getElementById('campo-icone').value.trim() || '🍇',
+    ativo: produtoEmEdicao.ativo,
+  };
+
+  if(!dados.nome){ alert('Dá um nome pro produto antes de salvar.'); return; }
+
+  let produtoId = produtoEmEdicao.id;
+  if(produtoId){
+    await sb.from('produtos').update(dados).eq('id', produtoId);
+    await sb.from('grupos_opcoes').delete().eq('produto_id', produtoId);
+  } else {
+    const { data, error } = await sb.from('produtos').insert(dados).select().single();
+    if(error){ alert('Erro ao criar produto: ' + error.message); return; }
+    produtoId = data.id;
+  }
+
+  for(const g of produtoEmEdicao.grupos){
+    if(!g.titulo) continue;
+    const { data: grupoCriado } = await sb.from('grupos_opcoes').insert({
+      produto_id: produtoId, titulo: g.titulo, tipo: g.tipo, obrigatorio: g.obrigatorio,
+      qtd_min: g.qtd_min || 0, qtd_max: g.qtd_max != null ? g.qtd_max : null
+    }).select().single();
+    for(const o of g.opcoes){
+      if(!o.label) continue;
+      await sb.from('opcoes').insert({ grupo_id: grupoCriado.id, label: o.label, delta_preco: o.delta_preco || 0 });
+    }
+  }
+
+  fecharModalProduto();
+  await carregarProdutos();
+  renderizarProdutos();
+}
+
+/* =========================================================
+   CATEGORIAS
+   ========================================================= */
+function renderizarCategorias(){
+  const cont = document.getElementById('conteudo-admin');
+  cont.innerHTML = `
+    <div class="cabecalho-secao">
+      <h2>Categorias</h2>
+      <button class="fab-adicionar" onclick="abrirModalCategoria()">+ Nova categoria</button>
+    </div>
+    ${cacheCategorias.length === 0 ? '<div class="vazio-tabela">Nenhuma categoria ainda.</div>' : `
+    <table class="tabela-admin">
+      <thead><tr><th>Nome</th><th>Ordem</th><th>Ações</th></tr></thead>
+      <tbody>
+        ${cacheCategorias.map(c => `
+          <tr>
+            <td><strong>${c.nome}</strong></td>
+            <td>${c.ordem}</td>
+            <td class="acoes-linha"><button class="btn btn-perigo" onclick="excluirCategoria('${c.id}')">Excluir</button></td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+    `}
+  `;
+}
+
+function abrirModalCategoria(){
+  document.getElementById('modal-categoria-admin').innerHTML = `
+    <h3>Nova categoria</h3>
+    <div class="campo"><label>Nome</label><input type="text" id="campo-nome-categoria" placeholder="Ex: Smoothies"></div>
+    <div class="campo"><label>Ordem de exibição</label><input type="number" id="campo-ordem-categoria" value="${cacheCategorias.length}"></div>
+    <div class="rodape-modal">
+      <button class="btn btn-secundario" onclick="document.getElementById('overlay-categoria-admin').classList.remove('aberto')">Cancelar</button>
+      <button class="btn btn-primario" onclick="salvarCategoria()">Salvar</button>
+    </div>
+  `;
+  document.getElementById('overlay-categoria-admin').classList.add('aberto');
+}
+
+async function salvarCategoria(){
+  const nome = document.getElementById('campo-nome-categoria').value.trim();
+  const ordem = parseInt(document.getElementById('campo-ordem-categoria').value || 0);
+  if(!nome) return;
+  await sb.from('categorias').insert({ nome, ordem });
+  document.getElementById('overlay-categoria-admin').classList.remove('aberto');
+  await carregarCategorias();
+  renderizarCategorias();
+}
+
+async function excluirCategoria(id){
+  if(!confirm('Excluir essa categoria? Produtos ligados a ela ficarão "sem categoria".')) return;
+  await sb.from('categorias').delete().eq('id', id);
+  await carregarCategorias();
+  await carregarProdutos();
+  renderizarCategorias();
+}
+
+/* =========================================================
+   LOJAS
+   ========================================================= */
+function renderizarLojas(){
+  const cont = document.getElementById('conteudo-admin');
+  cont.innerHTML = `
+    <div class="cabecalho-secao">
+      <h2>Lojas</h2>
+      <button class="fab-adicionar" onclick="abrirModalLoja()">+ Nova loja</button>
+    </div>
+    <table class="tabela-admin">
+      <thead><tr><th>Nome</th><th>WhatsApp</th><th>Status</th><th>Ações</th></tr></thead>
+      <tbody>
+        ${cacheLojas.map(l => `
+          <tr>
+            <td><strong>${l.nome}</strong></td>
+            <td>${l.whatsapp}</td>
+            <td>
+              <label class="toggle">
+                <input type="checkbox" ${l.ativo ? 'checked' : ''} onchange="alternarAtivoLoja('${l.id}', this.checked)">
+                <span class="trilho"></span>
+              </label>
+            </td>
+            <td class="acoes-linha">
+              <button class="btn btn-secundario" onclick="abrirModalHorarios('${l.id}')">Horários</button>
+              <button class="btn btn-perigo" onclick="excluirLoja('${l.id}')">Excluir</button>
+            </td>
+          </tr>
+        `).join('')}
+      </tbody>
+    </table>
+  `;
+}
+
+function abrirModalLoja(){
+  document.getElementById('modal-loja-admin').innerHTML = `
+    <h3>Nova loja</h3>
+    <div class="campo"><label>Nome da loja</label><input type="text" id="campo-nome-loja" placeholder="Ex: Açaí-se Piedade"></div>
+    <div class="campo"><label>WhatsApp (com DDI+DDD, só números)</label><input type="text" id="campo-whatsapp-loja" placeholder="5581999999999"></div>
+    <div class="rodape-modal">
+      <button class="btn btn-secundario" onclick="document.getElementById('overlay-loja-admin').classList.remove('aberto')">Cancelar</button>
+      <button class="btn btn-primario" onclick="salvarLoja()">Salvar</button>
+    </div>
+  `;
+  document.getElementById('overlay-loja-admin').classList.add('aberto');
+}
+
+async function salvarLoja(){
+  const nome = document.getElementById('campo-nome-loja').value.trim();
+  const whatsapp = document.getElementById('campo-whatsapp-loja').value.trim().replace(/\D/g,'');
+  if(!nome || !whatsapp) return;
+  await sb.from('lojas').insert({ nome, whatsapp, ativo:true });
+  document.getElementById('overlay-loja-admin').classList.remove('aberto');
+  await carregarLojas();
+  renderizarLojas();
+}
+
+async function alternarAtivoLoja(id, ativo){
+  await sb.from('lojas').update({ ativo }).eq('id', id);
+  await carregarLojas();
+  renderizarLojas();
+}
+
+async function excluirLoja(id){
+  if(!confirm('Excluir essa loja?')) return;
+  await sb.from('lojas').delete().eq('id', id);
+  await carregarLojas();
+  renderizarLojas();
+}
+
+/* =========================================================
+   HORÁRIOS DE FUNCIONAMENTO (por dia da semana)
+   ========================================================= */
+const NOMES_DIAS = ['Domingo','Segunda','Terça','Quarta','Quinta','Sexta','Sábado'];
+let lojaHorariosEmEdicao = null; // { lojaId, dias: [{dia_semana, abre, fecha, fechado}, ...7] }
+
+async function abrirModalHorarios(lojaId){
+  const { data } = await sb.from('horarios_loja').select('*').eq('loja_id', lojaId);
+  const existentes = data || [];
+  const dias = [];
+  for(let d = 0; d <= 6; d++){
+    const encontrado = existentes.find(h => h.dia_semana === d);
+    dias.push(encontrado
+      ? { dia_semana: d, abre: (encontrado.abre || '').substring(0,5), fecha: (encontrado.fecha || '').substring(0,5), fechado: encontrado.fechado }
+      : { dia_semana: d, abre: '12:00', fecha: '22:00', fechado: d === 0 }
+    );
+  }
+  lojaHorariosEmEdicao = { lojaId, dias };
+  renderizarModalHorarios();
+  document.getElementById('overlay-loja-admin').classList.add('aberto');
+}
+
+function renderizarModalHorarios(){
+  const loja = cacheLojas.find(l => l.id === lojaHorariosEmEdicao.lojaId);
+  document.getElementById('modal-loja-admin').innerHTML = `
+    <h3>Horários — ${loja ? loja.nome : ''}</h3>
+    <p style="font-size:12.5px; color:var(--texto-suave); margin-bottom:16px;">Marque "Fechado" nos dias sem funcionamento. Isso soma com o interruptor de ativar/desativar: se qualquer um dos dois disser fechado, a loja some do cardápio.</p>
+    ${lojaHorariosEmEdicao.dias.map((h, i) => `
+      <div class="linha-opcao-admin" style="align-items:center;">
+        <span style="width:80px; font-size:13px; font-weight:600;">${NOMES_DIAS[h.dia_semana]}</span>
+        <input type="time" value="${h.abre}" ${h.fechado ? 'disabled' : ''} onchange="atualizarHorarioDia(${i},'abre',this.value)" style="width:110px;">
+        <span style="font-size:12px; color:var(--texto-suave);">até</span>
+        <input type="time" value="${h.fecha}" ${h.fechado ? 'disabled' : ''} onchange="atualizarHorarioDia(${i},'fecha',this.value)" style="width:110px;">
+        <label style="display:flex; align-items:center; gap:5px; font-size:12px; margin-left:6px;">
+          <input type="checkbox" ${h.fechado ? 'checked' : ''} onchange="atualizarHorarioDia(${i},'fechado',this.checked)"> Fechado
+        </label>
+      </div>
+    `).join('')}
+    <div class="rodape-modal">
+      <button class="btn btn-secundario" onclick="document.getElementById('overlay-loja-admin').classList.remove('aberto')">Cancelar</button>
+      <button class="btn btn-primario" onclick="salvarHorarios()">Salvar horários</button>
+    </div>
+  `;
+}
+
+function atualizarHorarioDia(indice, campo, valor){
+  lojaHorariosEmEdicao.dias[indice][campo] = valor;
+  if(campo === 'fechado') renderizarModalHorarios();
+}
+
+async function salvarHorarios(){
+  const { lojaId, dias } = lojaHorariosEmEdicao;
+  await sb.from('horarios_loja').delete().eq('loja_id', lojaId);
+  const linhas = dias.map(h => ({
+    loja_id: lojaId, dia_semana: h.dia_semana,
+    abre: h.fechado ? null : h.abre, fecha: h.fechado ? null : h.fecha,
+    fechado: h.fechado,
+  }));
+  await sb.from('horarios_loja').insert(linhas);
+  document.getElementById('overlay-loja-admin').classList.remove('aberto');
+}
+
+/* =========================================================
+   INICIALIZAÇÃO
+   ========================================================= */
+verificarSessao();
+</script>
+</body>
+</html>
