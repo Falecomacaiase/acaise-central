@@ -418,6 +418,12 @@
   }
   .campo-entrega input:focus, .campo-entrega select:focus, .campo-entrega textarea:focus{ outline:none; border-color:var(--verde); }
   .erro-dados-entrega{ font-size:12px; color:var(--alerta); font-weight:600; margin-top:8px; }
+  .seletor-tipo-entrega{ display:flex; gap:8px; }
+  .opcao-tipo-entrega{
+    flex:1; text-align:center; padding:10px 8px; border:1.5px solid var(--linha); border-radius:10px;
+    font-size:13px; font-weight:600; cursor:pointer; color:var(--texto-suave); transition: border-color .15s, background .15s;
+  }
+  .opcao-tipo-entrega.ativa{ border-color:var(--verde); background:var(--verde-suave); color:var(--verde-escuro); }
   .carrinho-vazio{ text-align:center; padding: 40px 10px; color: var(--texto-suave); }
   .carrinho-vazio .icone-vazio{ font-size:38px; margin-bottom:10px; }
   .carrinho-vazio p{ font-size:13px; }
@@ -555,7 +561,7 @@ async function carregarDadosDoSupabase(){
 let lojaSelecionada = null;
 let categoriaAtiva = null;
 let carrinho = []; // { chaveId, produtoId, nome, icone, qtd, precoUnit, resumoOpcoes }
-let dadosEntrega = { nome: '', telefone: '', endereco: '', pagamento: '', observacao: '' };
+let dadosEntrega = { tipoEntrega: 'delivery', nome: '', telefone: '', endereco: '', pagamento: '', observacao: '' };
 let erroDadosEntrega = '';
 let produtoEmEdicao = null;
 let escolhasAtuais = {};
@@ -868,6 +874,12 @@ function atualizarBarraCarrinho(){
   document.getElementById('conteudo-barra-carrinho').onclick = abrirCarrinho;
 }
 
+function selecionarTipoEntrega(tipo){
+  dadosEntrega.tipoEntrega = tipo;
+  if(tipo === 'retirada') erroDadosEntrega = '';
+  renderizarCarrinho();
+}
+
 function abrirCarrinho(){
   renderizarCarrinho();
   document.getElementById('overlay-carrinho').classList.add('aberto');
@@ -921,6 +933,13 @@ function renderizarCarrinho(){
 
       <div class="dados-entrega">
         <div class="campo-entrega">
+          <label>Como você quer receber?</label>
+          <div class="seletor-tipo-entrega">
+            <div class="opcao-tipo-entrega ${dadosEntrega.tipoEntrega === 'delivery' ? 'ativa' : ''}" onclick="selecionarTipoEntrega('delivery')">🛵 Delivery</div>
+            <div class="opcao-tipo-entrega ${dadosEntrega.tipoEntrega === 'retirada' ? 'ativa' : ''}" onclick="selecionarTipoEntrega('retirada')">🏪 Retirar na loja</div>
+          </div>
+        </div>
+        <div class="campo-entrega">
           <label>Seu nome</label>
           <input type="text" id="input-nome-cliente" placeholder="Nome completo" value="${dadosEntrega.nome}" oninput="dadosEntrega.nome = this.value">
         </div>
@@ -928,10 +947,12 @@ function renderizarCarrinho(){
           <label>Seu telefone</label>
           <input type="tel" id="input-telefone-cliente" placeholder="(81) 99999-9999" value="${dadosEntrega.telefone}" oninput="dadosEntrega.telefone = this.value">
         </div>
+        ${dadosEntrega.tipoEntrega === 'delivery' ? `
         <div class="campo-entrega">
           <label>Endereço de entrega</label>
           <textarea id="input-endereco-cliente" rows="2" placeholder="Rua, número, bairro, complemento" oninput="dadosEntrega.endereco = this.value">${dadosEntrega.endereco}</textarea>
         </div>
+        ` : ''}
         <div class="campo-entrega">
           <label>Forma de pagamento</label>
           <select id="input-pagamento-cliente" onchange="dadosEntrega.pagamento = this.value">
@@ -947,7 +968,7 @@ function renderizarCarrinho(){
 
       <div class="resumo-total">
         <div class="linha-total"><span>Subtotal</span><span>R$ ${totalValorCarrinho().toFixed(2).replace('.',',')}</span></div>
-        <div class="linha-total"><span>Entrega</span><span>Combinada no WhatsApp</span></div>
+        <div class="linha-total"><span>Entrega</span><span>${dadosEntrega.tipoEntrega === 'retirada' ? 'Retirada na loja (sem taxa)' : 'Combinada no WhatsApp'}</span></div>
         <div class="linha-total final"><span>Total</span><span>R$ ${totalValorCarrinho().toFixed(2).replace('.',',')}</span></div>
       </div>
       <textarea class="obs-pedido" id="obs-pedido" rows="2" placeholder="Alguma observação? (ex: sem açúcar, troco para R$100...)" oninput="dadosEntrega.observacao = this.value">${dadosEntrega.observacao}</textarea>
@@ -970,8 +991,11 @@ function ajustarQtdCarrinho(idx, delta){
 }
 
 function enviarPedidoWhatsApp(){
-  if(!dadosEntrega.nome.trim() || !dadosEntrega.telefone.trim() || !dadosEntrega.endereco.trim() || !dadosEntrega.pagamento){
-    erroDadosEntrega = 'Preenche nome, telefone, endereço e forma de pagamento antes de enviar.';
+  const ehDelivery = dadosEntrega.tipoEntrega === 'delivery';
+  if(!dadosEntrega.nome.trim() || !dadosEntrega.telefone.trim() || (ehDelivery && !dadosEntrega.endereco.trim()) || !dadosEntrega.pagamento){
+    erroDadosEntrega = ehDelivery
+      ? 'Preenche nome, telefone, endereço e forma de pagamento antes de enviar.'
+      : 'Preenche nome, telefone e forma de pagamento antes de enviar.';
     renderizarCarrinho();
     const elErro = document.querySelector('.erro-dados-entrega');
     if(elErro && elErro.scrollIntoView) elErro.scrollIntoView({ behavior:'smooth', block:'center' });
@@ -981,9 +1005,12 @@ function enviarPedidoWhatsApp(){
 
   let msg = `🔔 *Novo Pedido — Cardápio Digital*\n`;
   msg += `${lojaSelecionada.nome}\n\n`;
+  msg += `${ehDelivery ? '🛵 *Delivery*' : '🏪 *Retirada na loja*'}\n\n`;
   msg += `👤 *Cliente:* ${dadosEntrega.nome.trim()}\n`;
   msg += `📞 *Telefone:* ${dadosEntrega.telefone.trim()}\n\n`;
-  msg += `🏠 *Endereço de Entrega:*\n${dadosEntrega.endereco.trim()}\n\n`;
+  if(ehDelivery){
+    msg += `🏠 *Endereço de Entrega:*\n${dadosEntrega.endereco.trim()}\n\n`;
+  }
   msg += `🛍️ *Itens do Pedido:*\n`;
   carrinho.forEach(item => {
     msg += `• ${item.qtd}x ${item.nome}`;
