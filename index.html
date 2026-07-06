@@ -164,6 +164,7 @@
       <button class="tab-btn" id="tabBtnCadastros" onclick="switchAdminTab('cadastros')">📝 Cadastros</button>
       <button class="tab-btn" id="tabBtnRelatorios" onclick="switchAdminTab('relatorios')">📊 Relatórios</button>
       <button class="tab-btn" id="tabBtnBoletos" onclick="switchAdminTab('boletos')">💰 Boletos</button>
+      <button class="tab-btn" id="tabBtnLog" onclick="switchAdminTab('log')">📋 Log</button>
     </div>
 
     <div id="tabPedidos">
@@ -503,6 +504,26 @@
       <div id="boletosLista"></div>
     </div>
 
+    <!-- ABA: LOG DE ATIVIDADES -->
+    <div id="tabLog" class="hidden">
+      <p class="small">Registro de todas as ações realizadas no sistema — entradas, saídas, pedidos, despachos e inventários.</p>
+      <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+        <select id="logFiltroTipo" onchange="renderLog()" style="flex:1;min-width:160px">
+          <option value="">Todas as ações</option>
+          <option value="Pedido">Pedidos</option>
+          <option value="Entrada">Entradas de estoque</option>
+          <option value="Saída">Despachos</option>
+          <option value="Saída Avulsa">Saídas avulsas</option>
+          <option value="Inventário">Inventários</option>
+        </select>
+        <select id="logFiltroUnidade" onchange="renderLog()" style="flex:1;min-width:160px">
+          <option value="">Todas as unidades</option>
+        </select>
+        <button class="btn btn-secondary" onclick="renderLog()" style="flex:0">🔄 Atualizar</button>
+      </div>
+      <div id="logLista"></div>
+    </div>
+
   </div>
 
 </div>
@@ -647,7 +668,7 @@ window.addEventListener('load', () => setTimeout(verificarAtualizacao, 4000));
 setInterval(verificarAtualizacao, 600000);
 
 function switchAdminTab(tab) {
-  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos'].forEach(t => {
+  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Log'].forEach(t => {
     const el = document.getElementById('tab'+t);
     const btn = document.getElementById('tabBtn'+t);
     if(el) el.classList.toggle('hidden', tab !== t.toLowerCase());
@@ -658,6 +679,7 @@ function switchAdminTab(tab) {
   if (tab === 'cadastros') { iniciarCadastros(); }
   if (tab === 'relatorios') { iniciarRelatorios(); }
   if (tab === 'boletos') { iniciarBoletos(); }
+  if (tab === 'log') { iniciarLog(); }
 }
 
 // ─── CADASTROS ───────────────────────────────────────────────────────────────
@@ -877,6 +899,9 @@ async function confirmarDespacho() {
     const statusMsg = document.getElementById('romaneioStatusMsg');
     statusMsg.style.color = '#2E7D32';
     statusMsg.textContent = '✅ Estoque descontado! Imprimindo...';
+    await registrarLog('Saída',
+      `Despacho confirmado — ${pedidoAtualRomaneio.numeroPedido||''} — ${Object.keys(itens).length} itens`,
+      currentUser, pedidoAtualRomaneio.unidade);
     btn.textContent = '✅ Já despachado';
     btn.style.background = '#aaa';
 
@@ -1171,6 +1196,7 @@ async function salvarInventario() {
     }), true);
     msgEl.style.color = '#2E7D32';
     msgEl.textContent = `✅ Contagem salva em ${new Date().toLocaleTimeString('pt-BR')}! O estoque central já está atualizado.`;
+    await registrarLog('Inventário', 'Contagem de estoque salva', currentUser, 'Central');
   } catch(e) {
     msgEl.style.color = '#C62828';
     msgEl.textContent = 'Erro ao salvar: ' + e.message;
@@ -1429,6 +1455,7 @@ async function registrarSaidaAvulsa() {
 
     msgEl.style.color = '#E65100';
     msgEl.textContent = `✅ Saída registrada: ${qtd} × ${item.nome} → ${unidade}. Saldo: ${saldoAntes} → ${saldoAtual[itemId]}`;
+    await registrarLog('Saída Avulsa', `${qtd} × ${item.nome}${obs?' — '+obs:''}`, currentUser, unidade);
     document.getElementById('saidaQtd').value = 0;
     document.getElementById('saidaObs').value = '';
     loadEstoqueEHistorico();
@@ -1741,7 +1768,151 @@ function updateOrderTotal() {
   }
 }
 
-// ─── BOLETOS ──────────────────────────────────────────────────────────────────
+// ─── LOG DE ATIVIDADES ────────────────────────────────────────────────────────
+async function registrarLog(tipo, descricao, usuario, unidade = '') {
+  try {
+    const entrada = {
+      tipo, descricao, usuario: usuario || currentUser || '—',
+      unidade, data: new Date().toISOString()
+    };
+    await safeSet(`log:${Date.now()}`, JSON.stringify(entrada), true);
+  } catch(e) { /* log não deve quebrar a operação principal */ }
+}
+
+async function iniciarLog() {
+  const sel = document.getElementById('logFiltroUnidade');
+  if (sel && sel.options.length <= 1) {
+    [...UNIDADES, ...extraUnidades.map(u=>u.nome)].forEach(u => {
+      const opt = document.createElement('option'); opt.value=u; opt.textContent=u; sel.appendChild(opt);
+    });
+  }
+  renderLog();
+}
+
+async function renderLog() {
+  const filtroTipo = document.getElementById('logFiltroTipo')?.value || '';
+  const filtroUnid = document.getElementById('logFiltroUnidade')?.value || '';
+  const wrap = document.getElementById('logLista');
+  if (!wrap) return;
+  wrap.innerHTML = '<p class="small">Carregando...</p>';
+
+  let logs = [];
+  try {
+    const list = await safeList('log:', true);
+    if (list && list.keys) {
+      for (const k of list.keys) {
+        try {
+          const r = await safeGet(k, true);
+          if (r && r.value) logs.push(JSON.parse(r.value));
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  // Also include pedidos, entradas, saídas from existing keys
+  try {
+    const weekKey = await getCurrentWeekKey();
+    const listP = await safeList('pedido:', true);
+    if (listP && listP.keys) {
+      for (const k of listP.keys) {
+        try {
+          const r = await safeGet(k, true);
+          if (r && r.value) {
+            const p = JSON.parse(r.value);
+            logs.push({
+              tipo: 'Pedido',
+              descricao: `${p.urgencia?'🚨 URGÊNCIA — ':''} Pedido ${p.numeroPedido||''} — ${Object.keys(p.itens||{}).length} itens — R$ ${(p.total||0).toFixed(2).replace('.',',')}`,
+              usuario: p.nomeResponsavel || '—',
+              unidade: p.unidade || '',
+              data: p.dataEnvio
+            });
+          }
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  try {
+    const listE = await safeList('entrada:', true);
+    if (listE && listE.keys) {
+      for (const k of listE.keys) {
+        try {
+          const r = await safeGet(k, true);
+          if (r && r.value) {
+            const e = JSON.parse(r.value);
+            logs.push({
+              tipo: 'Entrada',
+              descricao: `+${e.qtd} × ${e.nome}${e.fornecedor?' — '+e.fornecedor:''}${e.obs?' ('+e.obs+')':''}`,
+              usuario: e.usuario || '—',
+              unidade: 'Central',
+              data: e.data
+            });
+          }
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  try {
+    const listS = await safeList('saida:', true);
+    if (listS && listS.keys) {
+      for (const k of listS.keys) {
+        try {
+          const r = await safeGet(k, true);
+          if (r && r.value) {
+            const s = JSON.parse(r.value);
+            const isSaidaAvulsa = s.tipo === 'Saída Avulsa';
+            logs.push({
+              tipo: isSaidaAvulsa ? 'Saída Avulsa' : 'Saída',
+              descricao: isSaidaAvulsa
+                ? `${s.qtd} × ${s.nome}${s.obs?' — '+s.obs:''}`
+                : `Despacho de ${Object.keys(s.itens||{}).length} itens`,
+              usuario: s.usuario || '—',
+              unidade: s.unidade || '',
+              data: s.data
+            });
+          }
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  // Filter
+  logs = logs.filter(l =>
+    (!filtroTipo || l.tipo?.includes(filtroTipo)) &&
+    (!filtroUnid || l.unidade === filtroUnid)
+  ).sort((a,b) => new Date(b.data) - new Date(a.data));
+
+  if (logs.length === 0) {
+    wrap.innerHTML = '<p class="small">Nenhuma ação encontrada.</p>';
+    return;
+  }
+
+  const tipoConfig = {
+    'Pedido':       { icon:'📋', color:'#5B2D8E', bg:'#EDE7F6' },
+    'Entrada':      { icon:'📦', color:'#2E7D32', bg:'#E8F5E9' },
+    'Saída':        { icon:'🚚', color:'#1565C0', bg:'#E3F2FD' },
+    'Saída Avulsa': { icon:'📤', color:'#E65100', bg:'#FFF3E0' },
+    'Inventário':   { icon:'📝', color:'#6A1B9A', bg:'#F3E5F5' },
+  };
+
+  let html = '';
+  logs.slice(0,100).forEach(l => {
+    const cfg = tipoConfig[l.tipo] || { icon:'•', color:'#555', bg:'#F5F5F5' };
+    const dataStr = l.data ? new Date(l.data).toLocaleString('pt-BR') : '—';
+    html += `<div style="display:flex;gap:12px;padding:10px 12px;border-bottom:1px solid #eee;align-items:flex-start">
+      <div style="background:${cfg.bg};color:${cfg.color};padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap;min-width:90px;text-align:center">${cfg.icon} ${l.tipo}</div>
+      <div style="flex:1">
+        <div style="font-size:13px">${l.descricao}</div>
+        <div style="font-size:11px;color:#888;margin-top:2px">
+          ${l.unidade ? `<strong>${l.unidade}</strong> • ` : ''}por <strong>${l.usuario}</strong> • ${dataStr}
+        </div>
+      </div>
+    </div>`;
+  });
+  wrap.innerHTML = `<div style="border:1px solid #eee;border-radius:8px;overflow:hidden">${html}</div>
+    <p class="small" style="margin-top:8px">Mostrando ${Math.min(logs.length,100)} de ${logs.length} registro(s).</p>`;
+}
 async function iniciarBoletos() {
   await loadBoletos();
   const sel = document.getElementById('boletoUnidade');
@@ -1977,10 +2148,8 @@ async function submitOrder(urgencia = false) {
     dataDespacho: null
   };
 
-  // Pedidos urgência usam chave com timestamp para permitir múltiplos no dia
-  const key = urgencia
-    ? `pedido:${weekKey}:${currentUser}:${Date.now()}`
-    : `pedido:${weekKey}:${currentUser}`;
+  // Sempre usa timestamp para evitar sobrescrever pedidos anteriores
+  const key = `pedido:${weekKey}:${currentUser}:${Date.now()}`;
 
   pedido._key = key; // guarda a chave no próprio pedido para exclusão futura
 
@@ -1991,6 +2160,10 @@ async function submitOrder(urgencia = false) {
     msgEl.textContent = urgencia
       ? `🚨 Pedido urgência ${numeroPedido} enviado! Será separado com prioridade máxima.`
       : `✅ Pedido ${numeroPedido} enviado! Tipo: ${tipoEntrega}. Prazo: até 48h.`;
+
+    await registrarLog('Pedido',
+      `${urgencia?'🚨 URGÊNCIA — ':''}Pedido ${numeroPedido} — ${Object.keys(itens).length} itens — R$ ${total.toFixed(2).replace('.',',')}`,
+      nomeResponsavel, currentUser);
 
     // Zera os campos
     Object.values(CATALOGO).flat().forEach(item => {
