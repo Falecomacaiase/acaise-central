@@ -321,6 +321,7 @@
         <label>Filtrar por categoria</label>
         <select id="filtroCategoria" onchange="renderGestaoItens()"></select>
       </div>
+      <button class="btn btn-secondary" onclick="reativarTodosItens()" style="margin-bottom:12px">✅ Reativar todos os itens</button>
 
       <div id="gestaoItensTable"></div>
 
@@ -1259,10 +1260,26 @@ async function loadItemState() {
     const r = await safeGet('itemState', true);
     if (r && r.value) itemState = JSON.parse(r.value);
   } catch(e) {}
-  // Preenche defaults para itens sem estado salvo
+  // Garante que TODO item sem estado explícito aparece como disponível
   Object.values(CATALOGO).flat().forEach(item => {
-    if (!itemState[item.id]) itemState[item.id] = { disponivel: true, custo: null, venda: item.preco };
+    if (!itemState[item.id]) {
+      itemState[item.id] = { disponivel: true, custo: null, venda: item.preco };
+    } else {
+      // Se tem estado mas sem venda definida, usa o preço do catálogo
+      if (!itemState[item.id].venda) itemState[item.id].venda = item.preco;
+    }
   });
+}
+
+async function reativarTodosItens() {
+  if (!confirm('Confirma? Todos os itens serão marcados como DISPONÍVEL para os franqueados.')) return;
+  Object.values(CATALOGO).flat().forEach(item => {
+    if (itemState[item.id]) itemState[item.id].disponivel = true;
+    else itemState[item.id] = { disponivel: true, custo: null, venda: item.preco };
+  });
+  await saveItemState();
+  renderGestaoItens();
+  alert('✅ Todos os itens reativados!');
 }
 
 async function saveItemState() {
@@ -1614,6 +1631,7 @@ function renderCatalog() {
     if (CATEGORIAS_OCULTAS_LOJA.includes(cat)) return;
     const itensVisiveis = CATALOGO[cat].filter(item => {
       const st = itemState[item.id];
+      // Só oculta se explicitamente marcado como false — qualquer outro caso mostra
       return !st || st.disponivel !== false;
     });
     if (itensVisiveis.length === 0) return;
@@ -1623,10 +1641,11 @@ function renderCatalog() {
     wrap.appendChild(title);
     itensVisiveis.forEach(item => {
       const preco = (itemState[item.id]?.venda || item.preco);
+      const cod = item.cod ? `[${item.cod}] ` : '';
       const row = document.createElement('div');
       row.className = "item-row";
       row.innerHTML = `
-        <span class="item-name">${item.nome} <span class="small">(R$ ${preco.toFixed(2).replace('.',',')})</span></span>
+        <span class="item-name"><span style="color:#888;font-size:12px">${cod}</span>${item.nome} <span class="small">(R$ ${preco.toFixed(2).replace('.',',')})</span></span>
         <input type="number" min="0" class="item-qtd" id="qtd_${item.id}" value="0" oninput="updateOrderTotal()">
       `;
       wrap.appendChild(row);
