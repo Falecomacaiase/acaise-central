@@ -263,7 +263,10 @@
         <div id="saidaMsg" class="small" style="margin-top:6px"></div>
       </div>
 
-      <h3 style="margin-top:24px">Estoque atual da central</h3>
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px">
+        <h3 style="margin:0">Estoque atual da central</h3>
+        <button class="btn btn-secondary" onclick="imprimirEstoque()" style="font-size:13px">🖨️ Imprimir estoque</button>
+      </div>
       <div id="estoqueAtualTable"></div>
 
       <h3 style="margin-top:24px">Últimas movimentações</h3>
@@ -1503,6 +1506,49 @@ async function registrarEntrada() {
   }
 }
 
+function imprimirEstoque() {
+  const tabela = document.getElementById('tabelaEstoqueImprimivel');
+  if (!tabela) { alert('Atualize o estoque primeiro antes de imprimir.'); return; }
+  const dataHora = new Date().toLocaleString('pt-BR');
+  const conteudo = `
+    <html><head><meta charset="UTF-8"><title>Estoque Central — Açaí-Se</title>
+    <style>
+      body { font-family: Arial, sans-serif; font-size: 12px; margin: 20px; }
+      h2 { color: #5B2D8E; margin-bottom: 4px; }
+      .sub { color: #666; font-size: 11px; margin-bottom: 16px; }
+      table { width: 100%; border-collapse: collapse; }
+      th { background: #5B2D8E; color: #fff; padding: 5px 8px; text-align: left; font-size: 11px; }
+      td { padding: 4px 8px; border-bottom: 1px solid #eee; }
+      .cat { background: #EDE7F6; color: #5B2D8E; font-weight: 700; padding: 4px 8px; }
+      .zerado { background: #FFEBEE; }
+      .critico { background: #FFFDE7; }
+      .cod { color: #888; text-align: center; width: 50px; }
+      .saldo { text-align: right; font-weight: 700; }
+    </style></head><body>
+    <h2>AÇAÍ-SE — ESTOQUE CENTRAL</h2>
+    <div class="sub">Emitido em: ${dataHora}</div>
+    <table>
+      <thead><tr><th style="width:50px">CÓD</th><th>ITEM</th><th style="text-align:right;width:80px">SALDO</th><th style="width:80px">STATUS</th></tr></thead>
+      <tbody>
+        ${Object.entries(CATALOGO).map(([cat, items]) => `
+          <tr><td colspan="4" class="cat">${cat}</td></tr>
+          ${items.map(item => {
+            const atual = item._estoqueAtual !== undefined ? item._estoqueAtual : (saldoAtual[item.id] || 0);
+            const cls = atual <= 0 ? 'zerado' : atual <= 5 ? 'critico' : '';
+            const statusTxt = atual <= 0 ? '❌ Zerado' : atual <= 5 ? '⚠️ Crítico' : '✅ OK';
+            return `<tr class="${cls}"><td class="cod">${item.cod||'—'}</td><td>${item.nome}</td><td class="saldo">${atual}</td><td>${statusTxt}</td></tr>`;
+          }).join('')}
+        `).join('')}
+      </tbody>
+    </table>
+    </body></html>`;
+  const win = window.open('', '_blank');
+  win.document.write(conteudo);
+  win.document.close();
+  win.focus();
+  setTimeout(() => win.print(), 500);
+}
+
 async function loadEstoqueEHistorico() {
   await loadSaldoInicial();
 
@@ -1532,20 +1578,30 @@ async function loadEstoqueEHistorico() {
 
   // Current stock = saldoAtual (already accounts for dispatches since we write it there)
   const VERMELHO_CRITICO = 5;
-  let tableHtml = `<table><thead><tr>
-    <th>Item</th><th style="text-align:right">Saldo real</th><th style="text-align:center">Status</th>
+  let tableHtml = `<table id="tabelaEstoqueImprimivel"><thead><tr>
+    <th style="width:60px;text-align:center">CÓD</th>
+    <th>Item</th>
+    <th style="text-align:right;width:90px">Saldo</th>
+    <th style="text-align:center;width:90px">Status</th>
   </tr></thead><tbody>`;
-  allItems.forEach(item => {
-    const atual = saldoAtual[item.id] !== undefined ? saldoAtual[item.id] : item.estoqueCentral;
-    item._estoqueAtual = atual;
-    const status = atual <= 0 ? `<span class="badge badge-red">Zerado</span>`
-                 : atual <= VERMELHO_CRITICO ? `<span class="badge badge-yellow">Crítico</span>`
-                 : `<span class="badge badge-green">OK</span>`;
-    tableHtml += `<tr>
-      <td>${item.nome}</td>
-      <td style="text-align:right"><strong>${atual}</strong></td>
-      <td style="text-align:center">${status}</td>
-    </tr>`;
+
+  // Group by category
+  Object.entries(CATALOGO).forEach(([cat, items]) => {
+    tableHtml += `<tr><td colspan="4" style="background:#5B2D8E;color:#fff;font-weight:700;padding:5px 10px;font-size:12px">${cat}</td></tr>`;
+    items.forEach(item => {
+      const atual = saldoAtual[item.id] !== undefined ? saldoAtual[item.id] : item.estoqueCentral;
+      item._estoqueAtual = atual;
+      const status = atual <= 0 ? `<span class="badge badge-red">Zerado</span>`
+                   : atual <= VERMELHO_CRITICO ? `<span class="badge badge-yellow">Crítico</span>`
+                   : `<span class="badge badge-green">OK</span>`;
+      const rowBg = atual <= 0 ? 'background:#FFF5F5' : atual <= VERMELHO_CRITICO ? 'background:#FFFDE7' : '';
+      tableHtml += `<tr style="${rowBg}">
+        <td style="text-align:center;color:#888;font-size:12px">${item.cod||'—'}</td>
+        <td>${item.nome}</td>
+        <td style="text-align:right"><strong>${atual}</strong></td>
+        <td style="text-align:center">${status}</td>
+      </tr>`;
+    });
   });
   tableHtml += `</tbody></table>`;
   document.getElementById('estoqueAtualTable').innerHTML = tableHtml;
