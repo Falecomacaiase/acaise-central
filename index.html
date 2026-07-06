@@ -233,6 +233,36 @@
       <button class="btn" onclick="registrarEntrada()">Registrar entrada</button>
       <div id="entradaMsg" class="small" style="margin-top:8px"></div>
 
+      <!-- SAÍDA AVULSA -->
+      <div style="background:#FFF3E0;border:1px solid #FFB74D;border-radius:8px;padding:16px;margin-top:24px">
+        <h4 style="margin:0 0 6px;color:#E65100">📤 Saída Avulsa — sem romaneio</h4>
+        <p class="small" style="margin:0 0 12px">Use para registrar retiradas informais que precisam descontar do estoque central sem gerar pedido ou romaneio. Ex: abastecimentos da Boa Viagem, retiradas emergenciais, consumo interno.</p>
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <label>Unidade / Destino</label>
+            <select id="saidaUnidade"></select>
+          </div>
+          <div class="field">
+            <label>Categoria</label>
+            <select id="saidaCategoria" onchange="popularItensSaida()"></select>
+          </div>
+          <div class="field">
+            <label>Item</label>
+            <select id="saidaItem"></select>
+          </div>
+          <div class="field">
+            <label>Quantidade</label>
+            <input type="number" min="0" step="0.1" id="saidaQtd" value="0">
+          </div>
+        </div>
+        <div class="field">
+          <label>Observação (opcional)</label>
+          <input type="text" id="saidaObs" placeholder="Ex: Retirada sábado 05/07, pedido WhatsApp">
+        </div>
+        <button class="btn" onclick="registrarSaidaAvulsa()" style="background:#E65100">📤 Registrar saída</button>
+        <div id="saidaMsg" class="small" style="margin-top:6px"></div>
+      </div>
+
       <h3 style="margin-top:24px">Estoque atual da central</h3>
       <div id="estoqueAtualTable"></div>
 
@@ -1157,6 +1187,22 @@ async function iniciarEntradas() {
   await loadSaldoInicial();
   await loadFornecedores();
   popularSelectFornecedor();
+
+  // Populate saída avulsa selects
+  const selUnid = document.getElementById('saidaUnidade');
+  if (selUnid && selUnid.options.length === 0) {
+    const opts = ['BOA VIAGEM', ...UNIDADES.filter(u => u !== 'BOA VIAGEM'), ...extraUnidades.map(u=>u.nome)];
+    opts.forEach(u => {
+      const opt = document.createElement('option'); opt.value=u; opt.textContent=u; selUnid.appendChild(opt);
+    });
+  }
+  const selCatSaida = document.getElementById('saidaCategoria');
+  if (selCatSaida && selCatSaida.options.length === 0) {
+    Object.keys(CATALOGO).forEach(cat => {
+      const opt = document.createElement('option'); opt.value=cat; opt.textContent=cat; selCatSaida.appendChild(opt);
+    });
+    popularItensSaida();
+  }
   // Populate saldo filter
   const sel = document.getElementById('saldoFiltroCat');
   if (sel.options.length === 0) {
@@ -1315,6 +1361,65 @@ async function salvarPrecos() {
 }
 
 // ─── CATÁLOGO — filtros para a visão da loja ──────────────────────────────────
+function popularItensSaida() {
+  const cat = document.getElementById('saidaCategoria')?.value;
+  const sel = document.getElementById('saidaItem');
+  if (!sel || !cat) return;
+  sel.innerHTML = "";
+  (CATALOGO[cat] || []).forEach(item => {
+    const opt = document.createElement('option');
+    opt.value = item.id; opt.textContent = `[${item.cod}] ${item.nome}`; sel.appendChild(opt);
+  });
+}
+
+async function registrarSaidaAvulsa() {
+  const msgEl = document.getElementById('saidaMsg');
+  const unidade = document.getElementById('saidaUnidade')?.value;
+  const itemId = document.getElementById('saidaItem')?.value;
+  const qtd = parseFloat(document.getElementById('saidaQtd')?.value) || 0;
+  const obs = document.getElementById('saidaObs')?.value?.trim();
+
+  const item = Object.values(CATALOGO).flat().find(i => i.id === itemId);
+  if (!item) { msgEl.textContent = 'Selecione um item válido.'; return; }
+  if (qtd <= 0) { msgEl.textContent = 'Informe uma quantidade maior que zero.'; return; }
+  if (!unidade) { msgEl.textContent = 'Selecione a unidade de destino.'; return; }
+
+  msgEl.textContent = 'Registrando...';
+  try {
+    await loadSaldoInicial();
+    const saldoAntes = saldoAtual[itemId] || 0;
+    saldoAtual[itemId] = Math.max(0, saldoAntes - qtd);
+    await safeSet('saldoInicial', JSON.stringify(saldoAtual), true);
+
+    // Registra no histórico como saída avulsa
+    await safeSet(`saida:avulsa:${Date.now()}`, JSON.stringify({
+      tipo: 'Saída Avulsa',
+      unidade,
+      nome: item.nome,
+      itemId,
+      qtd,
+      obs,
+      saldoAntes,
+      saldoDepois: saldoAtual[itemId],
+      data: new Date().toISOString()
+    }), true);
+
+    // Atualiza cache
+    item._estoqueAtual = saldoAtual[itemId];
+
+    msgEl.style.color = '#E65100';
+    msgEl.textContent = `✅ Saída registrada: ${qtd} × ${item.nome} → ${unidade}. Saldo: ${saldoAntes} → ${saldoAtual[itemId]}`;
+    document.getElementById('saidaQtd').value = 0;
+    document.getElementById('saidaObs').value = '';
+    loadEstoqueEHistorico();
+  } catch(e) {
+    msgEl.style.color = '#C62828';
+    msgEl.textContent = 'Erro: ' + e.message;
+  }
+}
+
+function popularItensSaida_alias() {} // placeholder
+
 function popularCategoriasEntrada() {
   const sel = document.getElementById('entradaCategoria');
   if (sel.options.length > 0) { popularItensEntrada(); return; }
@@ -1443,6 +1548,9 @@ async function loadEstoqueEHistorico() {
           return `<div class="entry-row"><span>${icon} <strong>+${m.qtd}</strong> ${m.nome}${forn}${m.obs?' <span class="small">('+m.obs+')</span>':''}</span><span class="small">${new Date(m.data).toLocaleString('pt-BR')}</span></div>`;
         } else {
           const itensStr = Object.values(m.itens||{}).map(i=>`${i.nome} ×${i.qtd}`).join(', ');
+          if (m.tipo === 'Saída Avulsa') {
+            return `<div class="entry-row" style="border-left:3px solid #E65100;padding-left:6px"><span>📤 <strong>Saída Avulsa → ${m.unidade}</strong> — ${m.qtd} × ${m.nome}${m.obs ? ' <span class="small">('+m.obs+')</span>' : ''}</span><span class="small">${new Date(m.data).toLocaleString('pt-BR')}</span></div>`;
+          }
           return `<div class="entry-row"><span>📦 <strong>Despacho → ${m.unidade}</strong> <span class="small">${itensStr}</span></span><span class="small">${new Date(m.data).toLocaleString('pt-BR')}</span></div>`;
         }
       }).join('');
