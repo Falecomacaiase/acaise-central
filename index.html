@@ -164,6 +164,7 @@
       <button class="tab-btn" id="tabBtnCadastros" onclick="switchAdminTab('cadastros')">📝 Cadastros</button>
       <button class="tab-btn" id="tabBtnRelatorios" onclick="switchAdminTab('relatorios')">📊 Relatórios</button>
       <button class="tab-btn" id="tabBtnBoletos" onclick="switchAdminTab('boletos')">💰 Boletos</button>
+      <button class="tab-btn" id="tabBtnProducao" onclick="switchAdminTab('producao')">🏭 Produção</button>
       <button class="tab-btn" id="tabBtnLog" onclick="switchAdminTab('log')">📋 Log</button>
     </div>
 
@@ -504,6 +505,92 @@
       <div id="boletosLista"></div>
     </div>
 
+    <!-- ABA: PRODUÇÃO -->
+    <div id="tabProducao" class="hidden">
+      <p class="small">Registre cada lote de produção de açaí. O sistema calcula automaticamente o custo real por caixa do dia.</p>
+
+      <div style="background:#EDE7F6;border:1px solid #C5B3E6;border-radius:8px;padding:16px;margin-bottom:20px">
+        <h4 style="margin:0 0 14px;color:#5B2D8E">🏭 Lançar produção do dia</h4>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+          <div class="field">
+            <label>Base produzida</label>
+            <select id="prodBase">
+              <option value="artesanal">Açaí Artesanal</option>
+              <option value="mel">Açaí Mel</option>
+            </select>
+          </div>
+          <div class="field">
+            <label>Responsável pela produção</label>
+            <input type="text" id="prodResponsavel" placeholder="Nome de quem produziu">
+          </div>
+        </div>
+
+        <div style="background:#fff;border-radius:6px;padding:12px;margin:8px 0">
+          <div style="font-size:12px;font-weight:700;color:#5B2D8E;margin-bottom:10px">INSUMOS UTILIZADOS</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="prodInsumos">
+            <!-- preenchido dinamicamente -->
+          </div>
+        </div>
+
+        <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;margin-top:8px">
+          <div class="field">
+            <label>Caixas de 8kg produzidas</label>
+            <input type="number" min="0" id="prodCaixas" value="0" oninput="calcularCustoProducao()">
+          </div>
+          <div class="field">
+            <label>Excedente (kg) — se houver</label>
+            <input type="number" min="0" step="0.1" id="prodExcedente" value="0" oninput="calcularCustoProducao()">
+          </div>
+          <div class="field">
+            <label>Caixas reaproveitadas (kg)</label>
+            <input type="number" min="0" step="0.1" id="prodReaproveitado" value="0" oninput="calcularCustoProducao()" placeholder="0">
+          </div>
+        </div>
+
+        <!-- RESULTADO DO CÁLCULO -->
+        <div id="prodResultado" style="display:none;background:#F5F0FB;border-radius:8px;padding:14px;margin-top:12px">
+          <div style="font-size:13px;font-weight:700;color:#5B2D8E;margin-bottom:10px">📊 CUSTO DA PRODUÇÃO DE HOJE</div>
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px">
+            <div>
+              <div style="color:#888;font-size:11px">Custo total do lote</div>
+              <div style="font-weight:700;font-size:16px" id="prodCustoTotal">R$ 0,00</div>
+            </div>
+            <div>
+              <div style="color:#888;font-size:11px">Custo por caixa</div>
+              <div style="font-weight:700;font-size:16px;color:#5B2D8E" id="prodCustoCaixa">R$ 0,00</div>
+            </div>
+            <div>
+              <div style="color:#888;font-size:11px">Custo por kg</div>
+              <div style="font-weight:700;font-size:16px" id="prodCustoKg">R$ 0,00</div>
+            </div>
+          </div>
+          <div style="margin-top:10px;display:grid;grid-template-columns:1fr 1fr 1fr;gap:12px;font-size:13px">
+            <div>
+              <div style="color:#888;font-size:11px">Preço venda franqueado</div>
+              <div style="font-weight:700;font-size:16px" id="prodPrecoVenda">R$ 184,32</div>
+            </div>
+            <div>
+              <div style="color:#888;font-size:11px">Margem por caixa</div>
+              <div style="font-weight:700;font-size:16px;color:#2E7D32" id="prodMargem">R$ 0,00</div>
+            </div>
+            <div>
+              <div style="color:#888;font-size:11px">Margem %</div>
+              <div style="font-weight:700;font-size:20px;color:#2E7D32" id="prodMargemPct">0%</div>
+            </div>
+          </div>
+          <div id="prodRendimento" style="margin-top:8px;font-size:12px;color:#666"></div>
+        </div>
+
+        <button class="btn" onclick="salvarProducao()" style="margin-top:14px">💾 Salvar produção</button>
+        <div id="prodMsg" class="small" style="margin-top:6px"></div>
+      </div>
+
+      <!-- HISTÓRICO -->
+      <h3>Histórico de produções</h3>
+      <div id="producaoHistorico"></div>
+    </div>
+
     <!-- ABA: LOG DE ATIVIDADES -->
     <div id="tabLog" class="hidden">
       <p class="small">Registro de todas as ações realizadas no sistema — entradas, saídas, pedidos, despachos e inventários.</p>
@@ -668,7 +755,7 @@ window.addEventListener('load', () => setTimeout(verificarAtualizacao, 4000));
 setInterval(verificarAtualizacao, 600000);
 
 function switchAdminTab(tab) {
-  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Log'].forEach(t => {
+  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Log'].forEach(t => {
     const el = document.getElementById('tab'+t);
     const btn = document.getElementById('tabBtn'+t);
     if(el) el.classList.toggle('hidden', tab !== t.toLowerCase());
@@ -679,6 +766,7 @@ function switchAdminTab(tab) {
   if (tab === 'cadastros') { iniciarCadastros(); }
   if (tab === 'relatorios') { iniciarRelatorios(); }
   if (tab === 'boletos') { iniciarBoletos(); }
+  if (tab === 'producao') { iniciarProducao(); }
   if (tab === 'log') { iniciarLog(); }
 }
 
@@ -1766,6 +1854,212 @@ function updateOrderTotal() {
     if (btnEnviar) btnEnviar.disabled = abaixoMinimo;
     if (btnEnviar) btnEnviar.style.opacity = abaixoMinimo ? '0.5' : '1';
   }
+}
+
+// ─── PRODUÇÃO ─────────────────────────────────────────────────────────────────
+const FICHAS = {
+  artesanal: {
+    nome: 'Açaí Artesanal',
+    precoVenda: 184.32,
+    insumos: [
+      { id:'barra_art', nome:'Barras de Açaí', qtdPadrao: 35, unidade:'kg', custoPorKg: 17.50 },
+      { id:'agua',      nome:'Água',           qtdPadrao: 5,  unidade:'lt', custoPorKg: 0.35 },
+      { id:'acucar',    nome:'Açúcar Cristal', qtdPadrao: 6,  unidade:'kg', custoPorKg: 2.89 },
+      { id:'liga',      nome:'Liga Neutra',    qtdPadrao: 0.24, unidade:'kg', custoPorKg: 28.90 },
+    ]
+  },
+  mel: {
+    nome: 'Açaí Mel',
+    precoVenda: 184.32,
+    insumos: [
+      { id:'barra_mel', nome:'Barras de Açaí', qtdPadrao: 40, unidade:'kg', custoPorKg: 15.50 },
+      { id:'mel',       nome:'Mel Natural',    qtdPadrao: 6,  unidade:'lt', custoPorKg: 10.00 },
+    ]
+  }
+};
+
+const CUSTO_CAIXA_PAPELAO = 6.00;
+const PESO_CAIXA = 8; // kg
+
+function iniciarProducao() {
+  document.getElementById('prodBase').onchange = () => renderInsumosProducao();
+  renderInsumosProducao();
+  carregarHistoricoProducao();
+}
+
+function renderInsumosProducao() {
+  const base = document.getElementById('prodBase').value;
+  const ficha = FICHAS[base];
+  const wrap = document.getElementById('prodInsumos');
+  wrap.innerHTML = ficha.insumos.map(ins => `
+    <div>
+      <label style="font-size:12px">${ins.nome} (${ins.unidade}) — R$ ${ins.custoPorKg.toFixed(2)}/${ins.unidade}</label>
+      <input type="number" min="0" step="0.01" id="ins_${ins.id}"
+        value="${ins.qtdPadrao}"
+        oninput="calcularCustoProducao()"
+        style="width:100%;padding:6px 8px;font-size:13px;border:1px solid #ccc;border-radius:6px">
+    </div>
+  `).join('');
+  calcularCustoProducao();
+}
+
+function calcularCustoProducao() {
+  const base = document.getElementById('prodBase').value;
+  const ficha = FICHAS[base];
+  const caixas = parseFloat(document.getElementById('prodCaixas').value) || 0;
+  const excedente = parseFloat(document.getElementById('prodExcedente').value) || 0;
+  if (caixas <= 0) { document.getElementById('prodResultado').style.display = 'none'; return; }
+
+  // Soma custo dos insumos
+  let custoInsumos = 0;
+  ficha.insumos.forEach(ins => {
+    const qtd = parseFloat(document.getElementById('ins_' + ins.id)?.value) || 0;
+    custoInsumos += qtd * ins.custoPorKg;
+  });
+
+  const custoCaixas = caixas * CUSTO_CAIXA_PAPELAO;
+  const custoTotal = custoInsumos + custoCaixas;
+  const custoPorCaixa = custoTotal / caixas;
+  const custoPorKg = custoPorCaixa / PESO_CAIXA;
+  const margem = ficha.precoVenda - custoPorCaixa;
+  const margemPct = (margem / ficha.precoVenda * 100);
+
+  const kgTotal = (caixas * PESO_CAIXA) + excedente;
+  const kgEntrou = ficha.insumos.reduce((s, ins) => {
+    return s + (parseFloat(document.getElementById('ins_' + ins.id)?.value) || 0);
+  }, 0);
+  const rendimento = kgEntrou > 0 ? ((kgTotal / kgEntrou) * 100).toFixed(1) : 0;
+
+  document.getElementById('prodResultado').style.display = 'block';
+  document.getElementById('prodCustoTotal').textContent = `R$ ${custoTotal.toFixed(2).replace('.',',')}`;
+  document.getElementById('prodCustoCaixa').textContent = `R$ ${custoPorCaixa.toFixed(2).replace('.',',')}`;
+  document.getElementById('prodCustoKg').textContent = `R$ ${custoPorKg.toFixed(2).replace('.',',')}`;
+  document.getElementById('prodPrecoVenda').textContent = `R$ ${ficha.precoVenda.toFixed(2).replace('.',',')}`;
+  document.getElementById('prodMargem').textContent = `R$ ${margem.toFixed(2).replace('.',',')}`;
+  document.getElementById('prodMargemPct').textContent = `${margemPct.toFixed(1)}%`;
+  document.getElementById('prodMargemPct').style.color = margemPct >= 30 ? '#2E7D32' : '#C62828';
+  document.getElementById('prodRendimento').textContent =
+    `Rendimento do lote: ${kgEntrou.toFixed(1)}kg de insumos → ${kgTotal.toFixed(1)}kg produzidos (${rendimento}%)${excedente > 0 ? ` • ${excedente}kg de excedente para próximo lote` : ''}`;
+}
+
+async function salvarProducao() {
+  const base = document.getElementById('prodBase').value;
+  const ficha = FICHAS[base];
+  const caixas = parseFloat(document.getElementById('prodCaixas').value) || 0;
+  const excedente = parseFloat(document.getElementById('prodExcedente').value) || 0;
+  const reaproveitado = parseFloat(document.getElementById('prodReaproveitado').value) || 0;
+  const responsavel = document.getElementById('prodResponsavel').value.trim();
+  const msgEl = document.getElementById('prodMsg');
+
+  if (caixas <= 0) { msgEl.textContent = 'Informe o número de caixas produzidas.'; return; }
+  if (!responsavel) { msgEl.textContent = 'Informe o responsável pela produção.'; return; }
+
+  const insumos = {};
+  let custoInsumos = 0;
+  ficha.insumos.forEach(ins => {
+    const qtd = parseFloat(document.getElementById('ins_' + ins.id)?.value) || 0;
+    insumos[ins.id] = { nome: ins.nome, qtd, unidade: ins.unidade, custoPorKg: ins.custoPorKg };
+    custoInsumos += qtd * ins.custoPorKg;
+  });
+
+  const custoCaixas = caixas * CUSTO_CAIXA_PAPELAO;
+  const custoTotal = custoInsumos + custoCaixas;
+  const custoPorCaixa = custoTotal / caixas;
+
+  const lote = {
+    base, nomeBase: ficha.nome,
+    data: new Date().toISOString(),
+    responsavel, insumos,
+    caixas, excedente, reaproveitado,
+    custoTotal, custoPorCaixa,
+    custoKg: custoPorCaixa / PESO_CAIXA,
+    margemBruta: ficha.precoVenda - custoPorCaixa,
+    margemPct: ((ficha.precoVenda - custoPorCaixa) / ficha.precoVenda * 100)
+  };
+
+  msgEl.textContent = 'Salvando...';
+  try {
+    await safeSet(`producao:${Date.now()}`, JSON.stringify(lote), true);
+    await registrarLog('Produção',
+      `${ficha.nome} — ${caixas}cx de 8kg — Custo R$ ${custoPorCaixa.toFixed(2).replace('.',',')} /cx`,
+      responsavel, 'Central');
+
+    msgEl.style.color = '#2E7D32';
+    msgEl.textContent = `✅ Produção salva! ${caixas} caixas de ${ficha.nome} — R$ ${custoPorCaixa.toFixed(2).replace('.',',')}/cx`;
+    document.getElementById('prodCaixas').value = 0;
+    document.getElementById('prodExcedente').value = 0;
+    document.getElementById('prodReaproveitado').value = 0;
+    document.getElementById('prodResponsavel').value = '';
+    document.getElementById('prodResultado').style.display = 'none';
+    renderInsumosProducao();
+    carregarHistoricoProducao();
+  } catch(e) {
+    msgEl.style.color = '#C62828';
+    msgEl.textContent = 'Erro ao salvar: ' + e.message;
+  }
+}
+
+async function carregarHistoricoProducao() {
+  const wrap = document.getElementById('producaoHistorico');
+  if (!wrap) return;
+  wrap.innerHTML = '<p class="small">Carregando...</p>';
+
+  let lotes = [];
+  try {
+    const list = await safeList('producao:', true);
+    if (list && list.keys) {
+      for (const k of list.keys) {
+        try {
+          const r = await safeGet(k, true);
+          if (r && r.value) lotes.push(JSON.parse(r.value));
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  lotes.sort((a,b) => new Date(b.data) - new Date(a.data));
+
+  if (lotes.length === 0) {
+    wrap.innerHTML = '<p class="small">Nenhuma produção registrada ainda.</p>';
+    return;
+  }
+
+  let html = `<table><thead><tr>
+    <th>Data</th><th>Base</th><th>Caixas</th>
+    <th style="text-align:right">Custo/cx</th>
+    <th style="text-align:right">Margem/cx</th>
+    <th style="text-align:right">Margem %</th>
+    <th>Responsável</th>
+  </tr></thead><tbody>`;
+
+  lotes.forEach((l, idx) => {
+    const bg = idx % 2 === 0 ? '#fff' : '#F9F6FF';
+    const corMargem = l.margemPct >= 35 ? '#2E7D32' : l.margemPct >= 25 ? '#F57F17' : '#C62828';
+    html += `<tr style="background:${bg}">
+      <td>${new Date(l.data).toLocaleDateString('pt-BR')}</td>
+      <td>${l.nomeBase}</td>
+      <td style="text-align:center">${l.caixas}cx${l.excedente > 0 ? ' +'+l.excedente+'kg' : ''}</td>
+      <td style="text-align:right">R$ ${l.custoPorCaixa.toFixed(2).replace('.',',')}</td>
+      <td style="text-align:right">R$ ${l.margemBruta.toFixed(2).replace('.',',')}</td>
+      <td style="text-align:right;font-weight:700;color:${corMargem}">${l.margemPct.toFixed(1)}%</td>
+      <td>${l.responsavel}</td>
+    </tr>`;
+  });
+
+  // Totais
+  const totalCaixas = lotes.reduce((s,l)=>s+l.caixas,0);
+  const mediaMargemPct = lotes.reduce((s,l)=>s+l.margemPct,0) / lotes.length;
+  const mediaCustoCaixa = lotes.reduce((s,l)=>s+l.custoPorCaixa,0) / lotes.length;
+  html += `<tr style="background:#EDE7F6;font-weight:700">
+    <td colspan="2">Média / Total</td>
+    <td style="text-align:center">${totalCaixas} caixas</td>
+    <td style="text-align:right">R$ ${mediaCustoCaixa.toFixed(2).replace('.',',')}</td>
+    <td></td>
+    <td style="text-align:right;color:#5B2D8E">${mediaMargemPct.toFixed(1)}%</td>
+    <td></td>
+  </tr>`;
+  html += `</tbody></table>`;
+  wrap.innerHTML = html;
 }
 
 // ─── LOG DE ATIVIDADES ────────────────────────────────────────────────────────
