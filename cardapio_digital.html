@@ -596,14 +596,16 @@ function selecionarLoja(id){
   document.getElementById('btn-confirmar-loja').disabled = false;
 }
 
-document.getElementById('btn-confirmar-loja').addEventListener('click', () => {
+function entrarNoCardapio(){
   if(!lojaSelecionada) return;
   document.getElementById('tela-loja').style.display = 'none';
   document.getElementById('app').style.display = 'block';
   document.getElementById('nome-loja-topo').textContent = lojaSelecionada.nome;
   montarAbas();
   montarCardapio();
-});
+}
+
+document.getElementById('btn-confirmar-loja').addEventListener('click', entrarNoCardapio);
 
 document.getElementById('btn-trocar-loja').addEventListener('click', () => {
   carrinho = [];
@@ -1036,11 +1038,30 @@ function enviarPedidoWhatsApp(){
 /* =========================================================
    INICIALIZAÇÃO
    ========================================================= */
+function normalizarTexto(texto){
+  return texto
+    .normalize('NFD').replace(/[\u0300-\u036f]/g, '') // remove acentos
+    .toLowerCase()
+    .replace(/açaí-se/gi, '')
+    .replace(/[^a-z0-9]/g, ''); // remove espaços e símbolos
+}
+
 async function iniciar(){
   try{
     await carregarDadosDoSupabase();
     if(CATEGORIAS.length > 0) categoriaAtiva = CATEGORIAS[0].id;
     montarListaLojas();
+
+    const parametros = new URLSearchParams(window.location.search);
+    const slugLoja = parametros.get('loja');
+    if(slugLoja){
+      const alvo = normalizarTexto(slugLoja);
+      const encontrada = LOJAS.find(l => normalizarTexto(l.nome).includes(alvo));
+      if(encontrada && encontrada.aberta !== false){
+        lojaSelecionada = encontrada;
+        entrarNoCardapio();
+      }
+    }
   } catch(err){
     document.getElementById('lista-lojas').innerHTML = `<p style="font-size:12.5px; color:var(--alerta); text-align:center; padding:20px 0;">Não foi possível carregar o cardápio agora. Verifique sua conexão e tente novamente.</p>`;
     console.error(err);
