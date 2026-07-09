@@ -144,6 +144,15 @@
       <div id="minimoAviso" class="hidden" style="background:#FFF8E1;border-left:3px solid #F57F17;padding:8px 12px;border-radius:4px;margin-top:12px;font-size:13px;color:#F57F17;font-weight:600">
         ⚠️ Valor mínimo de pedido: R$ 300,00. Total atual: <span id="totalAtual">R$ 0,00</span>
       </div>
+
+      <!-- CAMPO LIVRE -->
+      <div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:14px;margin-top:16px">
+        <div style="font-size:13px;font-weight:700;color:#F57F17;margin-bottom:8px">💬 Item não listado ou observação</div>
+        <textarea id="pedidoObservacao" rows="3" placeholder="Ex: Preciso de 2 caixas de açúcar demerara (não está na lista) • Entregar na segunda pela manhã • Qualquer observação para a franqueadora..."
+          style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #FFE082;border-radius:6px;font-family:Arial;resize:vertical"></textarea>
+        <p class="small" style="margin:4px 0 0;color:#888">Use este campo para solicitar itens que não estão no catálogo ou fazer observações sobre o pedido.</p>
+      </div>
+
       <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
         <button class="btn" id="btnEnviarPedido" onclick="submitOrder(false)">📋 Enviar pedido</button>
         <button class="btn" id="btnUrgencia" onclick="submitOrder(true)" style="background:#C62828;">🚨 PEDIDO URGÊNCIA</button>
@@ -165,6 +174,7 @@
       <button class="tab-btn" id="tabBtnRelatorios" onclick="switchAdminTab('relatorios')">📊 Relatórios</button>
       <button class="tab-btn" id="tabBtnBoletos" onclick="switchAdminTab('boletos')">💰 Boletos</button>
       <button class="tab-btn" id="tabBtnProducao" onclick="switchAdminTab('producao')">🏭 Produção</button>
+      <button class="tab-btn" id="tabBtnCompras" onclick="switchAdminTab('compras')">🛒 Lista de Compras</button>
       <button class="tab-btn" id="tabBtnLog" onclick="switchAdminTab('log')">📋 Log</button>
     </div>
 
@@ -591,6 +601,31 @@
       <div id="producaoHistorico"></div>
     </div>
 
+    <!-- ABA: LISTA DE COMPRAS -->
+    <div id="tabCompras" class="hidden">
+      <p class="small">Selecione um fornecedor para ver os itens com estoque abaixo do mínimo. O sistema calcula automaticamente quanto pedir.</p>
+
+      <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap;align-items:flex-end">
+        <div class="field" style="flex:1;min-width:200px;margin:0">
+          <label>Fornecedor</label>
+          <select id="comprasFornecedor" onchange="renderListaCompras()" style="font-size:14px">
+            <option value="">Selecione um fornecedor...</option>
+          </select>
+        </div>
+        <div class="field" style="flex:0;margin:0">
+          <label>Mostrar</label>
+          <select id="comprasFiltro" onchange="renderListaCompras()">
+            <option value="criticos">Somente críticos e zerados</option>
+            <option value="todos">Todos os itens do fornecedor</option>
+          </select>
+        </div>
+        <button class="btn btn-secondary" onclick="imprimirListaCompras()">🖨️ Imprimir lista</button>
+      </div>
+
+      <div id="comprasResumo"></div>
+      <div id="comprasTabela"></div>
+    </div>
+
     <!-- ABA: LOG DE ATIVIDADES -->
     <div id="tabLog" class="hidden">
       <p class="small">Registro de todas as ações realizadas no sistema — entradas, saídas, pedidos, despachos e inventários.</p>
@@ -640,7 +675,7 @@ SENHAS["Franqueadora (Admin)"] = "acaise2026admin";
 SENHAS["INVENTÁRIO"] = "inventario2026";
 
 // Catálogo de exemplo — estrutura de 7 categorias (substituir pelos 123 itens reais)
-const CATALOGO = {"Produtos Acabados": [{"id": "PA86", "cod": 86, "nome": "Açaí Art 07Kg", "preco": 182.0, "estoqueCentral": 0}, {"id": "PA88", "cod": 88, "nome": "Açaí Art 08Kg", "preco": 208.0, "estoqueCentral": 0}, {"id": "PA245", "cod": 245, "nome": "Açaí Art 10Kg", "preco": 230.4, "estoqueCentral": 0}, {"id": "PA89", "cod": 89, "nome": "Açaí Mel 07Kg", "preco": 161.28, "estoqueCentral": 0}, {"id": "PA246", "cod": 246, "nome": "Açaí Mel 08Kg", "preco": 184.32, "estoqueCentral": 0}, {"id": "PA91", "cod": 91, "nome": "Açaí Mel 10Kg", "preco": 230.4, "estoqueCentral": 0}, {"id": "PA92", "cod": 92, "nome": "Açaí Puro Barra", "preco": 115.0, "estoqueCentral": 0}, {"id": "PA92X", "cod": "92X", "nome": "Açaí Puro Barra X%", "preco": 115.0, "estoqueCentral": 0}, {"id": "PA96", "cod": 96, "nome": "Açaí Pote 1,5Lt", "preco": 28.0, "estoqueCentral": 0}, {"id": "PA97", "cod": 97, "nome": "Açaí Pote 1,5Lt Nuts", "preco": 30.0, "estoqueCentral": 0}, {"id": "PA93", "cod": 93, "nome": "Polpa Açaí 10X100g", "preco": 31.0, "estoqueCentral": 0}, {"id": "PA94", "cod": 94, "nome": "Polpa Açaí 4X100g", "preco": 12.0, "estoqueCentral": 0}, {"id": "PA196", "cod": 196, "nome": "Polpa Coco Power c/10", "preco": 20.0, "estoqueCentral": 0}, {"id": "PA205", "cod": 205, "nome": "Polpa de Cajá c/10", "preco": 24.0, "estoqueCentral": 0}, {"id": "PA206", "cod": 206, "nome": "Polpa de Acerola c/10", "preco": 20.0, "estoqueCentral": 0}, {"id": "PA207", "cod": 207, "nome": "Polpa de Goiaba c/10", "preco": 20.0, "estoqueCentral": 0}, {"id": "PA208", "cod": 208, "nome": "Polpa de Manga c/10", "preco": 20.0, "estoqueCentral": 0}, {"id": "PA209", "cod": 209, "nome": "Polpa de Uva c/10", "preco": 20.0, "estoqueCentral": 0}, {"id": "PA95", "cod": 95, "nome": "Creme de Cupuaçú 5Lt", "preco": 80.0, "estoqueCentral": 0}, {"id": "PA262", "cod": 262, "nome": "Creme de Morango", "preco": 80.0, "estoqueCentral": 0}, {"id": "PA263", "cod": 263, "nome": "Creme de Ninho", "preco": 80.0, "estoqueCentral": 0}, {"id": "PA264", "cod": 264, "nome": "Creme de Paçoca", "preco": 80.0, "estoqueCentral": 0}, {"id": "PA265", "cod": 265, "nome": "Creme de Tapioca", "preco": 80.0, "estoqueCentral": 0}, {"id": "PA98", "cod": 98, "nome": "Picolé c/24", "preco": 120.0, "estoqueCentral": 0}, {"id": "PA192", "cod": 192, "nome": "Barrinhas Vitanuts c/12", "preco": 114.0, "estoqueCentral": 0}], "Proteínas e Molhos": [{"id": "PROD213", "cod": 213, "nome": "Barbecue", "preco": 18.0, "estoqueCentral": 0}, {"id": "PROD259", "cod": 259, "nome": "Camarão Porção c/05", "preco": 35.0, "estoqueCentral": 0}, {"id": "PROD270", "cod": 270, "nome": "Carne Desfiada 100g c/05", "preco": 26.45, "estoqueCentral": 0}, {"id": "PROD285", "cod": 285, "nome": "Carne Grelhada 100g c/05", "preco": 38.8, "estoqueCentral": 0}, {"id": "PROD286", "cod": 286, "nome": "Carne Tapioca 50g c/05", "preco": 13.8, "estoqueCentral": 0}, {"id": "PROD250", "cod": 250, "nome": "Cebola em Conservas", "preco": 10.0, "estoqueCentral": 0}, {"id": "PROD230", "cod": 230, "nome": "Contra Filé 100g c/05", "preco": 38.8, "estoqueCentral": 0}, {"id": "PROD284", "cod": 284, "nome": "Croutons", "preco": 5.0, "estoqueCentral": 0}, {"id": "PROD233", "cod": 233, "nome": "Disco Wrap 80g c/10", "preco": 20.0, "estoqueCentral": 0}, {"id": "PROD232", "cod": 232, "nome": "Farofa de Bacon", "preco": 21.0, "estoqueCentral": 0}, {"id": "PROD293", "cod": 293, "nome": "Filé Mingnon c/05", "preco": 51.17, "estoqueCentral": 0}, {"id": "PROD128", "cod": 128, "nome": "Frango Desfiado 70g c/05", "preco": 19.3, "estoqueCentral": 0}, {"id": "PROD235", "cod": 235, "nome": "Frango Grelhado 100g", "preco": 20.8, "estoqueCentral": 0}, {"id": "PROD287", "cod": 287, "nome": "Frango Tapioca 50g", "preco": 13.8, "estoqueCentral": 0}, {"id": "PROD231", "cod": 231, "nome": "Molho Mostarda e Mel 500g", "preco": 16.0, "estoqueCentral": 0}, {"id": "PROD240", "cod": 240, "nome": "Molho Pesto 500g", "preco": 14.0, "estoqueCentral": 0}, {"id": "PROD229", "cod": 229, "nome": "Molho de Queijos 500g", "preco": 15.0, "estoqueCentral": 0}, {"id": "PROD131", "cod": 131, "nome": "Parmesão Fat", "preco": 27.0, "estoqueCentral": 0}, {"id": "PROD237", "cod": 237, "nome": "Pasta de Gorgonzola 500g", "preco": 25.0, "estoqueCentral": 0}, {"id": "PROD238", "cod": 238, "nome": "Pasta de Ricota 500g", "preco": 24.0, "estoqueCentral": 0}, {"id": "PROD239", "cod": 239, "nome": "Pão Ciabata", "preco": 38.5, "estoqueCentral": 0}, {"id": "PROD280", "cod": 280, "nome": "Queijo de Coalho 500g", "preco": 26.5, "estoqueCentral": 0}], "Acompanhamentos": [{"id": "AC47", "cod": 47, "nome": "Bananas Prata", "preco": 0.5, "estoqueCentral": 0}, {"id": "AC48", "cod": 48, "nome": "Morango Bdj", "preco": 12.0, "estoqueCentral": 0}, {"id": "AC50", "cod": 50, "nome": "Uva Cx", "preco": 12.0, "estoqueCentral": 0}, {"id": "AC51", "cod": 51, "nome": "Abacaxi", "preco": 7.5, "estoqueCentral": 0}, {"id": "AC52", "cod": 52, "nome": "Kiwi Uni", "preco": 4.2, "estoqueCentral": 0}, {"id": "AC55", "cod": 55, "nome": "Manga Tomy", "preco": 4.2, "estoqueCentral": 0}, {"id": "AC56", "cod": 56, "nome": "Mel 1Lt", "preco": 13.0, "estoqueCentral": 0}, {"id": "AC57", "cod": 57, "nome": "Castanha de Caju", "preco": 20.0, "estoqueCentral": 0}, {"id": "AC58", "cod": 58, "nome": "Paçoca Pote", "preco": 20.0, "estoqueCentral": 0}, {"id": "AC60", "cod": 60, "nome": "Castanha do Pará 200g", "preco": 44.0, "estoqueCentral": 0}, {"id": "AC61", "cod": 61, "nome": "Leite Condensado Uni", "preco": 7.3, "estoqueCentral": 0}, {"id": "AC62", "cod": 62, "nome": "Leite em Pó 200g", "preco": 8.3, "estoqueCentral": 0}, {"id": "AC64", "cod": 64, "nome": "Granola Tradicional 30g", "preco": 1.31, "estoqueCentral": 0}, {"id": "AC65", "cod": 65, "nome": "Granola Pct 1,5Kg", "preco": 53.0, "estoqueCentral": 0}, {"id": "AC67", "cod": 67, "nome": "Whey Protein c/30", "preco": 115.0, "estoqueCentral": 0}, {"id": "AC191", "cod": 191, "nome": "Whey Protein 1Kg", "preco": 170.0, "estoqueCentral": 0}, {"id": "AC68", "cod": 68, "nome": "Pasta Nuts Côco 450g", "preco": 40.0, "estoqueCentral": 0}, {"id": "AC69", "cod": 69, "nome": "Pasta Choconuts 450g", "preco": 40.0, "estoqueCentral": 0}, {"id": "AC70", "cod": 70, "nome": "Pasta Amend. Croc. 450g", "preco": 30.0, "estoqueCentral": 0}, {"id": "AC71", "cod": 71, "nome": "Coquinho Tia Sônia", "preco": 19.75, "estoqueCentral": 0}, {"id": "AC73", "cod": 73, "nome": "Farinha de Tapioca", "preco": 8.0, "estoqueCentral": 0}, {"id": "AC74", "cod": 74, "nome": "Xerém de Amendoim", "preco": 16.5, "estoqueCentral": 0}, {"id": "AC76", "cod": 76, "nome": "Amendoim", "preco": 18.0, "estoqueCentral": 0}, {"id": "AC78", "cod": 78, "nome": "Adoçante Stevia", "preco": 9.0, "estoqueCentral": 0}], "Embalagens": [{"id": "EMB1", "cod": 1, "nome": "Rolo Filme Gde", "preco": 95.0, "estoqueCentral": 0}, {"id": "EMB2", "cod": 2, "nome": "Rolo Filme Pq", "preco": 40.0, "estoqueCentral": 0}, {"id": "EMB3", "cod": 3, "nome": "Saco Talher c/100", "preco": 21.0, "estoqueCentral": 0}, {"id": "EMB4", "cod": 4, "nome": "Copo + Tampa Molho c/50", "preco": 19.0, "estoqueCentral": 0}, {"id": "EMB5", "cod": 5, "nome": "Copo Térm. 300ml c/25", "preco": 20.0, "estoqueCentral": 0}, {"id": "EMB6", "cod": 6, "nome": "Copo Térm. 500ml c/25", "preco": 23.9, "estoqueCentral": 0}, {"id": "EMB7", "cod": 7, "nome": "Copo Térm. 700ml c/15", "preco": 20.5, "estoqueCentral": 0}, {"id": "EMB9", "cod": 9, "nome": "Copo Pap. 240ml c/37", "preco": 26.64, "estoqueCentral": 0}, {"id": "EMB10", "cod": 10, "nome": "Copo Pap. 300ml c/34", "preco": 25.16, "estoqueCentral": 0}, {"id": "EMB11", "cod": 11, "nome": "Copo Pap. 500ml c/45", "preco": 40.5, "estoqueCentral": 0}, {"id": "EMB13", "cod": 13, "nome": "Copo Blendse 300ml c/30", "preco": 29.0, "estoqueCentral": 0}, {"id": "EMB14", "cod": 14, "nome": "Copo Smothie 400ml c/30", "preco": 26.0, "estoqueCentral": 0}, {"id": "EMB15", "cod": 15, "nome": "Copo Blendse 500ml c/30", "preco": 37.0, "estoqueCentral": 0}, {"id": "EMB16", "cod": 16, "nome": "Tampa 300ml c/60", "preco": 13.5, "estoqueCentral": 0}, {"id": "EMB17", "cod": 17, "nome": "Tampa 500ml c/60", "preco": 20.5, "estoqueCentral": 0}, {"id": "EMB22", "cod": 22, "nome": "Copo Acompa. c/100", "preco": 10.5, "estoqueCentral": 0}, {"id": "EMB23", "cod": 23, "nome": "Tampa Acompa. c/100", "preco": 11.5, "estoqueCentral": 0}, {"id": "EMB24", "cod": 24, "nome": "Saco Kraft Uni c/100", "preco": 59.0, "estoqueCentral": 0}, {"id": "EMB25", "cod": 25, "nome": "Durex c/10", "preco": 18.5, "estoqueCentral": 0}, {"id": "EMB27", "cod": 27, "nome": "Sacola P c/100", "preco": 12.5, "estoqueCentral": 0}, {"id": "EMB33", "cod": 33, "nome": "Bobina Picotada", "preco": 30.0, "estoqueCentral": 0}, {"id": "EMB8", "cod": 8, "nome": "Pote e Tampa 80ml c/75", "preco": 0, "estoqueCentral": 0}, {"id": "EMB194", "cod": 194, "nome": "Tampa 80ml c/75", "preco": 28.12, "estoqueCentral": 0}, {"id": "EMB195", "cod": 195, "nome": "Tampa Smothie 400 c/75", "preco": 27.4, "estoqueCentral": 0}, {"id": "EMB202", "cod": 202, "nome": "Tampa Copo 240 c/50", "preco": 30.0, "estoqueCentral": 0}, {"id": "EMB223", "cod": 223, "nome": "Garrafinha Suco 300ml c/10", "preco": 15.0, "estoqueCentral": 0}, {"id": "EMB234", "cod": 234, "nome": "Bowl da Salada c/10", "preco": 23.0, "estoqueCentral": 0}, {"id": "EMB241", "cod": 241, "nome": "Papel Mant. Lam. c/100", "preco": 38.0, "estoqueCentral": 0}, {"id": "EMB288", "cod": 288, "nome": "T. Copo Pap 300", "preco": 26.0, "estoqueCentral": 0}, {"id": "EMB290", "cod": 290, "nome": "T. Copo Pap. 500 c/75", "preco": 28.0, "estoqueCentral": 0}], "Descartáveis": [{"id": "DESC34", "cod": 34, "nome": "Toucas Desc. c/100", "preco": 12.0, "estoqueCentral": 0}, {"id": "DESC35", "cod": 35, "nome": "Luvas c/100", "preco": 29.5, "estoqueCentral": 0}, {"id": "DESC36", "cod": 36, "nome": "Copo Desc. 180ml c/100", "preco": 5.0, "estoqueCentral": 0}, {"id": "DESC37", "cod": 37, "nome": "Copo 50ml c/100", "preco": 3.5, "estoqueCentral": 0}, {"id": "DESC38", "cod": 38, "nome": "Canudo p/ Smothie c/100", "preco": 7.0, "estoqueCentral": 0}, {"id": "DESC39", "cod": 39, "nome": "Canudo p/ Suco/Coco c/100", "preco": 8.5, "estoqueCentral": 0}, {"id": "DESC40", "cod": 40, "nome": "Colher Média c/50", "preco": 7.9, "estoqueCentral": 0}, {"id": "DESC41", "cod": 41, "nome": "Colher Longa c/50", "preco": 10.9, "estoqueCentral": 0}, {"id": "DESC43", "cod": 43, "nome": "Guardanapos c/250", "preco": 220.0, "estoqueCentral": 0}, {"id": "DESC43X", "cod": "43X", "nome": "Guardanapos Cx", "preco": 220.0, "estoqueCentral": 0}, {"id": "DESC46", "cod": 46, "nome": "Papel Toalha Interf. c/3", "preco": 17.5, "estoqueCentral": 0}, {"id": "DESC197", "cod": 197, "nome": "Papel Manteiga Perso. c/100", "preco": 20.0, "estoqueCentral": 0}, {"id": "DESC200", "cod": 200, "nome": "Base Copo c/50", "preco": 40.5, "estoqueCentral": 0}, {"id": "DESC214", "cod": 214, "nome": "Papel Mant. Metálico", "preco": 41.5, "estoqueCentral": 0}, {"id": "DESC215", "cod": 215, "nome": "Guardanapo Pct", "preco": 4.0, "estoqueCentral": 0}, {"id": "DESC248", "cod": 248, "nome": "Faca Plástico", "preco": 7.0, "estoqueCentral": 0}, {"id": "DESC249", "cod": 249, "nome": "Garfo Plástico", "preco": 8.3, "estoqueCentral": 0}, {"id": "DESC291", "cod": 291, "nome": "Colher Evento c/100", "preco": 4.5, "estoqueCentral": 0}], "Bebidas": [{"id": "BEB142", "cod": 142, "nome": "Água Mineral 500", "preco": 1.15, "estoqueCentral": 0}, {"id": "BEB143", "cod": 143, "nome": "Água Min. c/ Gás 500", "preco": 2.4, "estoqueCentral": 0}, {"id": "BEB146", "cod": 146, "nome": "Coca Lata", "preco": 4.15, "estoqueCentral": 0}, {"id": "BEB147", "cod": 147, "nome": "Coca Zero Lata", "preco": 4.15, "estoqueCentral": 0}, {"id": "BEB151", "cod": 151, "nome": "Redbull", "preco": 9.49, "estoqueCentral": 0}], "Diversos": [{"id": "DIV193", "cod": 193, "nome": "Camisas Fardamento", "preco": 50.0, "estoqueCentral": 0}, {"id": "DIV254", "cod": 254, "nome": "Gás Maçarico", "preco": 17.0, "estoqueCentral": 0}, {"id": "DIV275", "cod": 275, "nome": "Cardápio Açaí-Se", "preco": 20.0, "estoqueCentral": 0}, {"id": "DIV281", "cod": 281, "nome": "Prod Cardápio", "preco": 20.0, "estoqueCentral": 0}, {"id": "DIV283", "cod": 283, "nome": "Boné", "preco": 30.0, "estoqueCentral": 0}], "Produção / Insumos": [{"id": "PROD102", "cod": 102, "nome": "Açúcar Cristal 1Kg", "preco": 4.5, "estoqueCentral": 0}, {"id": "PROD103", "cod": 103, "nome": "Tomate Rasteiro", "preco": 12.0, "estoqueCentral": 0}, {"id": "PROD114", "cod": 114, "nome": "Milho Verde", "preco": 5.5, "estoqueCentral": 0}, {"id": "PROD115", "cod": 115, "nome": "Cenoura", "preco": 9.5, "estoqueCentral": 0}, {"id": "PROD117", "cod": 117, "nome": "Hortelã", "preco": 4.5, "estoqueCentral": 0}, {"id": "PROD135", "cod": 135, "nome": "Pepino Japa", "preco": 7.99, "estoqueCentral": 0}, {"id": "PROD217", "cod": 217, "nome": "Óleo Composto", "preco": 16.0, "estoqueCentral": 0}, {"id": "PROD227", "cod": 227, "nome": "Batata Chips 200g", "preco": 16.5, "estoqueCentral": 0}, {"id": "PROD236", "cod": 236, "nome": "Penne 50g c/05", "preco": 4.0, "estoqueCentral": 0}, {"id": "PROD273", "cod": 273, "nome": "Goma de Tapioca 500g", "preco": 6.3, "estoqueCentral": 0}, {"id": "PROD292", "cod": 292, "nome": "Sal", "preco": 3.0, "estoqueCentral": 0}]};
+const CATALOGO = {"Produtos Acabados": [{"id": "PA86", "cod": 86, "nome": "Açaí Art 07Kg", "preco": 182.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 9.1}, {"id": "PA88", "cod": 88, "nome": "Açaí Art 08Kg", "preco": 208.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 2.9}, {"id": "PA245", "cod": 245, "nome": "Açaí Art 10Kg", "preco": 230.4, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 85.8}, {"id": "PA89", "cod": 89, "nome": "Açaí Mel 07Kg", "preco": 161.28, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 3.3}, {"id": "PA246", "cod": 246, "nome": "Açaí Mel 08Kg", "preco": 184.32, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 31.6}, {"id": "PA91", "cod": 91, "nome": "Açaí Mel 10Kg", "preco": 230.4, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 0.3}, {"id": "PA92", "cod": 92, "nome": "Açaí Puro Barra", "preco": 115.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 8.1}, {"id": "PA92X", "cod": "92X", "nome": "Açaí Puro Barra X%", "preco": 115.0, "estoqueCentral": 0, "fornecedor": "—", "estoqueMin": 0}, {"id": "PA96", "cod": 96, "nome": "Açaí Pote 1,5Lt", "preco": 28.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 167.6}, {"id": "PA97", "cod": 97, "nome": "Açaí Pote 1,5Lt Nuts", "preco": 30.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 30.7}, {"id": "PA93", "cod": 93, "nome": "Polpa Açaí 10X100g", "preco": 31.0, "estoqueCentral": 0, "fornecedor": "Casa do Açaí", "estoqueMin": 15.6}, {"id": "PA94", "cod": 94, "nome": "Polpa Açaí 4X100g", "preco": 12.0, "estoqueCentral": 0, "fornecedor": "Oca do Açaí", "estoqueMin": 4.4}, {"id": "PA196", "cod": 196, "nome": "Polpa Coco Power c/10", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "CDA Alimentos", "estoqueMin": 0.3}, {"id": "PA205", "cod": 205, "nome": "Polpa de Cajá c/10", "preco": 24.0, "estoqueCentral": 0, "fornecedor": "CDA Alimentos", "estoqueMin": 1.2}, {"id": "PA206", "cod": 206, "nome": "Polpa de Acerola c/10", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "CDA Alimentos", "estoqueMin": 0.9}, {"id": "PA207", "cod": 207, "nome": "Polpa de Goiaba c/10", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "CDA Alimentos", "estoqueMin": 0.5}, {"id": "PA208", "cod": 208, "nome": "Polpa de Manga c/10", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "CDA Alimentos", "estoqueMin": 0.9}, {"id": "PA209", "cod": 209, "nome": "Polpa de Uva c/10", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "CDA Alimentos", "estoqueMin": 0.4}, {"id": "PA95", "cod": 95, "nome": "Creme de Cupuaçú 5Lt", "preco": 80.0, "estoqueCentral": 0, "fornecedor": "Oca do Açaí", "estoqueMin": 6.9}, {"id": "PA262", "cod": 262, "nome": "Creme de Morango", "preco": 80.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 2.7}, {"id": "PA263", "cod": 263, "nome": "Creme de Ninho", "preco": 80.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 3.8}, {"id": "PA264", "cod": 264, "nome": "Creme de Paçoca", "preco": 80.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 1.5}, {"id": "PA265", "cod": 265, "nome": "Creme de Tapioca", "preco": 80.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 0.9}, {"id": "PA98", "cod": 98, "nome": "Picolé c/24", "preco": 120.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 1.9}, {"id": "PA192", "cod": 192, "nome": "Barrinhas Vitanuts c/12", "preco": 114.0, "estoqueCentral": 0, "fornecedor": "Vitanuts", "estoqueMin": 1.6}], "Proteínas e Molhos": [{"id": "PROD213", "cod": 213, "nome": "Barbecue", "preco": 18.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.6}, {"id": "PROD259", "cod": 259, "nome": "Camarão Porção c/05", "preco": 35.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 1.9}, {"id": "PROD270", "cod": 270, "nome": "Carne Desfiada 100g c/05", "preco": 26.45, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 5.1}, {"id": "PROD285", "cod": 285, "nome": "Carne Grelhada 100g c/05", "preco": 38.8, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 1.1}, {"id": "PROD286", "cod": 286, "nome": "Carne Tapioca 50g c/05", "preco": 13.8, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 1.5}, {"id": "PROD250", "cod": 250, "nome": "Cebola em Conservas", "preco": 10.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 4.6}, {"id": "PROD230", "cod": 230, "nome": "Contra Filé 100g c/05", "preco": 38.8, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 2.7}, {"id": "PROD284", "cod": 284, "nome": "Croutons", "preco": 5.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 2.0}, {"id": "PROD233", "cod": 233, "nome": "Disco Wrap 80g c/10", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 9.1}, {"id": "PROD232", "cod": 232, "nome": "Farofa de Bacon", "preco": 21.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 4.7}, {"id": "PROD293", "cod": 293, "nome": "Filé Mingnon c/05", "preco": 51.17, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 3.1}, {"id": "PROD128", "cod": 128, "nome": "Frango Desfiado 70g c/05", "preco": 19.3, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 12.1}, {"id": "PROD235", "cod": 235, "nome": "Frango Grelhado 100g", "preco": 20.8, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 11.0}, {"id": "PROD287", "cod": 287, "nome": "Frango Tapioca 50g", "preco": 13.8, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 0.9}, {"id": "PROD231", "cod": 231, "nome": "Molho Mostarda e Mel 500g", "preco": 16.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 5.5}, {"id": "PROD240", "cod": 240, "nome": "Molho Pesto 500g", "preco": 14.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 2.5}, {"id": "PROD229", "cod": 229, "nome": "Molho de Queijos 500g", "preco": 15.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 5.2}, {"id": "PROD131", "cod": 131, "nome": "Parmesão Fat", "preco": 27.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}, {"id": "PROD237", "cod": 237, "nome": "Pasta de Gorgonzola 500g", "preco": 25.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 2.8}, {"id": "PROD238", "cod": 238, "nome": "Pasta de Ricota 500g", "preco": 24.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 2.9}, {"id": "PROD239", "cod": 239, "nome": "Pão Ciabata", "preco": 38.5, "estoqueCentral": 0, "fornecedor": "Parque do Trigo", "estoqueMin": 4.9}, {"id": "PROD280", "cod": 280, "nome": "Queijo de Coalho 500g", "preco": 26.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 4.3}], "Acompanhamentos": [{"id": "AC47", "cod": 47, "nome": "Bananas Prata", "preco": 0.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 570.0}, {"id": "AC48", "cod": 48, "nome": "Morango Bdj", "preco": 12.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 16.1}, {"id": "AC50", "cod": 50, "nome": "Uva Cx", "preco": 12.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.9}, {"id": "AC51", "cod": 51, "nome": "Abacaxi", "preco": 7.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 2.9}, {"id": "AC52", "cod": 52, "nome": "Kiwi Uni", "preco": 4.2, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.6}, {"id": "AC55", "cod": 55, "nome": "Manga Tomy", "preco": 4.2, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 3.2}, {"id": "AC56", "cod": 56, "nome": "Mel 1Lt", "preco": 13.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 2.1}, {"id": "AC57", "cod": 57, "nome": "Castanha de Caju", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.0}, {"id": "AC58", "cod": 58, "nome": "Paçoca Pote", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 8.2}, {"id": "AC60", "cod": 60, "nome": "Castanha do Pará 200g", "preco": 44.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.5}, {"id": "AC61", "cod": 61, "nome": "Leite Condensado Uni", "preco": 7.3, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 30.3}, {"id": "AC62", "cod": 62, "nome": "Leite em Pó 200g", "preco": 8.3, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 49.6}, {"id": "AC64", "cod": 64, "nome": "Granola Tradicional 30g", "preco": 1.31, "estoqueCentral": 0, "fornecedor": "Tia Sônia", "estoqueMin": 836.5}, {"id": "AC65", "cod": 65, "nome": "Granola Pct 1,5Kg", "preco": 53.0, "estoqueCentral": 0, "fornecedor": "Tia Sônia", "estoqueMin": 15.0}, {"id": "AC67", "cod": 67, "nome": "Whey Protein c/30", "preco": 115.0, "estoqueCentral": 0, "fornecedor": "Pure Suplementos", "estoqueMin": 0.1}, {"id": "AC191", "cod": 191, "nome": "Whey Protein 1Kg", "preco": 170.0, "estoqueCentral": 0, "fornecedor": "Pure Suplementos", "estoqueMin": 2.0}, {"id": "AC68", "cod": 68, "nome": "Pasta Nuts Côco 450g", "preco": 40.0, "estoqueCentral": 0, "fornecedor": "Vitanuts", "estoqueMin": 5.3}, {"id": "AC69", "cod": 69, "nome": "Pasta Choconuts 450g", "preco": 40.0, "estoqueCentral": 0, "fornecedor": "Vitanuts", "estoqueMin": 1.0}, {"id": "AC70", "cod": 70, "nome": "Pasta Amend. Croc. 450g", "preco": 30.0, "estoqueCentral": 0, "fornecedor": "Vitanuts", "estoqueMin": 4.7}, {"id": "AC71", "cod": 71, "nome": "Coquinho Tia Sônia", "preco": 19.75, "estoqueCentral": 0, "fornecedor": "Tia Sônia", "estoqueMin": 7.8}, {"id": "AC73", "cod": 73, "nome": "Farinha de Tapioca", "preco": 8.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 6.5}, {"id": "AC74", "cod": 74, "nome": "Xerém de Amendoim", "preco": 16.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 4.3}, {"id": "AC76", "cod": 76, "nome": "Amendoim", "preco": 18.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.7}, {"id": "AC78", "cod": 78, "nome": "Adoçante Stevia", "preco": 9.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}], "Embalagens": [{"id": "EMB1", "cod": 1, "nome": "Rolo Filme Gde", "preco": 95.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.6}, {"id": "EMB2", "cod": 2, "nome": "Rolo Filme Pq", "preco": 40.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}, {"id": "EMB3", "cod": 3, "nome": "Saco Talher c/100", "preco": 21.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}, {"id": "EMB4", "cod": 4, "nome": "Copo + Tampa Molho c/50", "preco": 19.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 3.9}, {"id": "EMB5", "cod": 5, "nome": "Copo Térm. 300ml c/25", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 19.0}, {"id": "EMB6", "cod": 6, "nome": "Copo Térm. 500ml c/25", "preco": 23.9, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 34.5}, {"id": "EMB7", "cod": 7, "nome": "Copo Térm. 700ml c/15", "preco": 20.5, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 8.8}, {"id": "EMB9", "cod": 9, "nome": "Copo Pap. 240ml c/37", "preco": 26.64, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 11.3}, {"id": "EMB10", "cod": 10, "nome": "Copo Pap. 300ml c/34", "preco": 25.16, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 14.9}, {"id": "EMB11", "cod": 11, "nome": "Copo Pap. 500ml c/45", "preco": 40.5, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 4.4}, {"id": "EMB13", "cod": 13, "nome": "Copo Blendse 300ml c/30", "preco": 29.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 8.7}, {"id": "EMB14", "cod": 14, "nome": "Copo Smothie 400ml c/30", "preco": 26.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 12.6}, {"id": "EMB15", "cod": 15, "nome": "Copo Blendse 500ml c/30", "preco": 37.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 3.3}, {"id": "EMB16", "cod": 16, "nome": "Tampa 300ml c/60", "preco": 13.5, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 7.7}, {"id": "EMB17", "cod": 17, "nome": "Tampa 500ml c/60", "preco": 20.5, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 16.8}, {"id": "EMB22", "cod": 22, "nome": "Copo Acompa. c/100", "preco": 10.5, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 17.9}, {"id": "EMB23", "cod": 23, "nome": "Tampa Acompa. c/100", "preco": 11.5, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 12.9}, {"id": "EMB24", "cod": 24, "nome": "Saco Kraft Uni c/100", "preco": 59.0, "estoqueCentral": 0, "fornecedor": "Sopapel", "estoqueMin": 15.4}, {"id": "EMB25", "cod": 25, "nome": "Durex c/10", "preco": 18.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.3}, {"id": "EMB27", "cod": 27, "nome": "Sacola P c/100", "preco": 12.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.4}, {"id": "EMB33", "cod": 33, "nome": "Bobina Picotada", "preco": 30.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}, {"id": "EMB8", "cod": 8, "nome": "Pote e Tampa 80ml c/75", "preco": 0, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 2.5}, {"id": "EMB194", "cod": 194, "nome": "Tampa 80ml c/75", "preco": 28.12, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 0.5}, {"id": "EMB195", "cod": 195, "nome": "Tampa Smothie 400 c/75", "preco": 27.4, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 5.2}, {"id": "EMB202", "cod": 202, "nome": "Tampa Copo 240 c/50", "preco": 30.0, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 0.2}, {"id": "EMB223", "cod": 223, "nome": "Garrafinha Suco 300ml c/10", "preco": 15.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 3.0}, {"id": "EMB234", "cod": 234, "nome": "Bowl da Salada c/10", "preco": 23.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 2.0}, {"id": "EMB241", "cod": 241, "nome": "Papel Mant. Lam. c/100", "preco": 38.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 0.3}, {"id": "EMB288", "cod": 288, "nome": "T. Copo Pap 300", "preco": 26.0, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 0.1}, {"id": "EMB290", "cod": 290, "nome": "T. Copo Pap. 500 c/75", "preco": 28.0, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 0.1}], "Descartáveis": [{"id": "DESC34", "cod": 34, "nome": "Toucas Desc. c/100", "preco": 12.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.3}, {"id": "DESC35", "cod": 35, "nome": "Luvas c/100", "preco": 29.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.7}, {"id": "DESC36", "cod": 36, "nome": "Copo Desc. 180ml c/100", "preco": 5.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.2}, {"id": "DESC37", "cod": 37, "nome": "Copo 50ml c/100", "preco": 3.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.3}, {"id": "DESC38", "cod": 38, "nome": "Canudo p/ Smothie c/100", "preco": 7.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 3.9}, {"id": "DESC39", "cod": 39, "nome": "Canudo p/ Suco/Coco c/100", "preco": 8.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}, {"id": "DESC40", "cod": 40, "nome": "Colher Média c/50", "preco": 7.9, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 44.1}, {"id": "DESC41", "cod": 41, "nome": "Colher Longa c/50", "preco": 10.9, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 8.1}, {"id": "DESC43", "cod": 43, "nome": "Guardanapos c/250", "preco": 220.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 2.4}, {"id": "DESC43X", "cod": "43X", "nome": "Guardanapos Cx", "preco": 220.0, "estoqueCentral": 0, "fornecedor": "—", "estoqueMin": 0}, {"id": "DESC46", "cod": 46, "nome": "Papel Toalha Interf. c/3", "preco": 17.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 2.7}, {"id": "DESC197", "cod": 197, "nome": "Papel Manteiga Perso. c/100", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "Sopapel", "estoqueMin": 0.6}, {"id": "DESC200", "cod": 200, "nome": "Base Copo c/50", "preco": 40.5, "estoqueCentral": 0, "fornecedor": "Mercado Livre", "estoqueMin": 2.3}, {"id": "DESC214", "cod": 214, "nome": "Papel Mant. Metálico", "preco": 41.5, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 0.1}, {"id": "DESC215", "cod": 215, "nome": "Guardanapo Pct", "preco": 4.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.3}, {"id": "DESC248", "cod": 248, "nome": "Faca Plástico", "preco": 7.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.3}, {"id": "DESC249", "cod": 249, "nome": "Garfo Plástico", "preco": 8.3, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.3}, {"id": "DESC291", "cod": 291, "nome": "Colher Evento c/100", "preco": 4.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.2}], "Bebidas": [{"id": "BEB142", "cod": 142, "nome": "Água Mineral 500", "preco": 1.15, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 45.0}, {"id": "BEB143", "cod": 143, "nome": "Água Min. c/ Gás 500", "preco": 2.4, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 10.1}, {"id": "BEB146", "cod": 146, "nome": "Coca Lata", "preco": 4.15, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 3.7}, {"id": "BEB147", "cod": 147, "nome": "Coca Zero Lata", "preco": 4.15, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 11.4}, {"id": "BEB151", "cod": 151, "nome": "Redbull", "preco": 9.49, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 4.7}], "Diversos": [{"id": "DIV193", "cod": 193, "nome": "Camisas Fardamento", "preco": 50.0, "estoqueCentral": 0, "fornecedor": "New Malhas", "estoqueMin": 3.9}, {"id": "DIV254", "cod": 254, "nome": "Gás Maçarico", "preco": 17.0, "estoqueCentral": 0, "fornecedor": "Mercado Livre", "estoqueMin": 1.4}, {"id": "DIV275", "cod": 275, "nome": "Cardápio Açaí-Se", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "Papic", "estoqueMin": 1.0}, {"id": "DIV281", "cod": 281, "nome": "Prod Cardápio", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "—", "estoqueMin": 0.5}, {"id": "DIV283", "cod": 283, "nome": "Boné", "preco": 30.0, "estoqueCentral": 0, "fornecedor": "New Malhas", "estoqueMin": 0.2}], "Produção / Insumos": [{"id": "PROD102", "cod": 102, "nome": "Açúcar Cristal 1Kg", "preco": 4.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.8}, {"id": "PROD103", "cod": 103, "nome": "Tomate Rasteiro", "preco": 12.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 2.8}, {"id": "PROD114", "cod": 114, "nome": "Milho Verde", "preco": 5.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 3.0}, {"id": "PROD115", "cod": 115, "nome": "Cenoura", "preco": 9.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.4}, {"id": "PROD117", "cod": 117, "nome": "Hortelã", "preco": 4.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.0}, {"id": "PROD135", "cod": 135, "nome": "Pepino Japa", "preco": 7.99, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.4}, {"id": "PROD217", "cod": 217, "nome": "Óleo Composto", "preco": 16.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.8}, {"id": "PROD227", "cod": 227, "nome": "Batata Chips 200g", "preco": 16.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.8}, {"id": "PROD236", "cod": 236, "nome": "Penne 50g c/05", "preco": 4.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.3}, {"id": "PROD273", "cod": 273, "nome": "Goma de Tapioca 500g", "preco": 6.3, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.7}, {"id": "PROD292", "cod": 292, "nome": "Sal", "preco": 3.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}]};
 
 let currentUser = null;
 let currentRole = null; // 'loja' ou 'admin'
@@ -755,7 +790,7 @@ window.addEventListener('load', () => setTimeout(verificarAtualizacao, 4000));
 setInterval(verificarAtualizacao, 600000);
 
 function switchAdminTab(tab) {
-  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Log'].forEach(t => {
+  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Compras','Log'].forEach(t => {
     const el = document.getElementById('tab'+t);
     const btn = document.getElementById('tabBtn'+t);
     if(el) el.classList.toggle('hidden', tab !== t.toLowerCase());
@@ -767,6 +802,7 @@ function switchAdminTab(tab) {
   if (tab === 'relatorios') { iniciarRelatorios(); }
   if (tab === 'boletos') { iniciarBoletos(); }
   if (tab === 'producao') { iniciarProducao(); }
+  if (tab === 'compras') { iniciarListaCompras(); }
   if (tab === 'log') { iniciarLog(); }
 }
 
@@ -2062,6 +2098,159 @@ async function carregarHistoricoProducao() {
   wrap.innerHTML = html;
 }
 
+// ─── LISTA DE COMPRAS ─────────────────────────────────────────────────────────
+function iniciarListaCompras() {
+  const sel = document.getElementById('comprasFornecedor');
+  if (sel.options.length <= 1) {
+    // Collect unique suppliers from catalog
+    const fornecedores = [...new Set(
+      Object.values(CATALOGO).flat()
+        .map(i => i.fornecedor)
+        .filter(f => f && f !== '—' && f !== '')
+    )].sort();
+    fornecedores.forEach(f => {
+      const opt = document.createElement('option');
+      opt.value = f; opt.textContent = f;
+      sel.appendChild(opt);
+    });
+  }
+  renderListaCompras();
+}
+
+async function renderListaCompras() {
+  const fornecedor = document.getElementById('comprasFornecedor').value;
+  const filtro = document.getElementById('comprasFiltro').value;
+  const resumoEl = document.getElementById('comprasResumo');
+  const tabelaEl = document.getElementById('comprasTabela');
+
+  if (!fornecedor) {
+    resumoEl.innerHTML = '';
+    tabelaEl.innerHTML = '<p class="small">Selecione um fornecedor para ver a lista de compras.</p>';
+    return;
+  }
+
+  // Load current stock
+  await loadSaldoInicial();
+
+  // Filter items by supplier
+  const allItems = Object.entries(CATALOGO).flatMap(([cat, items]) =>
+    items.filter(i => i.fornecedor === fornecedor).map(i => ({ ...i, cat }))
+  );
+
+  if (allItems.length === 0) {
+    tabelaEl.innerHTML = `<p class="small">Nenhum item cadastrado para ${fornecedor}.</p>`;
+    return;
+  }
+
+  // Enrich with stock info
+  const enriched = allItems.map(item => {
+    const saldoAtualItem = saldoAtual[item.id] !== undefined ? saldoAtual[item.id] : 0;
+    const min = item.estoqueMin || 0;
+    const necessidade = Math.max(0, min - saldoAtualItem);
+    const status = saldoAtualItem <= 0 ? 'zerado'
+                 : saldoAtualItem < min ? 'critico'
+                 : 'ok';
+    return { ...item, saldoAtualItem, min, necessidade, status };
+  });
+
+  // Filter
+  const filtrados = filtro === 'criticos'
+    ? enriched.filter(i => i.status !== 'ok')
+    : enriched;
+
+  filtrados.sort((a,b) => {
+    const order = { zerado:0, critico:1, ok:2 };
+    return order[a.status] - order[b.status] || b.necessidade - a.necessidade;
+  });
+
+  // Summary
+  const zerados = enriched.filter(i=>i.status==='zerado').length;
+  const criticos = enriched.filter(i=>i.status==='critico').length;
+  const totalPedido = filtrados.reduce((s,i) => s + (i.necessidade * (itemState[i.id]?.venda || i.preco)), 0);
+
+  resumoEl.innerHTML = `
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:12px;margin-bottom:16px">
+      <div style="background:#FFEBEE;border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:24px;font-weight:700;color:#C62828">${zerados}</div>
+        <div style="font-size:12px;color:#C62828">Itens zerados</div>
+      </div>
+      <div style="background:#FFFDE7;border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:24px;font-weight:700;color:#F57F17">${criticos}</div>
+        <div style="font-size:12px;color:#F57F17">Itens críticos</div>
+      </div>
+      <div style="background:#E8F5E9;border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:24px;font-weight:700;color:#2E7D32">${enriched.filter(i=>i.status==='ok').length}</div>
+        <div style="font-size:12px;color:#2E7D32">Itens OK</div>
+      </div>
+      <div style="background:#EDE7F6;border-radius:8px;padding:12px;text-align:center">
+        <div style="font-size:16px;font-weight:700;color:#5B2D8E">R$ ${totalPedido.toFixed(2).replace('.',',')}</div>
+        <div style="font-size:12px;color:#5B2D8E">Valor estimado do pedido</div>
+      </div>
+    </div>`;
+
+  if (filtrados.length === 0) {
+    tabelaEl.innerHTML = `<div style="background:#E8F5E9;border-radius:8px;padding:20px;text-align:center;color:#2E7D32;font-weight:600">✅ Todos os itens da ${fornecedor} estão com estoque OK!</div>`;
+    return;
+  }
+
+  let html = `<table id="tabelaComprasImprimivel"><thead><tr>
+    <th>CÓD</th><th>Item</th><th>Categoria</th>
+    <th style="text-align:center">Saldo atual</th>
+    <th style="text-align:center">Mínimo</th>
+    <th style="text-align:center">Pedir</th>
+    <th style="text-align:right">Preço unit.</th>
+    <th style="text-align:right">Valor</th>
+    <th style="text-align:center">Status</th>
+  </tr></thead><tbody>`;
+
+  filtrados.forEach((item, idx) => {
+    const bg = idx % 2 === 0 ? '#fff' : '#F9F6FF';
+    const statusBg = item.status==='zerado' ? '#FFEBEE' : item.status==='critico' ? '#FFFDE7' : '#E8F5E9';
+    const statusLabel = item.status==='zerado' ? '❌ Zerado' : item.status==='critico' ? '⚠️ Crítico' : '✅ OK';
+    const preco = itemState[item.id]?.venda || item.preco;
+    const valorPedido = item.necessidade * preco;
+
+    html += `<tr style="background:${item.status!=='ok'?statusBg:bg}">
+      <td style="text-align:center;color:#888;font-size:12px">${item.cod||'—'}</td>
+      <td><strong>${item.nome}</strong></td>
+      <td style="font-size:12px;color:#666">${item.cat}</td>
+      <td style="text-align:center;font-weight:700">${item.saldoAtualItem}</td>
+      <td style="text-align:center;color:#888">${item.min}</td>
+      <td style="text-align:center;font-weight:700;color:#5B2D8E;font-size:15px">${item.necessidade > 0 ? item.necessidade : '—'}</td>
+      <td style="text-align:right">R$ ${preco.toFixed(2).replace('.',',')}</td>
+      <td style="text-align:right;font-weight:600">R$ ${item.necessidade > 0 ? valorPedido.toFixed(2).replace('.',',') : '—'}</td>
+      <td style="text-align:center">${statusLabel}</td>
+    </tr>`;
+  });
+  html += `</tbody></table>`;
+  tabelaEl.innerHTML = html;
+}
+
+function imprimirListaCompras() {
+  const fornecedor = document.getElementById('comprasFornecedor').value;
+  const tabela = document.getElementById('tabelaComprasImprimivel');
+  if (!fornecedor || !tabela) { alert('Selecione um fornecedor primeiro.'); return; }
+  const dataHora = new Date().toLocaleString('pt-BR');
+  const win = window.open('', '_blank');
+  win.document.write(`<html><head><meta charset="UTF-8"><title>Lista de Compras — ${fornecedor}</title>
+  <style>
+    body{font-family:Arial,sans-serif;font-size:12px;margin:20px}
+    h2{color:#5B2D8E;margin-bottom:4px}
+    .sub{color:#666;font-size:11px;margin-bottom:16px}
+    table{width:100%;border-collapse:collapse}
+    th{background:#5B2D8E;color:#fff;padding:5px 8px;text-align:left;font-size:11px}
+    td{padding:4px 8px;border-bottom:1px solid #eee}
+    .zerado{background:#FFEBEE}
+    .critico{background:#FFFDE7}
+  </style></head><body>
+  <h2>AÇAÍ-SE — LISTA DE COMPRAS: ${fornecedor.toUpperCase()}</h2>
+  <div class="sub">Emitida em: ${dataHora} • Itens com necessidade de reposição</div>
+  ${tabela.outerHTML}
+  </body></html>`);
+  win.document.close();
+  setTimeout(() => win.print(), 500);
+}
+
 // ─── LOG DE ATIVIDADES ────────────────────────────────────────────────────────
 async function registrarLog(tipo, descricao, usuario, unidade = '') {
   try {
@@ -2411,6 +2600,7 @@ async function submitOrder(urgencia = false) {
     document.getElementById('nomeResponsavel')?.focus();
     return;
   }
+  const observacao = document.getElementById('pedidoObservacao')?.value?.trim() || '';
   const tipoEntrega = urgencia ? 'Retirada' : (document.querySelector('input[name="tipoEntrega"]:checked')?.value || 'Entrega');
   const numeroPedido = await gerarNumeroPedido();
   const itens = {};
@@ -2432,6 +2622,7 @@ async function submitOrder(urgencia = false) {
     numeroPedido,
     unidade: currentUser,
     nomeResponsavel,
+    observacao,
     semana: weekKey,
     dataEnvio: new Date().toISOString(),
     tipoEntrega,
@@ -2621,6 +2812,7 @@ function renderPorUnidade(pedidos) {
       html += `<tr><td>${it.nome}</td><td style="text-align:right">${it.qtd}</td><td style="text-align:right">R$ ${(it.total||0).toFixed(2).replace('.',',')}</td></tr>`;
     });
     html += `</tbody></table>
+      ${p.observacao ? `<div style="margin-top:8px;padding:8px 10px;background:#FFF8E1;border-left:3px solid #F57F17;border-radius:4px;font-size:12px"><strong>💬 Observação:</strong> ${p.observacao}</div>` : ''}
       <div class="flex-between" style="margin-top:8px;font-weight:600;border-top:1px solid #eee;padding-top:8px">
         <span>Total</span><span>R$ ${totalUnidade.toFixed(2).replace('.',',')}</span>
       </div>
