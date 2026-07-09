@@ -307,7 +307,11 @@
         <label>Filtrar por categoria</label>
         <select id="filtroCategoria" onchange="renderGestaoItens()"></select>
       </div>
-      <button class="btn btn-secondary" onclick="reativarTodosItens()" style="margin-bottom:12px">✅ Reativar todos os itens</button>
+      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+        <button class="btn btn-secondary" onclick="reativarTodosItens()">✅ Reativar todos os itens</button>
+        <button class="btn btn-secondary" onclick="sincronizarPrecosCatalogo()" style="background:#FFF8E1;border:1px solid #FFE082">🔄 Sincronizar preços do catálogo</button>
+      </div>
+      <div id="syncMsg" class="small" style="margin-bottom:8px"></div>
 
       <div id="gestaoItensTable"></div>
 
@@ -1283,12 +1287,11 @@ async function salvarInventario() {
     if (el) saldoAtual[item.id] = parseFloat(el.value) || 0;
   });
   try {
-    await safeSet('saldoInicial', JSON.stringify(saldoAtual), true);
-    // Registra snapshot no histórico
-    await safeSet(`inventario:${Date.now()}`, JSON.stringify({
-      data: new Date().toISOString(),
-      saldo: { ...saldoAtual }
-    }), true);
+    const data = await loadAllData();
+    data['saldoInicial'] = JSON.stringify(saldoAtual);
+    data[`inventario:${Date.now()}`] = JSON.stringify({ data: new Date().toISOString(), saldo: { ...saldoAtual } });
+    if (_saveTimeout) clearTimeout(_saveTimeout);
+    await persistData();
     msgEl.style.color = '#2E7D32';
     msgEl.textContent = `✅ Contagem salva em ${new Date().toLocaleTimeString('pt-BR')}! O estoque central já está atualizado.`;
     await registrarLog('Inventário', 'Contagem de estoque salva', currentUser, 'Central');
@@ -1404,6 +1407,28 @@ async function loadItemState() {
       if (!itemState[item.id].venda) itemState[item.id].venda = item.preco;
     }
   });
+}
+
+async function sincronizarPrecosCatalogo() {
+  const msg = document.getElementById('syncMsg');
+  msg.style.color = '#F57F17';
+  msg.textContent = 'Sincronizando...';
+  let atualizados = 0;
+  Object.values(CATALOGO).flat().forEach(item => {
+    if (!itemState[item.id]) {
+      itemState[item.id] = { disponivel: true, custo: null, venda: item.preco };
+    } else {
+      // Força o preço do catálogo como preço de venda
+      itemState[item.id].venda = item.preco;
+      // Atualiza também no objeto em memória
+    }
+    item._vendaSync = item.preco;
+    atualizados++;
+  });
+  await saveItemState();
+  msg.style.color = '#2E7D32';
+  msg.textContent = `✅ ${atualizados} preços sincronizados com o catálogo! Agora a Granola aparecerá como R$ 131,00.`;
+  renderGestaoItens();
 }
 
 async function reativarTodosItens() {
@@ -1541,24 +1566,22 @@ async function registrarSaidaAvulsa() {
     await loadSaldoInicial();
     const saldoAntes = saldoAtual[itemId] || 0;
     saldoAtual[itemId] = Math.max(0, saldoAntes - qtd);
-    await safeSet('saldoInicial', JSON.stringify(saldoAtual), true);
 
-    // Registra no histórico como saída avulsa
-    await safeSet(`saida:avulsa:${Date.now()}`, JSON.stringify({
-      tipo: 'Saída Avulsa',
-      unidade,
-      nome: item.nome,
-      itemId,
-      qtd,
-      obs,
-      saldoAntes,
+    const saida = {
+      tipo: 'Saída Avulsa', unidade, nome: item.nome,
+      itemId, qtd, obs, saldoAntes,
       saldoDepois: saldoAtual[itemId],
+      usuario: currentUser,
       data: new Date().toISOString()
-    }), true);
+    };
 
-    // Atualiza cache
+    const data = await loadAllData();
+    data['saldoInicial'] = JSON.stringify(saldoAtual);
+    data[`saida:avulsa:${Date.now()}`] = JSON.stringify(saida);
+    if (_saveTimeout) clearTimeout(_saveTimeout);
+    await persistData();
+
     item._estoqueAtual = saldoAtual[itemId];
-
     msgEl.style.color = '#E65100';
     msgEl.textContent = `✅ Saída registrada: ${qtd} × ${item.nome} → ${unidade}. Saldo: ${saldoAntes} → ${saldoAtual[itemId]}`;
     await registrarLog('Saída Avulsa', `${qtd} × ${item.nome}${obs?' — '+obs:''}`, currentUser, unidade);
@@ -1607,30 +1630,36 @@ async function registrarEntrada() {
   if (!item) { msgEl.textContent = "Selecione um item válido."; return; }
   if (qtd <= 0) { msgEl.textContent = "Informe uma quantidade maior que zero."; return; }
 
-  const entrada = {
-    itemId, nome: item.nome, tipo, qtd, obs, fornecedor,
-    precoUnitario: itemState[itemId]?.custo || item.preco,
-    data: new Date().toISOString()
-  };
-
   msgEl.textContent = "Registrando...";
   try {
-    // Persiste entrada
-    await safeSet(`entrada:${itemId}:${Date.now()}`, JSON.stringify(entrada), true);
-
-    // Atualiza saldo imediatamente
+    // Atualiza saldo primeiro
     await loadSaldoInicial();
     saldoAtual[itemId] = (saldoAtual[itemId] || 0) + qtd;
-    await safeSet('saldoInicial', JSON.stringify(saldoAtual), true);
+
+    const entrada = {
+      itemId, nome: item.nome, tipo, qtd, obs, fornecedor,
+      precoUnitario: itemState[itemId]?.custo || item.preco,
+      usuario: currentUser,
+      data: new Date().toISOString()
+    };
+
+    // Grava tudo no cache
+    const data = await loadAllData();
+    data[`entrada:${itemId}:${Date.now()}`] = JSON.stringify(entrada);
+    data['saldoInicial'] = JSON.stringify(saldoAtual);
+
+    // Salva IMEDIATAMENTE no JSONbin (sem delay)
+    if (_saveTimeout) clearTimeout(_saveTimeout);
+    await persistData();
 
     // Salva novo fornecedor se necessário
     if (fornecedor) await adicionarFornecedorSeNovo(fornecedor);
 
     msgEl.style.color = "#2E7D32";
-    msgEl.textContent = `✅ +${qtd} ${item.nome}${fornecedor ? ' — ' + fornecedor : ''} registrado!`;
+    msgEl.textContent = `✅ +${qtd} ${item.nome}${fornecedor ? ' — ' + fornecedor : ''} registrado e salvo!`;
     document.getElementById('entradaQtd').value = 0;
     document.getElementById('entradaObs').value = '';
-    document.getElementById('entradaFornecedorCustom').value = '';
+    if(document.getElementById('entradaFornecedorCustom')) document.getElementById('entradaFornecedorCustom').value = '';
     loadEstoqueEHistorico();
     renderRelatorioFornecedor();
   } catch (e) {
@@ -1997,13 +2026,31 @@ async function salvarProducao() {
 
   msgEl.textContent = 'Salvando...';
   try {
-    await safeSet(`producao:${Date.now()}`, JSON.stringify(lote), true);
+    // Encontra o item no catálogo para dar entrada no estoque
+    const nomeProduto = base === 'artesanal' ? 'Açaí Art 08Kg' : 'Açaí Mel 08Kg';
+    const itemCatalogo = Object.values(CATALOGO).flat().find(i =>
+      i.nome === nomeProduto || (base === 'artesanal' ? i.id === 'PA88' : i.id === 'PA246')
+    );
+
+    // Atualiza saldo central
+    await loadSaldoInicial();
+    if (itemCatalogo) {
+      saldoAtual[itemCatalogo.id] = (saldoAtual[itemCatalogo.id] || 0) + caixas;
+    }
+
+    // Grava tudo no cache e salva IMEDIATAMENTE
+    const data = await loadAllData();
+    data[`producao:${Date.now()}`] = JSON.stringify(lote);
+    data['saldoInicial'] = JSON.stringify(saldoAtual);
+    if (_saveTimeout) clearTimeout(_saveTimeout);
+    await persistData();
+
     await registrarLog('Produção',
-      `${ficha.nome} — ${caixas}cx de 8kg — Custo R$ ${custoPorCaixa.toFixed(2).replace('.',',')} /cx`,
+      `${ficha.nome} — ${caixas}cx de 8kg — Custo R$ ${custoPorCaixa.toFixed(2).replace('.',',')} /cx — estoque atualizado`,
       responsavel, 'Central');
 
     msgEl.style.color = '#2E7D32';
-    msgEl.textContent = `✅ Produção salva! ${caixas} caixas de ${ficha.nome} — R$ ${custoPorCaixa.toFixed(2).replace('.',',')}/cx`;
+    msgEl.textContent = `✅ Produção salva! ${caixas}cx de ${ficha.nome} adicionadas ao estoque central. Custo: R$ ${custoPorCaixa.toFixed(2).replace('.',',')}/cx`;
     document.getElementById('prodCaixas').value = 0;
     document.getElementById('prodExcedente').value = 0;
     document.getElementById('prodReaproveitado').value = 0;
