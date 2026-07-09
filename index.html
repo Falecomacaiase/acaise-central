@@ -281,8 +281,12 @@
       </div>
       <div id="estoqueAtualTable"></div>
 
-      <h3 style="margin-top:24px">Últimas movimentações</h3>
-      <div id="historicoEntradas"></div>
+      <div style="margin-top:24px">
+        <button class="btn btn-secondary" onclick="toggleHistorico()" id="btnToggleHistorico" style="font-size:13px">
+          📋 Ver histórico de movimentações
+        </button>
+        <div id="historicoEntradas" class="hidden" style="margin-top:12px"></div>
+      </div>
 
       <h3 style="margin-top:28px">📊 Compras por fornecedor</h3>
       <div style="display:flex;gap:10px;margin-bottom:10px;flex-wrap:wrap">
@@ -297,40 +301,7 @@
 
     <!-- ABA: GESTÃO DE ITENS -->
     <div id="tabItens" class="hidden">
-      <p class="small">Ative ou desative itens, edite preços e cadastre novos produtos.</p>
-
-      <!-- NOVO PRODUTO -->
-      <div style="background:#EDE7F6;border-radius:8px;padding:16px;margin-bottom:20px">
-        <h4 style="margin:0 0 12px;color:#5B2D8E">➕ Cadastrar novo produto</h4>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div class="field">
-            <label>Nome do produto</label>
-            <input type="text" id="novoProdNome" placeholder="Ex: Açaí Art 10Kg">
-          </div>
-          <div class="field">
-            <label>Categoria</label>
-            <select id="novoProdCat">
-              <option value="">Selecione...</option>
-            </select>
-          </div>
-          <div class="field">
-            <label>Preço de custo (R$)</label>
-            <input type="number" id="novoProdCusto" min="0" step="0.01" placeholder="0,00">
-          </div>
-          <div class="field">
-            <label>Preço de venda ao franqueado (R$)</label>
-            <input type="number" id="novoProdVenda" min="0" step="0.01" placeholder="0,00">
-          </div>
-        </div>
-        <div class="field">
-          <label>
-            <input type="checkbox" id="novoProdVisivel" checked style="width:auto;margin-right:6px">
-            Visível para os franqueados imediatamente
-          </label>
-        </div>
-        <button class="btn" onclick="cadastrarNovoProduto()">Cadastrar produto</button>
-        <div id="novoProdMsg" class="small" style="margin-top:6px"></div>
-      </div>
+      <p class="small">Ative ou desative itens para os franqueados e edite preços. Para cadastrar novos produtos, use a aba <strong>📝 Cadastros</strong>.</p>
 
       <div class="field" style="max-width:260px">
         <label>Filtrar por categoria</label>
@@ -1335,6 +1306,17 @@ async function loadSaldoInicial() {
     const r = await safeGet('saldoInicial', true);
     if (r && r.value) saldoAtual = JSON.parse(r.value);
   } catch(e) {}
+}
+
+function toggleHistorico() {
+  const el = document.getElementById('historicoEntradas');
+  const btn = document.getElementById('btnToggleHistorico');
+  const aberto = !el.classList.contains('hidden');
+  el.classList.toggle('hidden', aberto);
+  btn.textContent = aberto
+    ? '📋 Ver histórico de movimentações'
+    : '📋 Ocultar histórico';
+  if (!aberto) loadEstoqueEHistorico();
 }
 
 async function iniciarEntradas() {
