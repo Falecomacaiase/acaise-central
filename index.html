@@ -2894,27 +2894,30 @@ let _ultimosPedidosVisto = new Set();
 
 async function loadAdminData(silencioso = false) {
   if (!silencioso) document.getElementById('lastUpdate').textContent = "Atualizando...";
-
-  // Sempre limpa cache para buscar dados frescos do JSONbin
   _dataCache = null;
-
   await loadEstoqueAtualSilencioso();
+
   const weekKey = await getCurrentWeekKey();
+  const prevKey = await getSemanaAnterior();
   let pedidos = [];
 
   try {
     const data = await loadAllData();
-    const chavesPedidos = Object.keys(data).filter(k => k.startsWith(`pedido:${weekKey}:`));
-    for (const k of chavesPedidos) {
-      try {
-        const val = data[k];
-        if (val) {
-          const p = JSON.parse(val);
-          p._storageKey = k;
-          pedidos.push(p);
-        }
-      } catch(e) {}
-    }
+    // Busca pedidos da semana atual E anterior
+    Object.keys(data).forEach(k => {
+      if (k.startsWith(`pedido:${weekKey}:`) || k.startsWith(`pedido:${prevKey}:`)) {
+        try {
+          const val = data[k];
+          const p = typeof val === 'string' ? JSON.parse(val) : val;
+          if (p && p.unidade) {
+            p._storageKey = k;
+            // Só mostra semana anterior se não despachado
+            if (k.startsWith(`pedido:${prevKey}:`) && p.despachado) return;
+            pedidos.push(p);
+          }
+        } catch(e) {}
+      }
+    });
   } catch(e) {}
 
   const badge = document.getElementById('novoPedidoBadge');
@@ -2935,9 +2938,7 @@ async function loadAdminData(silencioso = false) {
   }
 
   if (!_adminPollInterval) {
-    _adminPollInterval = setInterval(async () => {
-      await loadAdminData(true);
-    }, 300000);
+    _adminPollInterval = setInterval(() => loadAdminData(true), 300000);
   }
 }
 
