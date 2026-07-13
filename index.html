@@ -113,10 +113,9 @@
       <span style="font-size:13px;color:#5B2D8E;font-weight:600;">⏱ As entregas são realizadas em até 48h após a confirmação do pedido.</span>
     </div>
 
-    <div id="ordemBloqueada" class="hidden" style="background:#FFEBEE;border:2px solid #C62828;border-radius:8px;padding:16px;margin:12px 0;text-align:center">
-      <div style="font-size:28px;margin-bottom:8px">🔒</div>
-      <div style="font-weight:700;color:#C62828;font-size:15px">Pedidos bloqueados</div>
-      <div style="font-size:13px;color:#C62828;margin-top:4px">Esta unidade possui boleto(s) em atraso. Entre em contato com a franqueadora para regularizar.</div>
+    <!-- AVISO DE BOLETO (não bloqueia, só alerta) -->
+    <div id="ordemBloqueada" class="hidden" style="border-radius:8px;padding:14px 16px;margin:12px 0">
+      <div id="ordemBloqueadaMsg"></div>
     </div>
 
     <div id="ordemConteudo">
@@ -448,6 +447,19 @@
     <!-- ABA: BOLETOS -->
     <div id="tabBoletos" class="hidden">
       <p class="small">Controle de cobranças por unidade. Boletos em atraso bloqueiam automaticamente novos pedidos da unidade.</p>
+
+      <!-- BLOQUEIO MANUAL -->
+      <div style="background:#FFF3E0;border:1px solid #FFB74D;border-radius:8px;padding:14px;margin-bottom:16px">
+        <h4 style="margin:0 0 8px;color:#E65100">🔒 Bloqueio manual de pedidos</h4>
+        <p class="small" style="margin:0 0 10px">Ative para bloquear completamente os pedidos de uma unidade, independente dos boletos.</p>
+        <div style="display:flex;gap:10px;flex-wrap:wrap">
+          <select id="bloqueioUnidade" style="flex:1;min-width:180px"></select>
+          <button class="btn" onclick="ativarBloqueio()" style="background:#E65100">🔒 Bloquear</button>
+          <button class="btn btn-secondary" onclick="desativarBloqueio()">🔓 Desbloquear</button>
+        </div>
+        <div id="bloqueioMsg" class="small" style="margin-top:6px"></div>
+        <div id="bloqueiosAtivos" style="margin-top:8px"></div>
+      </div>
 
       <!-- NOVO BOLETO -->
       <div style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:8px;padding:16px;margin-bottom:20px">
@@ -1821,10 +1833,30 @@ function doLogin() {
     document.getElementById('orderScreen').classList.remove('hidden');
     loadItemState().then(async () => {
       renderCatalog();
-      const temAtraso = await verificarBoletosUnidade(unit);
-      if (temAtraso) {
-        document.getElementById('ordemBloqueada').classList.remove('hidden');
-        document.getElementById('ordemConteudo').classList.add('hidden');
+      const situacao = await verificarBoletosUnidade(unit);
+      const avisoEl = document.getElementById('ordemBloqueada');
+      const msgEl = document.getElementById('ordemBloqueadaMsg');
+      const conteudoEl = document.getElementById('ordemConteudo');
+
+      if (situacao.bloqueioManual) {
+        // Bloqueio manual ativado pela franqueadora
+        avisoEl.style.background = '#FFEBEE';
+        avisoEl.style.border = '2px solid #C62828';
+        avisoEl.classList.remove('hidden');
+        msgEl.innerHTML = `<div style="text-align:center"><div style="font-size:24px">🔒</div><div style="font-weight:700;color:#C62828;font-size:15px;margin-top:6px">Pedidos bloqueados</div><div style="font-size:13px;color:#C62828;margin-top:4px">Esta unidade está com pedidos bloqueados pela franqueadora. Entre em contato para regularizar.</div></div>`;
+        conteudoEl.classList.add('hidden');
+      } else if (situacao.atrasados > 0) {
+        // Boleto atrasado — aviso vermelho mas não bloqueia
+        avisoEl.style.background = '#FFEBEE';
+        avisoEl.style.border = '1.5px solid #C62828';
+        avisoEl.classList.remove('hidden');
+        msgEl.innerHTML = `<div style="display:flex;gap:10px;align-items:flex-start"><div style="font-size:20px">⚠️</div><div><div style="font-weight:700;color:#C62828">Boleto(s) em atraso</div><div style="font-size:13px;color:#C62828;margin-top:2px">Você possui ${situacao.atrasados} boleto(s) vencido(s). Regularize o pagamento com a franqueadora. O pedido está liberado por enquanto.</div></div></div>`;
+      } else if (situacao.vencendoHoje > 0) {
+        // Vencendo hoje — aviso amarelo
+        avisoEl.style.background = '#FFFDE7';
+        avisoEl.style.border = '1.5px solid #FFE082';
+        avisoEl.classList.remove('hidden');
+        msgEl.innerHTML = `<div style="display:flex;gap:10px;align-items:flex-start"><div style="font-size:20px">📅</div><div><div style="font-weight:700;color:#F57F17">Boleto vencendo hoje</div><div style="font-size:13px;color:#F57F17;margin-top:2px">Você possui ${situacao.vencendoHoje} boleto(s) com vencimento hoje. Lembre-se de realizar o pagamento.</div></div></div>`;
       }
     });
   }
@@ -2427,33 +2459,88 @@ async function renderLog() {
 }
 async function iniciarBoletos() {
   await loadBoletos();
-  const sel = document.getElementById('boletoUnidade');
-  const filtro = document.getElementById('boletoFiltroUnidade');
-  if (sel && sel.options.length === 0) {
-    [...UNIDADES, ...extraUnidades.map(u=>u.nome)].forEach(u => {
-      [sel, filtro].forEach(s => {
+
+  // Populate selects
+  const selBoleto = document.getElementById('boletoUnidade');
+  const selBloqueio = document.getElementById('bloqueioUnidade');
+  const selFiltro = document.getElementById('boletoFiltroUnidade');
+  const unidades = [...UNIDADES, ...extraUnidades.map(u=>u.nome)];
+
+  if (selBoleto && selBoleto.options.length === 0) {
+    unidades.forEach(u => {
+      [selBoleto, selBloqueio, selFiltro].forEach(s => {
         if(!s) return;
         const opt = document.createElement('option'); opt.value=u; opt.textContent=u; s.appendChild(opt);
       });
     });
   }
-  // Default vencimento = 7 dias
+
+  // Default vencimento
   const v = document.getElementById('boletoVencimento');
   if (v && !v.value) {
     const d = new Date(); d.setDate(d.getDate()+7);
     v.value = d.toISOString().split('T')[0];
   }
+
   renderBoletos();
+  renderBloqueiosAtivos();
 }
 
 let boletos = [];
+
+async function ativarBloqueio() {
+  const unidade = document.getElementById('bloqueioUnidade').value;
+  const msg = document.getElementById('bloqueioMsg');
+  if (!unidade) { msg.textContent = 'Selecione uma unidade.'; return; }
+  try {
+    let bloqueios = {};
+    try { const r = await safeGet('bloqueiosUnidade', true); if(r&&r.value) bloqueios=JSON.parse(r.value); } catch(e) {}
+    bloqueios[unidade] = { data: new Date().toISOString(), ativadoPor: currentUser };
+    await safeSet('bloqueiosUnidade', JSON.stringify(bloqueios), true);
+    if (_saveTimeout) clearTimeout(_saveTimeout);
+    await persistData();
+    msg.style.color = '#C62828';
+    msg.textContent = `🔒 ${unidade} bloqueada com sucesso.`;
+    renderBloqueiosAtivos();
+  } catch(e) { msg.textContent = 'Erro: ' + e.message; }
+}
+
+async function desativarBloqueio() {
+  const unidade = document.getElementById('bloqueioUnidade').value;
+  const msg = document.getElementById('bloqueioMsg');
+  if (!unidade) { msg.textContent = 'Selecione uma unidade.'; return; }
+  try {
+    let bloqueios = {};
+    try { const r = await safeGet('bloqueiosUnidade', true); if(r&&r.value) bloqueios=JSON.parse(r.value); } catch(e) {}
+    delete bloqueios[unidade];
+    await safeSet('bloqueiosUnidade', JSON.stringify(bloqueios), true);
+    if (_saveTimeout) clearTimeout(_saveTimeout);
+    await persistData();
+    msg.style.color = '#2E7D32';
+    msg.textContent = `🔓 ${unidade} desbloqueada.`;
+    renderBloqueiosAtivos();
+  } catch(e) { msg.textContent = 'Erro: ' + e.message; }
+}
+
+async function renderBloqueiosAtivos() {
+  const wrap = document.getElementById('bloqueiosAtivos');
+  if (!wrap) return;
+  try {
+    const r = await safeGet('bloqueiosUnidade', true);
+    if (!r || !r.value) { wrap.innerHTML = ''; return; }
+    const bloqueios = JSON.parse(r.value);
+    const ativos = Object.entries(bloqueios);
+    if (ativos.length === 0) { wrap.innerHTML = ''; return; }
+    wrap.innerHTML = `<div style="font-size:12px;font-weight:600;color:#E65100;margin-bottom:4px">Unidades bloqueadas:</div>` +
+      ativos.map(([u, b]) => `<span style="background:#FFEBEE;color:#C62828;padding:2px 8px;border-radius:4px;font-size:12px;margin-right:6px">🔒 ${u}</span>`).join('');
+  } catch(e) { wrap.innerHTML = ''; }
+}
 
 async function loadBoletos() {
   try {
     const r = await safeGet('boletos', true);
     if (r && r.value) boletos = JSON.parse(r.value);
   } catch(e) { boletos = []; }
-  // Auto-atualiza status de atraso
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   boletos.forEach(b => {
     if (b.status !== 'pago' && new Date(b.vencimento) < hoje) b.status = 'atrasado';
@@ -2545,7 +2632,30 @@ async function excluirBoleto(id) {
 
 async function verificarBoletosUnidade(unidade) {
   await loadBoletos();
-  return boletos.some(b => b.unidade === unidade && b.status === 'atrasado');
+  const hoje = new Date(); hoje.setHours(0,0,0,0);
+  const amanha = new Date(hoje); amanha.setDate(amanha.getDate()+1);
+
+  // Verifica bloqueio manual
+  let bloqueioManual = false;
+  try {
+    const r = await safeGet('bloqueiosUnidade', true);
+    if (r && r.value) {
+      const bloqueios = JSON.parse(r.value);
+      bloqueioManual = !!bloqueios[unidade];
+    }
+  } catch(e) {}
+
+  const atrasados = boletos.filter(b =>
+    b.unidade === unidade && b.status === 'atrasado'
+  ).length;
+
+  const vencendoHoje = boletos.filter(b => {
+    if (b.unidade !== unidade || b.status === 'pago') return false;
+    const venc = new Date(b.vencimento + 'T12:00:00');
+    return venc >= hoje && venc < amanha;
+  }).length;
+
+  return { bloqueioManual, atrasados, vencendoHoje };
 }
 
 async function gerarPedidoTeste() {
