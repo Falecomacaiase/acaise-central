@@ -694,27 +694,31 @@ async function loadAllData() {
   try {
     const snapshot = await _col.get();
     snapshot.forEach(doc => {
+      // Decodifica chaves URL-encoded da migração anterior
+      let key;
+      try { key = decodeURIComponent(doc.id); } catch(e) { key = doc.id; }
       const data = doc.data();
       let val = data.value;
-      // Tenta parsear JSON se vier como string
       if (typeof val === 'string') {
         try { val = JSON.parse(val); } catch(e) {}
       }
-      _dataCache[doc.id] = val;
+      _dataCache[key] = val;
     });
+    console.log('Firebase: carregou', Object.keys(_dataCache).length, 'registros');
+    console.log('Chaves exemplo:', Object.keys(_dataCache).slice(0,5));
   } catch(e) {
     console.error('loadAllData error:', e);
+    const si = document.getElementById('saveIndicator');
+    if (si) { si.textContent = '❌ Erro Firebase: ' + e.message; si.style.color='#C62828'; si.style.display='inline'; }
   }
   return _dataCache;
 }
 
 async function saveDocument(key, value) {
-  // Sanitiza a chave para uso como ID de documento Firebase
-  const docId = key.replace(/\//g, '_');
+  // Usa encodeURIComponent para consistência com dados migrados
+  const docId = encodeURIComponent(key);
   let stored = value;
-  if (typeof value !== 'string') {
-    stored = JSON.stringify(value);
-  }
+  if (typeof value !== 'string') stored = JSON.stringify(value);
   await _col.doc(docId).set({
     value: stored,
     originalKey: key,
