@@ -671,18 +671,146 @@ let currentUser = null;
 let currentRole = null; // 'loja' ou 'admin'
 
 // ─── ARMAZENAMENTO REAL — Firebase Firestore ─────────────────────────────────
-// Configuração do Firebase
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyD5IPs4nkf96Onv774Qrgv-ltLaHn2Bi2U",
-  authDomain: "acaise-central.firebaseapp.com",
-  projectId: "acaise-central",
-  storageBucket: "acaise-central.firebasestorage.app",
-  messagingSenderId: "540142597127",
-  appId: "1:540142597127:web:fa371ed9df1adc1e8ca6a2"
+  projectId: "acaise-central"
 };
 
 const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents`;
 const COLLECTION = 'acaise';
+const API_KEY = FIREBASE_CONFIG.apiKey;
+
+function toFirestoreValue(val) {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === 'string') return { stringValue: val };
+  return { stringValue: JSON.stringify(val) };
+}
+
+function fromFirestoreValue(fv) {
+  if (!fv) return null;
+  if ('stringValue' in fv) {
+    const s = fv.stringValue;
+    try { return JSON.parse(s); } catch(e) { return s; }
+  }
+  if ('booleanValue' in fv) return fv.booleanValue;
+  if ('doubleValue' in fv) return fv.doubleValue;
+  if ('integerValue' in fv) return parseInt(fv.integerValue);
+  if ('nullValue' in fv) return null;
+  return null;
+}
+
+let _dataCache = null;
+let _saveTimeout = null;
+let _dirtyKeys = new Set();
+
+async function loadAllData() {
+  if (_dataCache) return _dataCache;
+  _dataCache = {};
+  try {
+    let url = `${FIRESTORE_BASE}/${COLLECTION}?pageSize=300&key=${API_KEY}`;
+    let hasMore = true;
+    let pageToken = null;
+    while (hasMore) {
+      const fetchUrl = pageToken ? `${url}&pageToken=${pageToken}` : url;
+      const res = await fetch(fetchUrl);
+      if (!res.ok) {
+        const txt = await res.text();
+        console.error('loadAllData error:', res.status, txt.slice(0,200));
+        break;
+      }
+      const json = await res.json();
+      if (json.documents) {
+        json.documents.forEach(doc => {
+          // Pega o ID do documento e decodifica
+          const rawId = doc.name.split('/').pop();
+          const key = decodeURIComponent(rawId);
+          const fields = doc.fields || {};
+          _dataCache[key] = fields.value ? fromFirestoreValue(fields.value) : null;
+        });
+      }
+      pageToken = json.nextPageToken;
+      hasMore = !!pageToken;
+    }
+  } catch(e) {
+    console.error('loadAllData fetch error:', e);
+  }
+  return _dataCache;
+}
+
+async function saveDocument(key, value) {
+  const docId = encodeURIComponent(key);
+  const body = {
+    fields: {
+      value: toFirestoreValue(value),
+      updatedAt: { timestampValue: new Date().toISOString() }
+    }
+  };
+  const res = await fetch(`${FIRESTORE_BASE}/${COLLECTION}/${docId}?key=${API_KEY}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(()=>'');
+    throw new Error(`Firestore ${res.status}: ${txt.slice(0,150)}`);
+  }
+}
+
+async function deleteDocument(key) {
+  const docId = encodeURIComponent(key);
+  await fetch(`${FIRESTORE_BASE}/${COLLECTION}/${docId}?key=${API_KEY}`, { method: 'DELETE' });
+}
+
+async function persistData() {
+  if (!_dataCache || _dirtyKeys.size === 0) return;
+  const saveIndicator = document.getElementById('saveIndicator');
+  try {
+    if (saveIndicator) { saveIndicator.textContent = '💾 Salvando...'; saveIndicator.style.color = '#F57F17'; saveIndicator.style.display = 'inline'; }
+    const keysToSave = [..._dirtyKeys];
+    _dirtyKeys.clear();
+    for (const k of keysToSave) {
+      await saveDocument(k, _dataCache[k]);
+    }
+    if (saveIndicator) { saveIndicator.textContent = '✅ Salvo'; saveIndicator.style.color = '#2E7D32'; setTimeout(()=>{ saveIndicator.style.display='none'; }, 3000); }
+  } catch(e) {
+    if (saveIndicator) { saveIndicator.textContent = '❌ ' + e.message; saveIndicator.style.color = '#C62828'; saveIndicator.style.display = 'inline'; }
+    console.error('persistData error:', e);
+    throw e;
+  }
+}
+
+function scheduleSave() {
+  if (_saveTimeout) clearTimeout(_saveTimeout);
+  _saveTimeout = setTimeout(persistData, 1000);
+}
+
+async function safeSet(key, value, shared) {
+  const data = await loadAllData();
+  data[key] = value;
+  await saveDocument(key, value);
+  return { key, value, shared };
+}
+
+async function safeGet(key, shared) {
+  const data = await loadAllData();
+  if (key in data) return { key, value: data[key], shared };
+  throw new Error('not found: ' + key);
+}
+
+async function safeList(prefix, shared) {
+  const data = await loadAllData();
+  const keys = Object.keys(data).filter(k => k.startsWith(prefix));
+  return { keys, prefix, shared };
+}
+
+async function safeDelete(key) {
+  if (_dataCache) delete _dataCache[key];
+  await deleteDocument(key);
+}
+
+window.addEventListener('beforeunload', () => {
+  if (_dirtyKeys.size > 0) persistData();
+});
 
 // Converte valor JS para formato Firestore
 function toFirestoreValue(val) {
@@ -708,135 +836,7 @@ function fromFirestoreValue(fv) {
   return null;
 }
 
-// Cache local
-let _dataCache = null;
-let _saveTimeout = null;
-let _dirtyKeys = new Set();
-
-// Carrega TODOS os documentos da coleção
-async function loadAllData() {
-  if (_dataCache) return _dataCache;
-  try {
-    const res = await fetch(`${FIRESTORE_BASE}/${COLLECTION}?pageSize=300`);
-    if (!res.ok) { _dataCache = {}; return _dataCache; }
-    const json = await res.json();
-    _dataCache = {};
-    if (json.documents) {
-      json.documents.forEach(doc => {
-        const key = doc.name.split('/').pop();
-        const fields = doc.fields || {};
-        _dataCache[key] = fields.value ? fromFirestoreValue(fields.value) : null;
-      });
-    }
-  } catch(e) {
-    console.error('loadAllData error:', e);
-    _dataCache = {};
-  }
-  return _dataCache;
-}
-
-// Salva um documento no Firestore
-async function saveDocument(key, value) {
-  const docName = encodeURIComponent(key);
-  const body = {
-    fields: {
-      value: toFirestoreValue(value),
-      updatedAt: { timestampValue: new Date().toISOString() }
-    }
-  };
-  const res = await fetch(`${FIRESTORE_BASE}/${COLLECTION}/${docName}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(()=>'');
-    throw new Error(`Firestore error ${res.status}: ${txt.slice(0,150)}`);
-  }
-  return res;
-}
-
-// Deleta um documento do Firestore
-async function deleteDocument(key) {
-  const docName = encodeURIComponent(key);
-  await fetch(`${FIRESTORE_BASE}/${COLLECTION}/${docName}`, { method: 'DELETE' });
-}
-
-// Persiste apenas as chaves sujas
-async function persistData() {
-  if (!_dataCache || _dirtyKeys.size === 0) return;
-  const saveIndicator = document.getElementById('saveIndicator');
-  try {
-    if (saveIndicator) { saveIndicator.textContent = '💾 Salvando...'; saveIndicator.style.color = '#F57F17'; saveIndicator.style.display = 'inline'; }
-    const keysToSave = [..._dirtyKeys];
-    _dirtyKeys.clear();
-    // Salva cada chave modificada individualmente
-    await Promise.all(keysToSave.map(k => saveDocument(k, _dataCache[k])));
-    if (saveIndicator) { saveIndicator.textContent = '✅ Salvo'; saveIndicator.style.color = '#2E7D32'; setTimeout(()=>{ saveIndicator.style.display='none'; }, 3000); }
-  } catch(e) {
-    if (saveIndicator) { saveIndicator.textContent = '❌ Erro ao salvar: ' + e.message; saveIndicator.style.color = '#C62828'; saveIndicator.style.display = 'inline'; }
-    console.error('persistData error:', e);
-    throw e;
-  }
-}
-
-function scheduleSave() {
-  if (_saveTimeout) clearTimeout(_saveTimeout);
-  _saveTimeout = setTimeout(persistData, 1000);
-}
-
-async function safeSet(key, value, shared) {
-  const data = await loadAllData();
-  data[key] = value;
-  _dirtyKeys.add(key);
-  // Para operações críticas, salva imediatamente
-  await saveDocument(key, value);
-  return { key, value, shared };
-}
-
-async function safeGet(key, shared) {
-  const data = await loadAllData();
-  if (key in data) return { key, value: data[key], shared };
-  // Tenta buscar direto do Firestore
-  try {
-    const docName = encodeURIComponent(key);
-    const res = await fetch(`${FIRESTORE_BASE}/${COLLECTION}/${docName}`);
-    if (res.ok) {
-      const doc = await res.json();
-      const val = doc.fields?.value ? fromFirestoreValue(doc.fields.value) : null;
-      if (_dataCache) _dataCache[key] = val;
-      return { key, value: val, shared };
-    }
-  } catch(e) {}
-  throw new Error('not found: ' + key);
-}
-
-async function safeList(prefix, shared) {
-  const data = await loadAllData();
-  const keys = Object.keys(data).filter(k => k.startsWith(prefix));
-  return { keys, prefix, shared };
-}
-
-async function safeDelete(key) {
-  if (_dataCache) delete _dataCache[key];
-  await deleteDocument(key);
-}
-
-window.addEventListener('beforeunload', () => {
-  if (_dirtyKeys.size > 0) persistData();
-});
-
-// (migrado para Firebase acima)
-
-async function safeList(prefix, shared) {
-  const data = await loadAllData();
-  const keys = Object.keys(data).filter(k => k.startsWith(prefix));
-  return { keys, prefix, shared };
-}
-
-window.addEventListener('beforeunload', () => {
-  if (_dirtyKeys.size > 0) persistData();
-});
+// (funções Firebase já declaradas acima)
 
 function populateUnitSelect() {
   const sel = document.getElementById('loginUnit');
