@@ -670,85 +670,163 @@ const CATALOGO = {"Produtos Acabados": [{"id": "PA86", "cod": 86, "nome": "Aça�
 let currentUser = null;
 let currentRole = null; // 'loja' ou 'admin'
 
-// ─── ARMAZENAMENTO REAL — JSONbin.io ─────────────────────────────────────────
-const JSONBIN_MASTER_KEY = '$2a$10$NwDLmtBksENoq5b7tJLue.KOoa8oMB6CwET2upt.J0/17PS0gQDRq';
-const JSONBIN_ACCESS_KEY = '$2a$10$m5rSeYqs/3lUdxvGZAt5nunE5KBRwZFg6ShVej97Nt6UDBRZ0ftOy';
-const JSONBIN_BASE = 'https://api.jsonbin.io/v3';
-const JSONBIN_BIN_ID = '6a455e54f5f4af5e294f42c3'; // bin fixo acaise-central
+// ─── ARMAZENAMENTO REAL — Firebase Firestore ─────────────────────────────────
+// Configuração do Firebase
+const FIREBASE_CONFIG = {
+  apiKey: "AIzaSyD5IPs4nkf96Onv774Qrgv-ltLaHn2Bi2U",
+  authDomain: "acaise-central.firebaseapp.com",
+  projectId: "acaise-central",
+  storageBucket: "acaise-central.firebasestorage.app",
+  messagingSenderId: "540142597127",
+  appId: "1:540142597127:web:fa371ed9df1adc1e8ca6a2"
+};
 
-// Cache local para evitar requisições desnecessárias
+const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents`;
+const COLLECTION = 'acaise';
+
+// Converte valor JS para formato Firestore
+function toFirestoreValue(val) {
+  if (val === null || val === undefined) return { nullValue: null };
+  if (typeof val === 'boolean') return { booleanValue: val };
+  if (typeof val === 'number') return { doubleValue: val };
+  if (typeof val === 'string') return { stringValue: val };
+  if (typeof val === 'object') return { stringValue: JSON.stringify(val) };
+  return { stringValue: String(val) };
+}
+
+// Converte valor Firestore para JS
+function fromFirestoreValue(fv) {
+  if (!fv) return null;
+  if ('stringValue' in fv) {
+    const s = fv.stringValue;
+    try { return JSON.parse(s); } catch(e) { return s; }
+  }
+  if ('booleanValue' in fv) return fv.booleanValue;
+  if ('doubleValue' in fv) return fv.doubleValue;
+  if ('integerValue' in fv) return parseInt(fv.integerValue);
+  if ('nullValue' in fv) return null;
+  return null;
+}
+
+// Cache local
 let _dataCache = null;
-let _dirtyKeys = new Set();
 let _saveTimeout = null;
+let _dirtyKeys = new Set();
 
+// Carrega TODOS os documentos da coleção
 async function loadAllData() {
   if (_dataCache) return _dataCache;
   try {
-    const res = await fetch(`${JSONBIN_BASE}/b/${JSONBIN_BIN_ID}/latest`, {
-      headers: {
-        'X-Master-Key': JSONBIN_MASTER_KEY,
-        'X-Access-Key': JSONBIN_ACCESS_KEY
-      }
-    });
-    if (!res.ok) {
-      console.error('loadAllData error:', res.status);
-      _dataCache = {};
-      return _dataCache;
-    }
+    const res = await fetch(`${FIRESTORE_BASE}/${COLLECTION}?pageSize=300`);
+    if (!res.ok) { _dataCache = {}; return _dataCache; }
     const json = await res.json();
-    _dataCache = json.record || {};
+    _dataCache = {};
+    if (json.documents) {
+      json.documents.forEach(doc => {
+        const key = doc.name.split('/').pop();
+        const fields = doc.fields || {};
+        _dataCache[key] = fields.value ? fromFirestoreValue(fields.value) : null;
+      });
+    }
   } catch(e) {
-    console.error('loadAllData fetch error:', e);
+    console.error('loadAllData error:', e);
     _dataCache = {};
   }
   return _dataCache;
 }
 
+// Salva um documento no Firestore
+async function saveDocument(key, value) {
+  const docName = encodeURIComponent(key);
+  const body = {
+    fields: {
+      value: toFirestoreValue(value),
+      updatedAt: { timestampValue: new Date().toISOString() }
+    }
+  };
+  const res = await fetch(`${FIRESTORE_BASE}/${COLLECTION}/${docName}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body)
+  });
+  if (!res.ok) {
+    const txt = await res.text().catch(()=>'');
+    throw new Error(`Firestore error ${res.status}: ${txt.slice(0,150)}`);
+  }
+  return res;
+}
+
+// Deleta um documento do Firestore
+async function deleteDocument(key) {
+  const docName = encodeURIComponent(key);
+  await fetch(`${FIRESTORE_BASE}/${COLLECTION}/${docName}`, { method: 'DELETE' });
+}
+
+// Persiste apenas as chaves sujas
 async function persistData() {
-  if (!_dataCache) return;
+  if (!_dataCache || _dirtyKeys.size === 0) return;
   const saveIndicator = document.getElementById('saveIndicator');
   try {
     if (saveIndicator) { saveIndicator.textContent = '💾 Salvando...'; saveIndicator.style.color = '#F57F17'; saveIndicator.style.display = 'inline'; }
-    const res = await fetch(`${JSONBIN_BASE}/b/${JSONBIN_BIN_ID}`, {
-      method: 'PUT',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Master-Key': JSONBIN_MASTER_KEY,
-        'X-Access-Key': JSONBIN_ACCESS_KEY
-      },
-      body: JSON.stringify(_dataCache)
-    });
-    if (!res.ok) {
-      const txt = await res.text().catch(()=>'');
-      throw new Error(`Erro ${res.status} no banco de dados: ${txt.slice(0,100)}`);
-    }
+    const keysToSave = [..._dirtyKeys];
     _dirtyKeys.clear();
+    // Salva cada chave modificada individualmente
+    await Promise.all(keysToSave.map(k => saveDocument(k, _dataCache[k])));
     if (saveIndicator) { saveIndicator.textContent = '✅ Salvo'; saveIndicator.style.color = '#2E7D32'; setTimeout(()=>{ saveIndicator.style.display='none'; }, 3000); }
   } catch(e) {
     if (saveIndicator) { saveIndicator.textContent = '❌ Erro ao salvar: ' + e.message; saveIndicator.style.color = '#C62828'; saveIndicator.style.display = 'inline'; }
     console.error('persistData error:', e);
-    throw e; // propaga o erro para o chamador
+    throw e;
   }
 }
 
 function scheduleSave() {
   if (_saveTimeout) clearTimeout(_saveTimeout);
-  _saveTimeout = setTimeout(persistData, 1500);
+  _saveTimeout = setTimeout(persistData, 1000);
 }
 
 async function safeSet(key, value, shared) {
   const data = await loadAllData();
   data[key] = value;
   _dirtyKeys.add(key);
-  scheduleSave();
+  // Para operações críticas, salva imediatamente
+  await saveDocument(key, value);
   return { key, value, shared };
 }
 
 async function safeGet(key, shared) {
   const data = await loadAllData();
   if (key in data) return { key, value: data[key], shared };
+  // Tenta buscar direto do Firestore
+  try {
+    const docName = encodeURIComponent(key);
+    const res = await fetch(`${FIRESTORE_BASE}/${COLLECTION}/${docName}`);
+    if (res.ok) {
+      const doc = await res.json();
+      const val = doc.fields?.value ? fromFirestoreValue(doc.fields.value) : null;
+      if (_dataCache) _dataCache[key] = val;
+      return { key, value: val, shared };
+    }
+  } catch(e) {}
   throw new Error('not found: ' + key);
 }
+
+async function safeList(prefix, shared) {
+  const data = await loadAllData();
+  const keys = Object.keys(data).filter(k => k.startsWith(prefix));
+  return { keys, prefix, shared };
+}
+
+async function safeDelete(key) {
+  if (_dataCache) delete _dataCache[key];
+  await deleteDocument(key);
+}
+
+window.addEventListener('beforeunload', () => {
+  if (_dirtyKeys.size > 0) persistData();
+});
+
+// (migrado para Firebase acima)
 
 async function safeList(prefix, shared) {
   const data = await loadAllData();
@@ -2936,24 +3014,9 @@ async function excluirPedido(key, numeroPedido) {
   if (!confirm(`Confirma a exclusão do ${label}? Esta ação não pode ser desfeita.`)) return;
   if (!key) { alert('Chave do pedido não identificada. Atualize a lista e tente novamente.'); return; }
   try {
-    const data = await loadAllData();
-    if (key in data) {
-      delete data[key];
-      await persistData();
-      _dataCache = null; // limpa cache para forçar recarregamento
-      loadAdminData();
-    } else {
-      // Tenta encontrar a chave por varredura
-      const chaveEncontrada = Object.keys(data).find(k => k.includes(key.split(':').slice(-1)[0]));
-      if (chaveEncontrada) {
-        delete data[chaveEncontrada];
-        await persistData();
-        _dataCache = null;
-        loadAdminData();
-      } else {
-        alert('Pedido não encontrado no banco. Atualize a lista e tente novamente.');
-      }
-    }
+    await safeDelete(key);
+    _dataCache = null;
+    loadAdminData();
   } catch(e) {
     alert('Erro ao excluir: ' + e.message);
   }
