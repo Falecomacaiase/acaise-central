@@ -2797,12 +2797,18 @@ async function submitOrder(urgencia = false) {
   pedido._key = key; // guarda a chave no próprio pedido para exclusão futura
 
   try {
-    await safeSet(key, JSON.stringify(pedido), true);
+    msgEl.textContent = "Enviando...";
+
+    // Grava direto no cache e salva IMEDIATAMENTE no JSONbin
+    const data = await loadAllData();
+    data[key] = JSON.stringify(pedido);
+    if (_saveTimeout) clearTimeout(_saveTimeout);
+    await persistData();
 
     msgEl.style.color = urgencia ? "#C62828" : "#2E7D32";
     msgEl.textContent = urgencia
-      ? `🚨 Pedido urgência ${numeroPedido} enviado! Será separado com prioridade máxima.`
-      : `✅ Pedido ${numeroPedido} enviado! Tipo: ${tipoEntrega}. Prazo: até 48h.`;
+      ? `🚨 Pedido urgência ${numeroPedido} enviado!`
+      : `✅ Pedido ${numeroPedido} enviado! Prazo: até 48h.`;
 
     await registrarLog('Pedido',
       `${urgencia?'🚨 URGÊNCIA — ':''}Pedido ${numeroPedido} — ${Object.keys(itens).length} itens — R$ ${total.toFixed(2).replace('.',',')}`,
@@ -2813,8 +2819,10 @@ async function submitOrder(urgencia = false) {
       const el = document.getElementById('qtd_' + item.id);
       if (el) el.value = 0;
     });
+    if (document.getElementById('pedidoObservacao')) document.getElementById('pedidoObservacao').value = '';
     updateOrderTotal();
   } catch (e) {
+    msgEl.style.color = '#C62828';
     msgEl.textContent = "Erro ao enviar pedido: " + e.message;
   }
 }
@@ -2825,23 +2833,16 @@ let _ultimosPedidosVisto = new Set();
 async function loadAdminData(silencioso = false) {
   if (!silencioso) document.getElementById('lastUpdate').textContent = "Atualizando...";
 
-  // SEMPRE limpa o cache antes de carregar — garante dados frescos do JSONbin
+  // Sempre limpa cache para buscar dados frescos do JSONbin
   _dataCache = null;
 
   await loadEstoqueAtualSilencioso();
-
-  // Busca pedidos da semana atual E da semana anterior (evita perder pedidos na virada)
   const weekKey = await getCurrentWeekKey();
-  const semanaAnterior = await getSemanaAnterior();
   let pedidos = [];
 
   try {
-    // Carrega todos os dados frescos de uma vez
     const data = await loadAllData();
-    const chavesPedidos = Object.keys(data).filter(k =>
-      k.startsWith(`pedido:${weekKey}:`) || k.startsWith(`pedido:${semanaAnterior}:`)
-    );
-
+    const chavesPedidos = Object.keys(data).filter(k => k.startsWith(`pedido:${weekKey}:`));
     for (const k of chavesPedidos) {
       try {
         const val = data[k];
@@ -2854,7 +2855,6 @@ async function loadAdminData(silencioso = false) {
     }
   } catch(e) {}
 
-  // Detectar pedidos novos
   const badge = document.getElementById('novoPedidoBadge');
   if (badge) {
     const novos = pedidos.filter(p => !_ultimosPedidosVisto.has(p.numeroPedido));
@@ -2872,7 +2872,6 @@ async function loadAdminData(silencioso = false) {
     renderPorUnidade(pedidos);
   }
 
-  // Auto-refresh a cada 5 minutos
   if (!_adminPollInterval) {
     _adminPollInterval = setInterval(async () => {
       await loadAdminData(true);
