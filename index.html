@@ -996,13 +996,23 @@ async function confirmarDespacho() {
     };
     await safeSet(`saida:${Date.now()}`, JSON.stringify(saida), true);
 
-    // Marcar pedido como despachado
+    // Marcar pedido como despachado — usa a chave original do pedido
     pedidoAtualRomaneio.despachado = true;
     pedidoAtualRomaneio.dataDespacho = new Date().toISOString();
-    const weekKey = pedidoAtualRomaneio.semana;
-    await safeSet(`pedido:${weekKey}:${pedidoAtualRomaneio.unidade}`, JSON.stringify(pedidoAtualRomaneio), true);
+    const chaveOriginal = pedidoAtualRomaneio._storageKey ||
+      `pedido:${pedidoAtualRomaneio.semana}:${pedidoAtualRomaneio.unidade}`;
 
-    // Atualizar cache
+    // Grava tudo no cache e persiste imediatamente
+    const dataCache = await loadAllData();
+    dataCache[chaveOriginal] = JSON.stringify(pedidoAtualRomaneio);
+    dataCache[`saida:${Date.now()}`] = JSON.stringify({
+      tipo: 'Saída', unidade: pedidoAtualRomaneio.unidade, itens, data: new Date().toISOString()
+    });
+    dataCache['saldoInicial'] = JSON.stringify(saldos);
+    if (_saveTimeout) clearTimeout(_saveTimeout);
+    await persistData();
+
+    // Atualizar cache de estoque
     Object.values(CATALOGO).flat().forEach(item => {
       if (saldos[item.id] !== undefined) item._estoqueAtual = saldos[item.id];
     });
@@ -1026,7 +1036,8 @@ async function confirmarDespacho() {
 
 function fecharRomaneio() {
   document.getElementById('romaneioOverlay').style.display = 'none';
-  loadAdminData(); // Refresh pedidos list to show dispatched status
+  _dataCache = null; // força dados frescos do JSONbin
+  loadAdminData();
 }
 
 // ─── RELATÓRIOS ───────────────────────────────────────────────────────────────
@@ -2716,6 +2727,14 @@ async function getCurrentWeekKey() {
   return `${now.getFullYear()}-S${week}`;
 }
 
+async function getSemanaAnterior() {
+  const now = new Date();
+  now.setDate(now.getDate() - 7);
+  const onejan = new Date(now.getFullYear(), 0, 1);
+  const week = Math.ceil((((now - onejan) / 86400000) + onejan.getDay() + 1) / 7);
+  return `${now.getFullYear()}-S${week}`;
+}
+
 async function gerarNumeroPedido() {
   let counter = 1;
   try {
@@ -2804,26 +2823,36 @@ let _adminPollInterval = null;
 let _ultimosPedidosVisto = new Set();
 
 async function loadAdminData(silencioso = false) {
-  if (!silencioso) document.getElementById('lastUpdate').textContent = "Atualizado em " + new Date().toLocaleTimeString('pt-BR');
+  if (!silencioso) document.getElementById('lastUpdate').textContent = "Atualizando...";
+
+  // SEMPRE limpa o cache antes de carregar — garante dados frescos do JSONbin
+  _dataCache = null;
+
   await loadEstoqueAtualSilencioso();
+
+  // Busca pedidos da semana atual E da semana anterior (evita perder pedidos na virada)
   const weekKey = await getCurrentWeekKey();
+  const semanaAnterior = await getSemanaAnterior();
   let pedidos = [];
 
   try {
-    const list = await safeList(`pedido:${weekKey}:`, true);
-    if (list && list.keys) {
-      for (const k of list.keys) {
-        try {
-          const r = await safeGet(k, true);
-          if (r && r.value) {
-            const p = JSON.parse(r.value);
-            p._storageKey = k; // chave real do armazenamento para exclusão
-            pedidos.push(p);
-          }
-        } catch (e) {}
-      }
+    // Carrega todos os dados frescos de uma vez
+    const data = await loadAllData();
+    const chavesPedidos = Object.keys(data).filter(k =>
+      k.startsWith(`pedido:${weekKey}:`) || k.startsWith(`pedido:${semanaAnterior}:`)
+    );
+
+    for (const k of chavesPedidos) {
+      try {
+        const val = data[k];
+        if (val) {
+          const p = JSON.parse(val);
+          p._storageKey = k;
+          pedidos.push(p);
+        }
+      } catch(e) {}
     }
-  } catch (e) {}
+  } catch(e) {}
 
   // Detectar pedidos novos
   const badge = document.getElementById('novoPedidoBadge');
@@ -2837,16 +2866,17 @@ async function loadAdminData(silencioso = false) {
   }
 
   if (!silencioso) {
+    document.getElementById('lastUpdate').textContent = "Atualizado em " + new Date().toLocaleTimeString('pt-BR');
     if (badge) badge.style.display = 'none';
     renderConsolidado(pedidos);
     renderPorUnidade(pedidos);
   }
 
-  // Auto-refresh a cada 2 minutos
+  // Auto-refresh a cada 5 minutos
   if (!_adminPollInterval) {
     _adminPollInterval = setInterval(async () => {
       await loadAdminData(true);
-    }, 300000); // 5 minutos
+    }, 300000);
   }
 }
 
