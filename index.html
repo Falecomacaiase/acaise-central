@@ -904,6 +904,20 @@ async function cadastrarNovoProduto() {
 // ─── ROMANEIO ─────────────────────────────────────────────────────────────────
 let pedidoAtualRomaneio = null;
 
+// Cache global de pedidos para evitar problemas com caracteres especiais no onclick
+let _pedidosCache = [];
+
+function abrirRomaneioIdx(idx) {
+  const pedido = _pedidosCache[idx];
+  if (pedido) abrirRomaneio(pedido);
+}
+
+async function excluirPedidoIdx(idx) {
+  const p = _pedidosCache[idx];
+  if (!p) return;
+  excluirPedido(p._storageKey || '', p.numeroPedido || '');
+}
+
 function abrirRomaneio(pedido) {
   pedidoAtualRomaneio = pedido;
   const jaDespachou = pedido.despachado === true;
@@ -969,68 +983,77 @@ function abrirRomaneio(pedido) {
 }
 
 async function confirmarDespacho() {
-  if (!pedidoAtualRomaneio || pedidoAtualRomaneio.despachado) return;
+  if (!pedidoAtualRomaneio) {
+    alert('Erro: pedido não encontrado. Feche e abra o romaneio novamente.');
+    return;
+  }
+  if (pedidoAtualRomaneio.despachado) {
+    window.print();
+    return;
+  }
+
   const btn = document.getElementById('btnDespachar');
+  const statusMsg = document.getElementById('romaneioStatusMsg');
   btn.disabled = true;
   btn.textContent = 'Processando...';
+  statusMsg.textContent = 'Salvando no banco de dados...';
+  statusMsg.style.color = '#555';
 
-  // Dar baixa no estoque
-  const itens = pedidoAtualRomaneio.itens;
   try {
-    // Load current saldos
-    let saldos = {};
-    try { const r = await safeGet('saldoInicial', true); if(r&&r.value) saldos = JSON.parse(r.value); } catch(e) {}
+    const itens = pedidoAtualRomaneio.itens;
 
+    // 1. Busca saldo atual FRESCO do JSONbin
+    _dataCache = null;
+    const data = await loadAllData();
+
+    // 2. Carrega saldo
+    let saldos = {};
+    try { saldos = JSON.parse(data['saldoInicial'] || '{}'); } catch(e) {}
+
+    // 3. Desconta estoque
     Object.entries(itens).forEach(([id, it]) => {
-      if (saldos[id] === undefined) saldos[id] = 0;
       saldos[id] = Math.max(0, (saldos[id] || 0) - it.qtd);
     });
-    await safeSet('saldoInicial', JSON.stringify(saldos), true);
 
-    // Registrar saída no histórico
-    const saida = {
-      tipo: 'Saída',
-      unidade: pedidoAtualRomaneio.unidade,
-      itens,
-      data: new Date().toISOString()
-    };
-    await safeSet(`saida:${Date.now()}`, JSON.stringify(saida), true);
-
-    // Marcar pedido como despachado — usa a chave original do pedido
+    // 4. Marca pedido como despachado
     pedidoAtualRomaneio.despachado = true;
     pedidoAtualRomaneio.dataDespacho = new Date().toISOString();
-    const chaveOriginal = pedidoAtualRomaneio._storageKey ||
-      `pedido:${pedidoAtualRomaneio.semana}:${pedidoAtualRomaneio.unidade}`;
+    const chave = pedidoAtualRomaneio._storageKey;
+    if (!chave) throw new Error('Chave do pedido não encontrada. Atualize o painel e tente novamente.');
 
-    // Grava tudo no cache e persiste imediatamente
-    const dataCache = await loadAllData();
-    dataCache[chaveOriginal] = JSON.stringify(pedidoAtualRomaneio);
-    dataCache[`saida:${Date.now()}`] = JSON.stringify({
-      tipo: 'Saída', unidade: pedidoAtualRomaneio.unidade, itens, data: new Date().toISOString()
+    // 5. Grava tudo de uma vez no cache
+    data[chave] = JSON.stringify(pedidoAtualRomaneio);
+    data['saldoInicial'] = JSON.stringify(saldos);
+    data[`saida:${Date.now()}`] = JSON.stringify({
+      tipo: 'Saída', unidade: pedidoAtualRomaneio.unidade,
+      itens, data: new Date().toISOString()
     });
-    dataCache['saldoInicial'] = JSON.stringify(saldos);
+
+    // 6. Persiste imediatamente
     if (_saveTimeout) clearTimeout(_saveTimeout);
     await persistData();
 
-    // Atualizar cache de estoque
+    // 7. Atualiza cache local de estoque
     Object.values(CATALOGO).flat().forEach(item => {
       if (saldos[item.id] !== undefined) item._estoqueAtual = saldos[item.id];
     });
 
-    const statusMsg = document.getElementById('romaneioStatusMsg');
-    statusMsg.style.color = '#2E7D32';
-    statusMsg.textContent = '✅ Estoque descontado! Imprimindo...';
     await registrarLog('Saída',
-      `Despacho confirmado — ${pedidoAtualRomaneio.numeroPedido||''} — ${Object.keys(itens).length} itens`,
+      `Despacho — ${pedidoAtualRomaneio.numeroPedido||''} — ${Object.keys(itens).length} itens`,
       currentUser, pedidoAtualRomaneio.unidade);
+
+    statusMsg.style.color = '#2E7D32';
+    statusMsg.textContent = '✅ Salvo no sistema! Imprimindo...';
     btn.textContent = '✅ Já despachado';
     btn.style.background = '#aaa';
+    setTimeout(() => window.print(), 600);
 
-    setTimeout(() => window.print(), 400);
   } catch(e) {
     btn.disabled = false;
     btn.textContent = '✅ Confirmar despacho e imprimir';
-    document.getElementById('romaneioStatusMsg').textContent = 'Erro ao descontar estoque: ' + e.message;
+    statusMsg.style.color = '#C62828';
+    statusMsg.textContent = 'Erro: ' + e.message;
+    console.error('Erro despacho:', e);
   }
 }
 
@@ -2953,12 +2976,18 @@ function renderPorUnidade(pedidos) {
     wrap.innerHTML = `<p class="small">Sem pedidos para exibir.</p>`;
     return;
   }
+
+  // Guarda pedidos no cache global para evitar problemas com caracteres especiais
+  _pedidosCache = [];
+  pedidos.sort((a,b) => (b.urgencia?1:0)-(a.urgencia?1:0) || a.unidade.localeCompare(b.unidade));
+
   let html = "";
-  // Urgências primeiro, depois por unidade
-  pedidos.sort((a,b) => (b.urgencia?1:0)-(a.urgencia?1:0) || a.unidade.localeCompare(b.unidade)).forEach(p => {
+  pedidos.forEach((p, idx) => {
+    _pedidosCache[idx] = p; // salva no cache com índice
     const totalUnidade = Object.values(p.itens).reduce((s,it) => s + (it.total||0), 0);
     const borderColor = p.urgencia ? '#C62828' : p.despachado ? '#aaa' : '#5B2D8E';
     const numPedido = p.numeroPedido || '—';
+    const storageKey = (p._storageKey || p._key || '').replace(/'/g,"\\'");
     html += `<div class="card" style="margin-top:10px;border-left:4px solid ${borderColor}">
       <div class="flex-between" style="flex-wrap:wrap;gap:6px">
         <div>
@@ -2971,8 +3000,8 @@ function renderPorUnidade(pedidos) {
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <span class="badge ${p.tipoEntrega === 'Retirada' ? 'badge-yellow' : 'badge-green'}">${p.tipoEntrega === 'Retirada' ? '🏪 Retirada' : '🚚 Entrega'}</span>
           <span class="small">${new Date(p.dataEnvio).toLocaleString('pt-BR')}</span>
-          <button class="btn btn-secondary btn-xs" onclick='abrirRomaneio(${JSON.stringify(p)})'>🖨️ Romaneio</button>
-          <button class="btn btn-secondary btn-xs" style="background:#FFEBEE;color:#C62828" onclick='excluirPedido(${JSON.stringify(p._storageKey || p._key || "")}, "${p.numeroPedido||""}")'>🗑️ Excluir</button>
+          <button class="btn btn-secondary btn-xs" onclick="abrirRomaneioIdx(${idx})">🖨️ Romaneio</button>
+          <button class="btn btn-secondary btn-xs" style="background:#FFEBEE;color:#C62828" onclick="excluirPedidoIdx(${idx})">🗑️ Excluir</button>
         </div>
       </div>
       <table style="margin-top:8px"><tbody>`;
