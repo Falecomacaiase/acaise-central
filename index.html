@@ -839,7 +839,7 @@ let extraUnidades = []; // [{nome, tipo, responsavel, senha}]
 async function loadExtraUnidades() {
   try {
     const r = await safeGet('extraUnidades', true);
-    if (r && r.value) extraUnidades = JSON.parse(r.value);
+    if (r && r.value) extraUnidades = parseValue(r.value);
   } catch(e) {}
 }
 
@@ -1132,7 +1132,7 @@ async function gerarRelatorio() {
       for (const k of list.keys) {
         try {
           const r = await safeGet(k, true);
-          if (r && r.value) todosPedidos.push(JSON.parse(r.value));
+          if (r && r.value) todosPedidos.push(parseValue(r.value));
         } catch(e) {}
       }
     }
@@ -1212,7 +1212,7 @@ let fornecedoresCadastrados = ["Ultra","Macropac","Tia Sônia","Hortifruti","Dis
 async function loadFornecedores() {
   try {
     const r = await safeGet('fornecedores', true);
-    if (r && r.value) fornecedoresCadastrados = JSON.parse(r.value);
+    if (r && r.value) fornecedoresCadastrados = parseValue(r.value);
   } catch(e) {}
 }
 
@@ -1257,7 +1257,7 @@ async function renderRelatorioFornecedor() {
     const list = await safeList('entrada:', true);
     if (list && list.keys) {
       for (const k of list.keys) {
-        try { const r = await safeGet(k, true); if(r&&r.value) entradas.push(JSON.parse(r.value)); } catch(e) {}
+        try { const r = await safeGet(k, true); if(r&&r.value) entradas.push(parseValue(r.value)); } catch(e) {}
       }
     }
   } catch(e) {}
@@ -1392,8 +1392,15 @@ let saldoAtual = {}; // { [itemId]: qtd }
 async function loadSaldoInicial() {
   try {
     const r = await safeGet('saldoInicial', true);
-    if (r && r.value) saldoAtual = JSON.parse(r.value);
-  } catch(e) {}
+    if (r && r.value) saldoAtual = parseValue(r.value);
+  } catch(e) { console.error('loadSaldoInicial error:', e); }
+}
+
+// Helper: garante que o valor seja objeto mesmo se vier como string JSON
+function parseValue(val) {
+  if (!val) return null;
+  if (typeof val === 'string') { try { return JSON.parse(val); } catch(e) { return val; } }
+  return val;
 }
 
 function toggleHistorico() {
@@ -1481,7 +1488,7 @@ let itemState = {}; // { [id]: { disponivel: bool, custo: num, venda: num } }
 async function loadItemState() {
   try {
     const r = await safeGet('itemState', true);
-    if (r && r.value) itemState = JSON.parse(r.value);
+    if (r && r.value) itemState = parseValue(r.value);
   } catch(e) {}
   // Garante que TODO item sem estado explícito aparece como disponível
   Object.values(CATALOGO).flat().forEach(item => {
@@ -1805,7 +1812,7 @@ async function loadEstoqueEHistorico() {
     const list = await safeList('entrada:', true);
     if (list && list.keys) {
       for (const k of list.keys) {
-        try { const r = await safeGet(k, true); if(r&&r.value) entradas.push(JSON.parse(r.value)); } catch(e) {}
+        try { const r = await safeGet(k, true); if(r&&r.value) entradas.push(parseValue(r.value)); } catch(e) {}
       }
     }
   } catch(e) {}
@@ -1816,7 +1823,7 @@ async function loadEstoqueEHistorico() {
     const list = await safeList('saida:', true);
     if (list && list.keys) {
       for (const k of list.keys) {
-        try { const r = await safeGet(k, true); if(r&&r.value) saidas.push(JSON.parse(r.value)); } catch(e) {}
+        try { const r = await safeGet(k, true); if(r&&r.value) saidas.push(parseValue(r.value)); } catch(e) {}
       }
     }
   } catch(e) {}
@@ -2181,7 +2188,7 @@ async function carregarHistoricoProducao() {
       for (const k of list.keys) {
         try {
           const r = await safeGet(k, true);
-          if (r && r.value) lotes.push(JSON.parse(r.value));
+          if (r && r.value) lotes.push(parseValue(r.value));
         } catch(e) {}
       }
     }
@@ -2420,7 +2427,7 @@ async function renderLog() {
       for (const k of list.keys) {
         try {
           const r = await safeGet(k, true);
-          if (r && r.value) logs.push(JSON.parse(r.value));
+          if (r && r.value) logs.push(parseValue(r.value));
         } catch(e) {}
       }
     }
@@ -2435,7 +2442,7 @@ async function renderLog() {
         try {
           const r = await safeGet(k, true);
           if (r && r.value) {
-            const p = JSON.parse(r.value);
+            const p = parseValue(r.value);
             logs.push({
               tipo: 'Pedido',
               descricao: `${p.urgencia?'🚨 URGÊNCIA — ':''} Pedido ${p.numeroPedido||''} — ${Object.keys(p.itens||{}).length} itens — R$ ${(p.total||0).toFixed(2).replace('.',',')}`,
@@ -2456,7 +2463,7 @@ async function renderLog() {
         try {
           const r = await safeGet(k, true);
           if (r && r.value) {
-            const e = JSON.parse(r.value);
+            const e = parseValue(r.value);
             logs.push({
               tipo: 'Entrada',
               descricao: `+${e.qtd} × ${e.nome}${e.fornecedor?' — '+e.fornecedor:''}${e.obs?' ('+e.obs+')':''}`,
@@ -2477,7 +2484,7 @@ async function renderLog() {
         try {
           const r = await safeGet(k, true);
           if (r && r.value) {
-            const s = JSON.parse(r.value);
+            const s = parseValue(r.value);
             const isSaidaAvulsa = s.tipo === 'Saída Avulsa';
             logs.push({
               tipo: isSaidaAvulsa ? 'Saída Avulsa' : 'Saída',
@@ -2567,7 +2574,7 @@ async function ativarBloqueio() {
   if (!unidade) { msg.textContent = 'Selecione uma unidade.'; return; }
   try {
     let bloqueios = {};
-    try { const r = await safeGet('bloqueiosUnidade', true); if(r&&r.value) bloqueios=JSON.parse(r.value); } catch(e) {}
+    try { const r = await safeGet('bloqueiosUnidade', true); if(r&&r.value) bloqueios=parseValue(r.value); } catch(e) {}
     bloqueios[unidade] = { data: new Date().toISOString(), ativadoPor: currentUser };
     await safeSet('bloqueiosUnidade', JSON.stringify(bloqueios), true);
     if (_saveTimeout) clearTimeout(_saveTimeout);
@@ -2584,7 +2591,7 @@ async function desativarBloqueio() {
   if (!unidade) { msg.textContent = 'Selecione uma unidade.'; return; }
   try {
     let bloqueios = {};
-    try { const r = await safeGet('bloqueiosUnidade', true); if(r&&r.value) bloqueios=JSON.parse(r.value); } catch(e) {}
+    try { const r = await safeGet('bloqueiosUnidade', true); if(r&&r.value) bloqueios=parseValue(r.value); } catch(e) {}
     delete bloqueios[unidade];
     await safeSet('bloqueiosUnidade', JSON.stringify(bloqueios), true);
     if (_saveTimeout) clearTimeout(_saveTimeout);
@@ -2601,7 +2608,7 @@ async function renderBloqueiosAtivos() {
   try {
     const r = await safeGet('bloqueiosUnidade', true);
     if (!r || !r.value) { wrap.innerHTML = ''; return; }
-    const bloqueios = JSON.parse(r.value);
+    const bloqueios = parseValue(r.value);
     const ativos = Object.entries(bloqueios);
     if (ativos.length === 0) { wrap.innerHTML = ''; return; }
     wrap.innerHTML = `<div style="font-size:12px;font-weight:600;color:#E65100;margin-bottom:4px">Unidades bloqueadas:</div>` +
@@ -2612,7 +2619,7 @@ async function renderBloqueiosAtivos() {
 async function loadBoletos() {
   try {
     const r = await safeGet('boletos', true);
-    if (r && r.value) boletos = JSON.parse(r.value);
+    if (r && r.value) boletos = parseValue(r.value);
   } catch(e) { boletos = []; }
   const hoje = new Date(); hoje.setHours(0,0,0,0);
   boletos.forEach(b => {
@@ -2713,7 +2720,7 @@ async function verificarBoletosUnidade(unidade) {
   try {
     const r = await safeGet('bloqueiosUnidade', true);
     if (r && r.value) {
-      const bloqueios = JSON.parse(r.value);
+      const bloqueios = parseValue(r.value);
       bloqueioManual = !!bloqueios[unidade];
     }
   } catch(e) {}
