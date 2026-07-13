@@ -1896,6 +1896,9 @@ function doLogin() {
   errEl.textContent = "";
   currentUser = unit;
   currentRole = unit === "Franqueadora (Admin)" ? "admin" : unit === "INVENTÁRIO" ? "inventario" : "loja";
+  // Salva sessão para não perder ao recarregar
+  sessionStorage.setItem('acaise_user', currentUser);
+  sessionStorage.setItem('acaise_role', currentRole);
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('logoutBtn').style.display = 'inline-block';
 
@@ -1944,14 +1947,53 @@ function doLogin() {
 
 function logout() {
   currentUser = null; currentRole = null;
+  sessionStorage.removeItem('acaise_user');
+  sessionStorage.removeItem('acaise_role');
+  _dataCache = null; // limpa cache ao sair
   document.getElementById('orderScreen').classList.add('hidden');
   document.getElementById('adminScreen').classList.add('hidden');
   document.getElementById('inventarioScreen').classList.add('hidden');
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('logoutBtn').style.display = 'none';
-  document.getElementById('topbarSub').textContent = "Protótipo";
+  document.getElementById('topbarSub').textContent = "Central de Pedidos";
   document.getElementById('loginPass').value = "";
+  if (_adminPollInterval) { clearInterval(_adminPollInterval); _adminPollInterval = null; }
 }
+
+// Restaura sessão ao recarregar a página
+function restaurarSessao() {
+  const savedUser = sessionStorage.getItem('acaise_user');
+  const savedRole = sessionStorage.getItem('acaise_role');
+  if (!savedUser || !savedRole) return false;
+  currentUser = savedUser;
+  currentRole = savedRole;
+  document.getElementById('loginScreen').classList.add('hidden');
+  document.getElementById('logoutBtn').style.display = 'inline-block';
+  document.getElementById('topbarSub').textContent =
+    savedRole === 'admin' ? "Painel da Franqueadora" :
+    savedRole === 'inventario' ? "Contagem de Inventário" :
+    "Unidade: " + savedUser;
+  if (savedRole === 'admin') {
+    document.getElementById('adminScreen').classList.remove('hidden');
+    loadExtraUnidades().then(() => loadAdminData());
+  } else if (savedRole === 'inventario') {
+    document.getElementById('inventarioScreen').classList.remove('hidden');
+    loadSaldoInicial().then(iniciarInventario);
+  } else {
+    document.getElementById('orderUnitName').textContent = savedUser;
+    document.getElementById('orderScreen').classList.remove('hidden');
+    loadItemState().then(async () => {
+      renderCatalog();
+      const situacao = await verificarBoletosUnidade(savedUser);
+      // aplica avisos de boleto se necessário
+    });
+  }
+  return true;
+}
+
+window.addEventListener('load', () => {
+  setTimeout(() => { restaurarSessao(); }, 500);
+});
 
 function renderCatalog() {
   const wrap = document.getElementById('catalog');
