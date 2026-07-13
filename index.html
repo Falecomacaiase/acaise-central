@@ -66,7 +66,10 @@
     <h1>Açaí-Se — Central de Pedidos</h1>
     <div class="sub" id="topbarSub">Protótipo</div>
   </div>
-  <button class="btn btn-secondary" id="logoutBtn" onclick="logout()" style="display:none">Sair</button>
+  <div style="display:flex;align-items:center;gap:12px">
+    <span id="saveIndicator" style="display:none;font-size:12px;font-weight:600"></span>
+    <button class="btn btn-secondary" id="logoutBtn" onclick="logout()" style="display:none">Sair</button>
+  </div>
 </div>
 
 <div class="container">
@@ -687,17 +690,26 @@ async function loadAllData() {
         'X-Access-Key': JSONBIN_ACCESS_KEY
       }
     });
-    if (!res.ok) { _dataCache = {}; return _dataCache; }
+    if (!res.ok) {
+      console.error('loadAllData error:', res.status);
+      _dataCache = {};
+      return _dataCache;
+    }
     const json = await res.json();
     _dataCache = json.record || {};
-  } catch(e) { _dataCache = {}; }
+  } catch(e) {
+    console.error('loadAllData fetch error:', e);
+    _dataCache = {};
+  }
   return _dataCache;
 }
 
 async function persistData() {
   if (!_dataCache) return;
+  const saveIndicator = document.getElementById('saveIndicator');
   try {
-    await fetch(`${JSONBIN_BASE}/b/${JSONBIN_BIN_ID}`, {
+    if (saveIndicator) { saveIndicator.textContent = '💾 Salvando...'; saveIndicator.style.color = '#F57F17'; saveIndicator.style.display = 'inline'; }
+    const res = await fetch(`${JSONBIN_BASE}/b/${JSONBIN_BIN_ID}`, {
       method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
@@ -706,8 +718,17 @@ async function persistData() {
       },
       body: JSON.stringify(_dataCache)
     });
+    if (!res.ok) {
+      const txt = await res.text().catch(()=>'');
+      throw new Error(`Erro ${res.status} no banco de dados: ${txt.slice(0,100)}`);
+    }
     _dirtyKeys.clear();
-  } catch(e) { console.error('Erro ao salvar:', e); }
+    if (saveIndicator) { saveIndicator.textContent = '✅ Salvo'; saveIndicator.style.color = '#2E7D32'; setTimeout(()=>{ saveIndicator.style.display='none'; }, 3000); }
+  } catch(e) {
+    if (saveIndicator) { saveIndicator.textContent = '❌ Erro ao salvar: ' + e.message; saveIndicator.style.color = '#C62828'; saveIndicator.style.display = 'inline'; }
+    console.error('persistData error:', e);
+    throw e; // propaga o erro para o chamador
+  }
 }
 
 function scheduleSave() {
