@@ -6,6 +6,9 @@
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Açaí-Se | Central de Pedidos</title>
+<!-- Firebase SDK -->
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
 <style>
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; margin: 0; background: #F5F2FA; color: #2C2C2A; }
@@ -670,111 +673,75 @@ const CATALOGO = {"Produtos Acabados": [{"id": "PA86", "cod": 86, "nome": "Aça�
 let currentUser = null;
 let currentRole = null; // 'loja' ou 'admin'
 
-// ─── ARMAZENAMENTO REAL — Firebase Firestore ─────────────────────────────────
+// ─── FIREBASE SDK ────────────────────────────────────────────────────────────
 const FIREBASE_CONFIG = {
   apiKey: "AIzaSyD5IPs4nkf96Onv774Qrgv-ltLaHn2Bi2U",
+  authDomain: "acaise-central.firebaseapp.com",
   projectId: "acaise-central"
 };
 
-const FIRESTORE_BASE = `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents`;
-const COLLECTION = 'acaise';
-const API_KEY = FIREBASE_CONFIG.apiKey;
-
-function toFirestoreValue(val) {
-  if (val === null || val === undefined) return { nullValue: null };
-  if (typeof val === 'string') return { stringValue: val };
-  return { stringValue: JSON.stringify(val) };
-}
-
-function fromFirestoreValue(fv) {
-  if (!fv) return null;
-  if ('stringValue' in fv) {
-    const s = fv.stringValue;
-    try { return JSON.parse(s); } catch(e) { return s; }
-  }
-  if ('booleanValue' in fv) return fv.booleanValue;
-  if ('doubleValue' in fv) return fv.doubleValue;
-  if ('integerValue' in fv) return parseInt(fv.integerValue);
-  if ('nullValue' in fv) return null;
-  return null;
-}
+firebase.initializeApp(FIREBASE_CONFIG);
+const _db = firebase.firestore();
+const _col = _db.collection('acaise');
 
 let _dataCache = null;
-let _saveTimeout = null;
 let _dirtyKeys = new Set();
+let _saveTimeout = null;
 
 async function loadAllData() {
   if (_dataCache) return _dataCache;
   _dataCache = {};
   try {
-    let url = `${FIRESTORE_BASE}/${COLLECTION}?pageSize=300&key=${API_KEY}`;
-    let hasMore = true;
-    let pageToken = null;
-    while (hasMore) {
-      const fetchUrl = pageToken ? `${url}&pageToken=${pageToken}` : url;
-      const res = await fetch(fetchUrl);
-      if (!res.ok) {
-        const txt = await res.text();
-        console.error('loadAllData error:', res.status, txt.slice(0,200));
-        break;
+    const snapshot = await _col.get();
+    snapshot.forEach(doc => {
+      const data = doc.data();
+      let val = data.value;
+      // Tenta parsear JSON se vier como string
+      if (typeof val === 'string') {
+        try { val = JSON.parse(val); } catch(e) {}
       }
-      const json = await res.json();
-      if (json.documents) {
-        json.documents.forEach(doc => {
-          // Pega o ID do documento e decodifica
-          const rawId = doc.name.split('/').pop();
-          const key = decodeURIComponent(rawId);
-          const fields = doc.fields || {};
-          _dataCache[key] = fields.value ? fromFirestoreValue(fields.value) : null;
-        });
-      }
-      pageToken = json.nextPageToken;
-      hasMore = !!pageToken;
-    }
+      _dataCache[doc.id] = val;
+    });
   } catch(e) {
-    console.error('loadAllData fetch error:', e);
+    console.error('loadAllData error:', e);
   }
   return _dataCache;
 }
 
 async function saveDocument(key, value) {
-  const docId = encodeURIComponent(key);
-  const body = {
-    fields: {
-      value: toFirestoreValue(value),
-      updatedAt: { timestampValue: new Date().toISOString() }
-    }
-  };
-  const res = await fetch(`${FIRESTORE_BASE}/${COLLECTION}/${docId}?key=${API_KEY}`, {
-    method: 'PATCH',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(body)
-  });
-  if (!res.ok) {
-    const txt = await res.text().catch(()=>'');
-    throw new Error(`Firestore ${res.status}: ${txt.slice(0,150)}`);
+  // Sanitiza a chave para uso como ID de documento Firebase
+  const docId = key.replace(/\//g, '_');
+  let stored = value;
+  if (typeof value !== 'string') {
+    stored = JSON.stringify(value);
   }
+  await _col.doc(docId).set({
+    value: stored,
+    originalKey: key,
+    updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+  });
+  if (_dataCache) _dataCache[key] = value;
 }
 
 async function deleteDocument(key) {
-  const docId = encodeURIComponent(key);
-  await fetch(`${FIRESTORE_BASE}/${COLLECTION}/${docId}?key=${API_KEY}`, { method: 'DELETE' });
+  const docId = key.replace(/\//g, '_');
+  await _col.doc(docId).delete();
+  if (_dataCache) delete _dataCache[key];
 }
 
 async function persistData() {
-  if (!_dataCache || _dirtyKeys.size === 0) return;
+  if (_dirtyKeys.size === 0) return;
   const saveIndicator = document.getElementById('saveIndicator');
   try {
     if (saveIndicator) { saveIndicator.textContent = '💾 Salvando...'; saveIndicator.style.color = '#F57F17'; saveIndicator.style.display = 'inline'; }
     const keysToSave = [..._dirtyKeys];
     _dirtyKeys.clear();
     for (const k of keysToSave) {
-      await saveDocument(k, _dataCache[k]);
+      if (_dataCache && k in _dataCache) await saveDocument(k, _dataCache[k]);
     }
     if (saveIndicator) { saveIndicator.textContent = '✅ Salvo'; saveIndicator.style.color = '#2E7D32'; setTimeout(()=>{ saveIndicator.style.display='none'; }, 3000); }
   } catch(e) {
     if (saveIndicator) { saveIndicator.textContent = '❌ ' + e.message; saveIndicator.style.color = '#C62828'; saveIndicator.style.display = 'inline'; }
-    console.error('persistData error:', e);
     throw e;
   }
 }
@@ -785,8 +752,8 @@ function scheduleSave() {
 }
 
 async function safeSet(key, value, shared) {
-  const data = await loadAllData();
-  data[key] = value;
+  if (!_dataCache) await loadAllData();
+  _dataCache[key] = value;
   await saveDocument(key, value);
   return { key, value, shared };
 }
@@ -804,39 +771,8 @@ async function safeList(prefix, shared) {
 }
 
 async function safeDelete(key) {
-  if (_dataCache) delete _dataCache[key];
   await deleteDocument(key);
 }
-
-window.addEventListener('beforeunload', () => {
-  if (_dirtyKeys.size > 0) persistData();
-});
-
-// Converte valor JS para formato Firestore
-function toFirestoreValue(val) {
-  if (val === null || val === undefined) return { nullValue: null };
-  if (typeof val === 'boolean') return { booleanValue: val };
-  if (typeof val === 'number') return { doubleValue: val };
-  if (typeof val === 'string') return { stringValue: val };
-  if (typeof val === 'object') return { stringValue: JSON.stringify(val) };
-  return { stringValue: String(val) };
-}
-
-// Converte valor Firestore para JS
-function fromFirestoreValue(fv) {
-  if (!fv) return null;
-  if ('stringValue' in fv) {
-    const s = fv.stringValue;
-    try { return JSON.parse(s); } catch(e) { return s; }
-  }
-  if ('booleanValue' in fv) return fv.booleanValue;
-  if ('doubleValue' in fv) return fv.doubleValue;
-  if ('integerValue' in fv) return parseInt(fv.integerValue);
-  if ('nullValue' in fv) return null;
-  return null;
-}
-
-// (funções Firebase já declaradas acima)
 
 function populateUnitSelect() {
   const sel = document.getElementById('loginUnit');
