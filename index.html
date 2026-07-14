@@ -1383,11 +1383,9 @@ async function salvarInventario() {
     if (el) saldoAtual[item.id] = parseFloat(el.value) || 0;
   });
   try {
-    const data = await loadAllData();
-    data['saldoInicial'] = JSON.stringify(saldoAtual);
-    data[`inventario:${Date.now()}`] = JSON.stringify({ data: new Date().toISOString(), saldo: { ...saldoAtual } });
-    if (_saveTimeout) clearTimeout(_saveTimeout);
-    await persistData();
+    const tsInv = Date.now();
+    await saveDocument('saldoInicial', saldoAtual);
+    await saveDocument(`inventario:${tsInv}`, { data: new Date().toISOString(), saldo: { ...saldoAtual } });
     msgEl.style.color = '#2E7D32';
     msgEl.textContent = `✅ Contagem salva em ${new Date().toLocaleTimeString('pt-BR')}! O estoque central já está atualizado.`;
     await registrarLog('Inventário', 'Contagem de estoque salva', currentUser, 'Central');
@@ -1678,11 +1676,8 @@ async function registrarSaidaAvulsa() {
       data: new Date().toISOString()
     };
 
-    const data = await loadAllData();
-    data['saldoInicial'] = JSON.stringify(saldoAtual);
-    data[`saida:avulsa:${Date.now()}`] = JSON.stringify(saida);
-    if (_saveTimeout) clearTimeout(_saveTimeout);
-    await persistData();
+    await saveDocument('saldoInicial', saldoAtual);
+    await saveDocument(`saida:avulsa:${Date.now()}`, saida);
 
     item._estoqueAtual = saldoAtual[itemId];
     msgEl.style.color = '#E65100';
@@ -1746,14 +1741,10 @@ async function registrarEntrada() {
       data: new Date().toISOString()
     };
 
-    // Grava tudo no cache
-    const data = await loadAllData();
-    data[`entrada:${itemId}:${Date.now()}`] = JSON.stringify(entrada);
-    data['saldoInicial'] = JSON.stringify(saldoAtual);
-
-    // Salva IMEDIATAMENTE no JSONbin (sem delay)
-    if (_saveTimeout) clearTimeout(_saveTimeout);
-    await persistData();
+    // Salva diretamente no Firebase
+    const tsEntrada = Date.now();
+    await saveDocument(`entrada:${itemId}:${tsEntrada}`, entrada);
+    await saveDocument('saldoInicial', saldoAtual);
 
     // Salva novo fornecedor se necessário
     if (fornecedor) await adicionarFornecedorSeNovo(fornecedor);
@@ -2204,11 +2195,8 @@ async function salvarProducao() {
     }
 
     // Grava tudo no cache e salva IMEDIATAMENTE
-    const data = await loadAllData();
-    data[`producao:${Date.now()}`] = JSON.stringify(lote);
-    data['saldoInicial'] = JSON.stringify(saldoAtual);
-    if (_saveTimeout) clearTimeout(_saveTimeout);
-    await persistData();
+    await saveDocument(`producao:${Date.now()}`, lote);
+    await saveDocument('saldoInicial', saldoAtual);
 
     await registrarLog('Produção',
       `${ficha.nome} — ${caixas}cx de 8kg — Custo R$ ${custoPorCaixa.toFixed(2).replace('.',',')} /cx — estoque atualizado`,
@@ -2629,9 +2617,7 @@ async function ativarBloqueio() {
     let bloqueios = {};
     try { const r = await safeGet('bloqueiosUnidade', true); if(r&&r.value) bloqueios=parseValue(r.value); } catch(e) {}
     bloqueios[unidade] = { data: new Date().toISOString(), ativadoPor: currentUser };
-    await safeSet('bloqueiosUnidade', JSON.stringify(bloqueios), true);
-    if (_saveTimeout) clearTimeout(_saveTimeout);
-    await persistData();
+    await saveDocument('bloqueiosUnidade', bloqueios);
     msg.style.color = '#C62828';
     msg.textContent = `🔒 ${unidade} bloqueada com sucesso.`;
     renderBloqueiosAtivos();
@@ -2646,9 +2632,7 @@ async function desativarBloqueio() {
     let bloqueios = {};
     try { const r = await safeGet('bloqueiosUnidade', true); if(r&&r.value) bloqueios=parseValue(r.value); } catch(e) {}
     delete bloqueios[unidade];
-    await safeSet('bloqueiosUnidade', JSON.stringify(bloqueios), true);
-    if (_saveTimeout) clearTimeout(_saveTimeout);
-    await persistData();
+    await saveDocument('bloqueiosUnidade', bloqueios);
     msg.style.color = '#2E7D32';
     msg.textContent = `🔓 ${unidade} desbloqueada.`;
     renderBloqueiosAtivos();
@@ -2921,11 +2905,8 @@ async function submitOrder(urgencia = false) {
   try {
     msgEl.textContent = "Enviando...";
 
-    // Grava direto no cache e salva IMEDIATAMENTE no JSONbin
-    const data = await loadAllData();
-    data[key] = JSON.stringify(pedido);
-    if (_saveTimeout) clearTimeout(_saveTimeout);
-    await persistData();
+    // Salva diretamente no Firebase
+    await saveDocument(key, pedido);
 
     msgEl.style.color = urgencia ? "#C62828" : "#2E7D32";
     msgEl.textContent = urgencia
