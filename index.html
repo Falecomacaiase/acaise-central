@@ -2995,9 +2995,18 @@ async function loadEstoqueAtualSilencioso() {
 async function excluirPedido(key, numeroPedido) {
   const label = numeroPedido ? `pedido ${numeroPedido}` : 'este pedido';
   if (!confirm(`Confirma a exclusão do ${label}? Esta ação não pode ser desfeita.`)) return;
-  if (!key) { alert('Chave do pedido não identificada. Atualize a lista e tente novamente.'); return; }
+  if (!key) { alert('Chave não identificada. Atualize a lista e tente novamente.'); return; }
   try {
-    await safeDelete(key);
+    // Tenta deletar com toDocId (novos pedidos)
+    const docId1 = toDocId(key);
+    await _col.doc(docId1).delete();
+    // Tenta também com encodeURIComponent (pedidos migrados)
+    try {
+      const docId2 = encodeURIComponent(key);
+      if (docId2 !== docId1) await _col.doc(docId2).delete();
+    } catch(e) {}
+    // Remove do cache local
+    if (_dataCache) delete _dataCache[key];
     _dataCache = null;
     loadAdminData();
   } catch(e) {
@@ -3008,7 +3017,8 @@ async function excluirPedido(key, numeroPedido) {
 function renderConsolidado(pedidos) {
   const totals = {};
   let grandTotal = 0;
-  pedidos.forEach(p => {
+  // Conta apenas pedidos NÃO despachados no consolidado
+  pedidos.filter(p => !p.despachado).forEach(p => {
     Object.entries(p.itens).forEach(([id, info]) => {
       if (!totals[id]) totals[id] = { nome: info.nome, qtd: 0, valor: 0 };
       totals[id].qtd += info.qtd;
