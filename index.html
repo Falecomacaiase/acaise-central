@@ -694,10 +694,12 @@ async function loadAllData() {
   try {
     const snapshot = await _col.get();
     snapshot.forEach(doc => {
-      // Decodifica chaves URL-encoded da migração anterior
-      let key;
-      try { key = decodeURIComponent(doc.id); } catch(e) { key = doc.id; }
       const data = doc.data();
+      // Usa originalKey se disponível (novos docs), senão decodifica o ID (docs migrados)
+      let key = data.originalKey;
+      if (!key) {
+        try { key = decodeURIComponent(doc.id); } catch(e) { key = doc.id; }
+      }
       let val = data.value;
       if (typeof val === 'string') {
         try { val = JSON.parse(val); } catch(e) {}
@@ -705,18 +707,19 @@ async function loadAllData() {
       _dataCache[key] = val;
     });
     console.log('Firebase: carregou', Object.keys(_dataCache).length, 'registros');
-    console.log('Chaves exemplo:', Object.keys(_dataCache).slice(0,5));
   } catch(e) {
     console.error('loadAllData error:', e);
-    const si = document.getElementById('saveIndicator');
-    if (si) { si.textContent = '❌ Erro Firebase: ' + e.message; si.style.color='#C62828'; si.style.display='inline'; }
   }
   return _dataCache;
 }
 
+// Converte chave para ID seguro do Firestore (sem caracteres problemáticos)
+function toDocId(key) {
+  return key.replace(/[^a-zA-Z0-9_\-]/g, '_');
+}
+
 async function saveDocument(key, value) {
-  // Usa encodeURIComponent para consistência com dados migrados
-  const docId = encodeURIComponent(key);
+  const docId = toDocId(key);
   let stored = value;
   if (typeof value !== 'string') stored = JSON.stringify(value);
   await _col.doc(docId).set({
@@ -725,6 +728,12 @@ async function saveDocument(key, value) {
     updatedAt: firebase.firestore.FieldValue.serverTimestamp()
   });
   if (_dataCache) _dataCache[key] = value;
+}
+
+async function deleteDocument(key) {
+  const docId = toDocId(key);
+  await _col.doc(docId).delete();
+  if (_dataCache) delete _dataCache[key];
 }
 
 async function deleteDocument(key) {
@@ -1040,50 +1049,54 @@ async function confirmarDespacho() {
 
   try {
     const itens = pedidoAtualRomaneio.itens;
+    const chave = pedidoAtualRomaneio._storageKey;
+    if (!chave) throw new Error('Chave não encontrada. Feche e atualize o painel.');
 
-    // 1. Carrega saldo fresco
-    _dataCache = null;
-    await loadSaldoInicial();
-    let saldos = { ...saldoAtual };
+    // Busca saldo do Firebase diretamente
+    const saldoDoc = await _col.doc(encodeURIComponent('saldoInicial')).get();
+    let saldos = {};
+    if (saldoDoc.exists) {
+      const val = saldoDoc.data().value;
+      try { saldos = typeof val === 'string' ? JSON.parse(val) : val; } catch(e) {}
+    }
 
-    // 2. Desconta estoque
+    // Desconta estoque
     Object.entries(itens).forEach(([id, it]) => {
       saldos[id] = Math.max(0, (saldos[id] || 0) - it.qtd);
     });
     saldoAtual = saldos;
 
-    // 3. Marca pedido como despachado
+    // Marca pedido como despachado
     pedidoAtualRomaneio.despachado = true;
     pedidoAtualRomaneio.dataDespacho = new Date().toISOString();
-    const chave = pedidoAtualRomaneio._storageKey;
-    if (!chave) throw new Error('Chave do pedido não encontrada. Atualize o painel e tente novamente.');
 
-    // 4. Salva cada item individualmente no Firebase
-    await saveDocument('saldoInicial', saldos);
-    await saveDocument(chave, pedidoAtualRomaneio);
-    await saveDocument(`saida:${Date.now()}`, {
-      tipo: 'Saída', unidade: pedidoAtualRomaneio.unidade,
-      itens, data: new Date().toISOString()
+    // Salva diretamente no Firebase
+    const batch = _db.batch();
+    batch.set(_col.doc(encodeURIComponent('saldoInicial')), {
+      value: JSON.stringify(saldos), updatedAt: firebase.firestore.FieldValue.serverTimestamp()
     });
+    batch.set(_col.doc(encodeURIComponent(chave)), {
+      value: JSON.stringify(pedidoAtualRomaneio), updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    batch.set(_col.doc(`saida_${Date.now()}`), {
+      value: JSON.stringify({ tipo: 'Saída', unidade: pedidoAtualRomaneio.unidade, itens, data: new Date().toISOString() }),
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    await batch.commit();
 
-    // 5. Atualiza cache local
-    Object.values(CATALOGO).flat().forEach(item => {
-      if (saldos[item.id] !== undefined) item._estoqueAtual = saldos[item.id];
-    });
+    // Atualiza cache local
     if (_dataCache) {
       _dataCache['saldoInicial'] = saldos;
       _dataCache[chave] = pedidoAtualRomaneio;
     }
-
-    await registrarLog('Saída',
-      `Despacho — ${pedidoAtualRomaneio.numeroPedido||''} — ${Object.keys(itens).length} itens`,
-      currentUser, pedidoAtualRomaneio.unidade);
+    Object.values(CATALOGO).flat().forEach(item => {
+      if (saldos[item.id] !== undefined) item._estoqueAtual = saldos[item.id];
+    });
 
     statusMsg.style.color = '#2E7D32';
-    statusMsg.textContent = '✅ Salvo no sistema! Imprimindo...';
+    statusMsg.textContent = '✅ Despachado e salvo! Imprimindo...';
     btn.textContent = '✅ Já despachado';
     btn.style.background = '#aaa';
-    setTimeout(() => window.print(), 600);
 
   } catch(e) {
     btn.disabled = false;
@@ -2942,33 +2955,59 @@ let _ultimosPedidosVisto = new Set();
 async function loadAdminData(silencioso = false) {
   if (!silencioso) document.getElementById('lastUpdate').textContent = "Atualizando...";
   _dataCache = null;
-  await loadEstoqueAtualSilencioso();
 
-  const weekKey = await getCurrentWeekKey();
-  const prevKey = await getSemanaAnterior();
   let pedidos = [];
-
   try {
-    // Usa safeList como o log faz — funciona de forma confiável
-    const list = await safeList('pedido:', true);
-    if (list && list.keys) {
-      for (const k of list.keys) {
-        try {
-          const r = await safeGet(k, true);
-          if (!r || !r.value) continue;
-          const p = parseValue(r.value);
-          if (!p || !p.unidade) continue;
-          // Filtra: semana atual sempre, semana anterior só se não despachado
-          const isCurrent = k.startsWith(`pedido:${weekKey}:`);
-          const isPrev = k.startsWith(`pedido:${prevKey}:`);
-          if (!isCurrent && !isPrev) continue;
-          if (isPrev && p.despachado) continue;
-          p._storageKey = k;
-          pedidos.push(p);
-        } catch(e) {}
-      }
-    }
-  } catch(e) { console.error('loadAdminData error:', e); }
+    // Carrega direto do Firebase — mesmo padrão que funciona no Log
+    const snapshot = await _col.where !== undefined
+      ? _col.get()
+      : _col.get();
+
+    const allDocs = {};
+    snapshot.forEach(doc => {
+      let key;
+      try { key = decodeURIComponent(doc.id); } catch(e) { key = doc.id; }
+      const data = doc.data();
+      let val = data.value;
+      if (typeof val === 'string') { try { val = JSON.parse(val); } catch(e) {} }
+      allDocs[key] = val;
+    });
+
+    // Atualiza cache
+    _dataCache = allDocs;
+
+    // Busca pedidos: todos não despachados dos últimos 14 dias
+    const agora = Date.now();
+    const limite14dias = agora - (14 * 24 * 60 * 60 * 1000);
+
+    Object.entries(allDocs).forEach(([k, val]) => {
+      if (!k.startsWith('pedido:')) return;
+      try {
+        const p = typeof val === 'string' ? JSON.parse(val) : val;
+        if (!p || !p.unidade) return;
+        // Filtra por data (últimos 14 dias) ou mostra todos se não tem data
+        if (p.dataEnvio) {
+          const ts = new Date(p.dataEnvio).getTime();
+          if (ts < limite14dias) return;
+        }
+        // Não mostra despachados com mais de 24h
+        if (p.despachado && p.dataDespacho) {
+          const despTs = new Date(p.dataDespacho).getTime();
+          if (agora - despTs > 24 * 60 * 60 * 1000) return;
+        }
+        p._storageKey = k;
+        pedidos.push(p);
+      } catch(e) {}
+    });
+
+    // Atualiza estoque
+    await loadEstoqueAtualSilencioso();
+
+  } catch(e) {
+    console.error('loadAdminData error:', e);
+    const si = document.getElementById('saveIndicator');
+    if (si) { si.textContent = '❌ Erro Firebase: ' + e.message; si.style.color='#C62828'; si.style.display='inline'; }
+  }
 
   const badge = document.getElementById('novoPedidoBadge');
   if (badge) {
