@@ -1041,41 +1041,39 @@ async function confirmarDespacho() {
   try {
     const itens = pedidoAtualRomaneio.itens;
 
-    // 1. Busca saldo atual FRESCO do JSONbin
+    // 1. Carrega saldo fresco
     _dataCache = null;
-    const data = await loadAllData();
+    await loadSaldoInicial();
+    let saldos = { ...saldoAtual };
 
-    // 2. Carrega saldo
-    let saldos = {};
-    try { saldos = JSON.parse(data['saldoInicial'] || '{}'); } catch(e) {}
-
-    // 3. Desconta estoque
+    // 2. Desconta estoque
     Object.entries(itens).forEach(([id, it]) => {
       saldos[id] = Math.max(0, (saldos[id] || 0) - it.qtd);
     });
+    saldoAtual = saldos;
 
-    // 4. Marca pedido como despachado
+    // 3. Marca pedido como despachado
     pedidoAtualRomaneio.despachado = true;
     pedidoAtualRomaneio.dataDespacho = new Date().toISOString();
     const chave = pedidoAtualRomaneio._storageKey;
     if (!chave) throw new Error('Chave do pedido não encontrada. Atualize o painel e tente novamente.');
 
-    // 5. Grava tudo de uma vez no cache
-    data[chave] = JSON.stringify(pedidoAtualRomaneio);
-    data['saldoInicial'] = JSON.stringify(saldos);
-    data[`saida:${Date.now()}`] = JSON.stringify({
+    // 4. Salva cada item individualmente no Firebase
+    await saveDocument('saldoInicial', saldos);
+    await saveDocument(chave, pedidoAtualRomaneio);
+    await saveDocument(`saida:${Date.now()}`, {
       tipo: 'Saída', unidade: pedidoAtualRomaneio.unidade,
       itens, data: new Date().toISOString()
     });
 
-    // 6. Persiste imediatamente
-    if (_saveTimeout) clearTimeout(_saveTimeout);
-    await persistData();
-
-    // 7. Atualiza cache local de estoque
+    // 5. Atualiza cache local
     Object.values(CATALOGO).flat().forEach(item => {
       if (saldos[item.id] !== undefined) item._estoqueAtual = saldos[item.id];
     });
+    if (_dataCache) {
+      _dataCache['saldoInicial'] = saldos;
+      _dataCache[chave] = pedidoAtualRomaneio;
+    }
 
     await registrarLog('Saída',
       `Despacho — ${pedidoAtualRomaneio.numeroPedido||''} — ${Object.keys(itens).length} itens`,
@@ -2951,23 +2949,26 @@ async function loadAdminData(silencioso = false) {
   let pedidos = [];
 
   try {
-    const data = await loadAllData();
-    // Busca pedidos da semana atual E anterior
-    Object.keys(data).forEach(k => {
-      if (k.startsWith(`pedido:${weekKey}:`) || k.startsWith(`pedido:${prevKey}:`)) {
+    // Usa safeList como o log faz — funciona de forma confiável
+    const list = await safeList('pedido:', true);
+    if (list && list.keys) {
+      for (const k of list.keys) {
         try {
-          const val = data[k];
-          const p = typeof val === 'string' ? JSON.parse(val) : val;
-          if (p && p.unidade) {
-            p._storageKey = k;
-            // Só mostra semana anterior se não despachado
-            if (k.startsWith(`pedido:${prevKey}:`) && p.despachado) return;
-            pedidos.push(p);
-          }
+          const r = await safeGet(k, true);
+          if (!r || !r.value) continue;
+          const p = parseValue(r.value);
+          if (!p || !p.unidade) continue;
+          // Filtra: semana atual sempre, semana anterior só se não despachado
+          const isCurrent = k.startsWith(`pedido:${weekKey}:`);
+          const isPrev = k.startsWith(`pedido:${prevKey}:`);
+          if (!isCurrent && !isPrev) continue;
+          if (isPrev && p.despachado) continue;
+          p._storageKey = k;
+          pedidos.push(p);
         } catch(e) {}
       }
-    });
-  } catch(e) {}
+    }
+  } catch(e) { console.error('loadAdminData error:', e); }
 
   const badge = document.getElementById('novoPedidoBadge');
   if (badge) {
