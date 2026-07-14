@@ -2958,39 +2958,19 @@ async function loadAdminData(silencioso = false) {
 
   let pedidos = [];
   try {
-    // Carrega direto do Firebase — mesmo padrão que funciona no Log
-    const snapshot = await _col.where !== undefined
-      ? _col.get()
-      : _col.get();
-
-    const allDocs = {};
-    snapshot.forEach(doc => {
-      let key;
-      try { key = decodeURIComponent(doc.id); } catch(e) { key = doc.id; }
-      const data = doc.data();
-      let val = data.value;
-      if (typeof val === 'string') { try { val = JSON.parse(val); } catch(e) {} }
-      allDocs[key] = val;
-    });
-
-    // Atualiza cache
-    _dataCache = allDocs;
-
-    // Busca pedidos: todos não despachados dos últimos 14 dias
+    const data = await loadAllData();
     const agora = Date.now();
     const limite14dias = agora - (14 * 24 * 60 * 60 * 1000);
 
-    Object.entries(allDocs).forEach(([k, val]) => {
+    Object.entries(data).forEach(([k, val]) => {
       if (!k.startsWith('pedido:')) return;
       try {
         const p = typeof val === 'string' ? JSON.parse(val) : val;
         if (!p || !p.unidade) return;
-        // Filtra por data (últimos 14 dias) ou mostra todos se não tem data
         if (p.dataEnvio) {
           const ts = new Date(p.dataEnvio).getTime();
           if (ts < limite14dias) return;
         }
-        // Não mostra despachados com mais de 24h
         if (p.despachado && p.dataDespacho) {
           const despTs = new Date(p.dataDespacho).getTime();
           if (agora - despTs > 24 * 60 * 60 * 1000) return;
@@ -3000,13 +2980,11 @@ async function loadAdminData(silencioso = false) {
       } catch(e) {}
     });
 
-    // Atualiza estoque
     await loadEstoqueAtualSilencioso();
-
   } catch(e) {
     console.error('loadAdminData error:', e);
     const si = document.getElementById('saveIndicator');
-    if (si) { si.textContent = '❌ Erro Firebase: ' + e.message; si.style.color='#C62828'; si.style.display='inline'; }
+    if (si) { si.textContent = '❌ Erro: ' + e.message; si.style.color='#C62828'; si.style.display='inline'; }
   }
 
   const badge = document.getElementById('novoPedidoBadge');
