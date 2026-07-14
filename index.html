@@ -2900,14 +2900,7 @@ async function submitOrder(urgencia = false) {
     msgEl.textContent = "Enviando...";
 
     // Salva diretamente no Firebase
-    console.log('submitOrder: salvando chave', key);
     await saveDocument(key, pedido);
-    console.log('submitOrder: salvo com sucesso no Firebase');
-
-    // Verifica se foi salvo
-    const docId = key.replace(/[^a-zA-Z0-9_\-]/g, '_');
-    const docRef = await _col.doc(docId).get();
-    console.log('submitOrder: verificação - doc existe?', docRef.exists, 'ID:', docId);
 
     msgEl.style.color = urgencia ? "#C62828" : "#2E7D32";
     msgEl.textContent = urgencia
