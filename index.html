@@ -1070,19 +1070,13 @@ async function confirmarDespacho() {
     pedidoAtualRomaneio.despachado = true;
     pedidoAtualRomaneio.dataDespacho = new Date().toISOString();
 
-    // Salva diretamente no Firebase
-    const batch = _db.batch();
-    batch.set(_col.doc(encodeURIComponent('saldoInicial')), {
-      value: JSON.stringify(saldos), updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    // Salva diretamente no Firebase (sem batch)
+    await saveDocument('saldoInicial', saldos);
+    await saveDocument(chave, pedidoAtualRomaneio);
+    await saveDocument(`saida_${Date.now()}`, {
+      tipo: 'Saída', unidade: pedidoAtualRomaneio.unidade,
+      itens, data: new Date().toISOString()
     });
-    batch.set(_col.doc(encodeURIComponent(chave)), {
-      value: JSON.stringify(pedidoAtualRomaneio), updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    batch.set(_col.doc(`saida_${Date.now()}`), {
-      value: JSON.stringify({ tipo: 'Saída', unidade: pedidoAtualRomaneio.unidade, itens, data: new Date().toISOString() }),
-      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
-    });
-    await batch.commit();
 
     // Atualiza cache local
     if (_dataCache) {
@@ -2906,7 +2900,14 @@ async function submitOrder(urgencia = false) {
     msgEl.textContent = "Enviando...";
 
     // Salva diretamente no Firebase
+    console.log('submitOrder: salvando chave', key);
     await saveDocument(key, pedido);
+    console.log('submitOrder: salvo com sucesso no Firebase');
+
+    // Verifica se foi salvo
+    const docId = key.replace(/[^a-zA-Z0-9_\-]/g, '_');
+    const docRef = await _col.doc(docId).get();
+    console.log('submitOrder: verificação - doc existe?', docRef.exists, 'ID:', docId);
 
     msgEl.style.color = urgencia ? "#C62828" : "#2E7D32";
     msgEl.textContent = urgencia
