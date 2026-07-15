@@ -1092,6 +1092,12 @@ async function confirmarDespacho() {
     btn.textContent = '✅ Já despachado';
     btn.style.background = '#aaa';
 
+    await registrarLog('Saída',
+      `Despacho — ${pedidoAtualRomaneio.numeroPedido||''} — ${Object.keys(itens).length} itens — ${pedidoAtualRomaneio.unidade}`,
+      currentUser, pedidoAtualRomaneio.unidade);
+
+    setTimeout(() => window.print(), 500);
+
   } catch(e) {
     btn.disabled = false;
     btn.textContent = '✅ Confirmar despacho e imprimir';
