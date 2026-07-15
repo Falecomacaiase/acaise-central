@@ -101,12 +101,6 @@ function atualizarListasDeLojas() {
   const optsDatalist = lojas.map(l => `<option value="${escapeHtml(l)}"></option>`).join('');
   document.getElementById('listaLojasHeader').innerHTML = optsDatalist;
   document.getElementById('listaLojasNovoParceiro').innerHTML = optsDatalist;
-
-  const selectLoja = document.getElementById('painelLoja');
-  const atual = selectLoja.value;
-  selectLoja.innerHTML = '<option value="">Todas as lojas</option>' +
-    lojas.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
-  selectLoja.value = atual;
 }
 
 // ---------- navegação ----------
@@ -487,28 +481,43 @@ async function renderPainel() {
   const catFiltro = document.getElementById('painelCategoria').value;
   const lojaFiltro = document.getElementById('painelLoja').value;
 
-  const parceirosFiltrados = state.parceiros.filter(p =>
-    (!catFiltro || p.categoria === catFiltro) && (!lojaFiltro || p.loja === lojaFiltro)
-  );
+  const parceirosFiltrados = state.parceiros.filter(p => !catFiltro || p.categoria === catFiltro);
 
   const dadosPorParceiro = await Promise.all(parceirosFiltrados.map(async p => {
-    const pedidos = await getConsumoMensal(p.id, mes);
-    const consumido = pedidos.reduce((s, x) => s + Number(x.valor_total), 0);
+    const todosPedidos = await getConsumoMensal(p.id, mes); // todos os pedidos do mês, em qualquer loja
     const limite = limiteDoParceiro(p);
-    const semPostagem = pedidos.filter(x => !x.postou && diasDesde(x.data) >= DIAS_ALERTA_SEM_POSTAGEM).length;
-    return { parceiro: p, consumido, limite, pedidos, semPostagem };
+    const consumidoTotal = todosPedidos.reduce((s, x) => s + Number(x.valor_total), 0);
+    const pedidosNaLoja = lojaFiltro ? todosPedidos.filter(x => (x.loja || '') === lojaFiltro) : todosPedidos;
+    const consumidoNaLoja = pedidosNaLoja.reduce((s, x) => s + Number(x.valor_total), 0);
+    const semPostagem = pedidosNaLoja.filter(x => !x.postou && diasDesde(x.data) >= DIAS_ALERTA_SEM_POSTAGEM).length;
+    return { parceiro: p, todosPedidos, limite, consumidoTotal, pedidosNaLoja, consumidoNaLoja, semPostagem };
   }));
 
-  dadosPorParceiro.sort((a, b) => (b.consumido / (b.limite || 1)) - (a.consumido / (a.limite || 1)));
+  // resumo por loja — sempre olhando TODAS as lojas, independente do filtro de loja selecionado,
+  // pra dar a visão comparativa de onde os parceiros mais consomem
+  const porLoja = {};
+  dadosPorParceiro.forEach(d => {
+    d.todosPedidos.forEach(p => {
+      const chave = p.loja || '(sem loja informada)';
+      porLoja[chave] = (porLoja[chave] || 0) + Number(p.valor_total);
+    });
+  });
+  atualizarOpcoesLojaPainel(Object.keys(porLoja), lojaFiltro);
+  renderConsumoPorLoja(porLoja);
 
-  const pendentes = dadosPorParceiro
-    .flatMap(d => d.pedidos.filter(p => !p.postou).map(p => ({ ...p, parceiroNome: d.parceiro.nome })))
+  // só entram na tabela/pendências os parceiros com pelo menos 1 pedido na loja filtrada (quando houver filtro)
+  const linhas = lojaFiltro ? dadosPorParceiro.filter(d => d.pedidosNaLoja.length > 0) : dadosPorParceiro;
+
+  const pendentes = linhas
+    .flatMap(d => d.pedidosNaLoja.filter(p => !p.postou).map(p => ({ ...p, parceiroNome: d.parceiro.nome })))
     .sort((a, b) => new Date(a.data) - new Date(b.data));
   renderPendentesPostagem(pendentes);
 
-  const totalGeral = dadosPorParceiro.reduce((s, d) => s + d.consumido, 0);
-  const totalExcedido = dadosPorParceiro.filter(d => d.consumido > d.limite).length;
-  const totalSemPost = dadosPorParceiro.reduce((s, d) => s + d.semPostagem, 0);
+  linhas.sort((a, b) => (b.consumidoNaLoja / (b.limite || 1)) - (a.consumidoNaLoja / (a.limite || 1)));
+
+  const totalGeral = linhas.reduce((s, d) => s + d.consumidoNaLoja, 0);
+  const totalExcedido = linhas.filter(d => d.consumidoTotal > d.limite).length;
+  const totalSemPost = linhas.reduce((s, d) => s + d.semPostagem, 0);
 
   document.getElementById('painelStats').innerHTML = `
     <div class="stat-card"><div class="valor">R$ ${formatarMoeda(totalGeral)}</div><div class="label">Consumo total</div></div>
@@ -516,26 +525,57 @@ async function renderPainel() {
     <div class="stat-card"><div class="valor">${totalSemPost}</div><div class="label">Pedidos sem post</div></div>`;
 
   const corpo = document.getElementById('corpoTabelaPainel');
-  if (dadosPorParceiro.length === 0) {
+  if (linhas.length === 0) {
     corpo.innerHTML = '<tr><td colspan="5" class="vazio">Nenhum parceiro encontrado.</td></tr>';
     return;
   }
 
-  corpo.innerHTML = dadosPorParceiro.map(d => {
-    const pct = d.limite > 0 ? Math.min(100, (d.consumido / d.limite) * 100) : 0;
-    const excedeu = d.consumido > d.limite;
+  corpo.innerHTML = linhas.map(d => {
+    const pct = d.limite > 0 ? Math.min(100, (d.consumidoTotal / d.limite) * 100) : 0;
+    const excedeu = d.consumidoTotal > d.limite;
     const cor = excedeu ? 'var(--vermelho)' : pct > 80 ? 'var(--amarelo)' : 'var(--verde)';
+    const valorMostrado = lojaFiltro ? d.consumidoNaLoja : d.consumidoTotal;
+    const legendaValor = lojaFiltro
+      ? `R$ ${formatarMoeda(valorMostrado)} nesta loja <span class="detalhe" style="font-size:0.7rem;">(R$ ${formatarMoeda(d.consumidoTotal)} no total, todas as lojas)</span>`
+      : `R$ ${formatarMoeda(valorMostrado)} / ${formatarMoeda(d.limite)}`;
     return `<tr>
       <td><strong>${escapeHtml(d.parceiro.nome)}</strong><br><span class="detalhe" style="font-size:0.72rem;">${state.categorias[d.parceiro.categoria]?.label || ''}</span></td>
       <td>${escapeHtml(d.parceiro.loja || '—')}</td>
       <td>
-        R$ ${formatarMoeda(d.consumido)} / ${formatarMoeda(d.limite)}
+        ${legendaValor}
         <div class="barra"><div class="preenchido" style="width:${pct}%;background:${cor}"></div></div>
       </td>
       <td>${excedeu ? '<span class="badge-postou nao">Excedeu</span>' : '<span class="badge-postou sim">Dentro</span>'}</td>
       <td>${d.semPostagem > 0 ? `<span class="badge-postou nao">${d.semPostagem} sem post</span>` : '<span class="badge-postou sim">Em dia</span>'}</td>
     </tr>`;
   }).join('');
+}
+
+function renderConsumoPorLoja(porLoja) {
+  const div = document.getElementById('listaConsumoPorLoja');
+  const entradas = Object.entries(porLoja).sort((a, b) => b[1] - a[1]);
+  if (entradas.length === 0) {
+    div.innerHTML = '<div class="vazio">Nenhum pedido lançado neste mês ainda.</div>';
+    return;
+  }
+  const maiorValor = entradas[0][1];
+  div.innerHTML = entradas.map(([loja, valor]) => {
+    const pct = maiorValor > 0 ? (valor / maiorValor) * 100 : 0;
+    return `<div style="margin-bottom:10px;">
+      <div class="detalhe" style="display:flex;justify-content:space-between;color:var(--texto);font-weight:600;">
+        <span>${escapeHtml(loja)}</span><span>R$ ${formatarMoeda(valor)}</span>
+      </div>
+      <div class="barra"><div class="preenchido" style="width:${pct}%;background:var(--roxo-acai-claro);"></div></div>
+    </div>`;
+  }).join('');
+}
+
+function atualizarOpcoesLojaPainel(lojasEncontradas, selecaoAtual) {
+  const select = document.getElementById('painelLoja');
+  const lojas = [...new Set(lojasEncontradas)].filter(l => l !== '(sem loja informada)').sort();
+  select.innerHTML = '<option value="">Todas as lojas</option>' +
+    lojas.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+  select.value = selecaoAtual;
 }
 
 // ---------- inicialização ----------
