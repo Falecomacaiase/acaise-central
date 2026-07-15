@@ -49,13 +49,8 @@
         <button type="button" class="toggle-btn" data-tipo="delivery">🛵 Delivery</button>
       </div>
 
-      <div class="check-linha">
-        <input type="checkbox" id="chkPostou">
-        <label for="chkPostou">Já fez a postagem de divulgação</label>
-      </div>
-
-      <label for="inpObservacao">Observação (opcional)</label>
-      <textarea id="inpObservacao" rows="2" placeholder="Ex: pedido combinado com antecedência..."></textarea>
+      <label for="inpItensPedido">O que foi pedido</label>
+      <textarea id="inpItensPedido" rows="2" placeholder="Ex: wrap de frango, smoothie, açaí 300..."></textarea>
 
       <div class="resumo-total" id="resumoTotal" style="display:none;">
         <div class="linha"><span>Valor do pedido</span><span id="resValorPedido">R$ 0,00</span></div>
@@ -149,6 +144,12 @@
     </div>
 
     <div class="stat-grid" id="painelStats"></div>
+
+    <div class="card" id="cardPendentesPostagem">
+      <h2 id="tituloPendentes">Postagens pendentes</h2>
+      <div class="detalhe" style="margin-bottom:10px;">Confirme aqui, depois de checar o Instagram, quem já postou.</div>
+      <div id="listaPendentesPostagem"></div>
+    </div>
 
     <div class="card">
       <h2>Consumo por parceiro</h2>

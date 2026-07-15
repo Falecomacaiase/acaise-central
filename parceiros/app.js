@@ -207,8 +207,7 @@ function limparFormularioLancar() {
   document.getElementById('parceiroSelecionadoId').value = '';
   document.getElementById('resumoParceiroSelecionado').style.display = 'none';
   document.getElementById('inpValorPedido').value = '';
-  document.getElementById('chkPostou').checked = false;
-  document.getElementById('inpObservacao').value = '';
+  document.getElementById('inpItensPedido').value = '';
   document.getElementById('resumoTotal').style.display = 'none';
   document.getElementById('alertaLimite').innerHTML = '';
   state.parceiroSelecionadoLancar = null;
@@ -228,11 +227,12 @@ async function salvarPedido() {
   if (!colaborador) { alert('Informe seu nome.'); return; }
   if (!valorPedido || valorPedido <= 0) { alert('Informe o valor do pedido.'); return; }
 
+  const itensPedido = document.getElementById('inpItensPedido').value.trim();
+  if (!itensPedido) { alert('Preenche o que foi pedido (ex: açaí 300, wrap de frango...).'); return; }
+
   const tipo = state.tipoEntregaSelecionado;
   const taxa = tipo === 'delivery' ? TAXA_ENTREGA_DELIVERY : 0;
   const total = valorPedido + taxa;
-  const postou = document.getElementById('chkPostou').checked;
-  const observacao = document.getElementById('inpObservacao').value.trim();
 
   const pedidosDoMes = await getConsumoMensal(parceiro.id, mesAtual());
   const consumidoAtual = pedidosDoMes.reduce((s, p) => s + Number(p.valor_total), 0);
@@ -258,10 +258,10 @@ async function salvarPedido() {
     tipo_entrega: tipo,
     taxa_entrega: taxa,
     valor_total: total,
-    postou,
+    postou: false,
     loja,
     colaborador,
-    observacao: observacao || null,
+    itens_pedido: itensPedido,
   });
 
   btn.disabled = false;
@@ -394,7 +394,7 @@ function renderPedidosParceiro(pedidos) {
       <div class="bowl-info">
         <div class="nome">R$ ${formatarMoeda(p.valor_total)} <span class="tag">${p.tipo_entrega === 'delivery' ? 'Delivery' : 'Presencial'}</span></div>
         <div class="detalhe">${formatarData(p.data)} · ${escapeHtml(p.loja || '')} · lançado por ${escapeHtml(p.colaborador || '—')}</div>
-        ${p.observacao ? `<div class="detalhe">"${escapeHtml(p.observacao)}"</div>` : ''}
+        ${p.itens_pedido ? `<div class="detalhe">🍨 ${escapeHtml(p.itens_pedido)}</div>` : ''}
       </div>
       <div style="display:flex; flex-direction:column; align-items:flex-end; gap:6px;">
         <label style="display:flex;align-items:center;gap:4px;text-transform:none;font-weight:500;font-size:0.78rem;color:var(--texto-suave);margin:0;">
@@ -442,6 +442,34 @@ function popularMesesPainel() {
   sel.innerHTML = html;
 }
 
+function renderPendentesPostagem(pendentes) {
+  document.getElementById('tituloPendentes').textContent = `Postagens pendentes (${pendentes.length})`;
+  const div = document.getElementById('listaPendentesPostagem');
+  if (pendentes.length === 0) {
+    div.innerHTML = '<div class="vazio">Nenhuma postagem pendente de confirmação 🎉</div>';
+    return;
+  }
+  div.innerHTML = pendentes.map(p => {
+    const dias = diasDesde(p.data);
+    const atrasado = dias >= DIAS_ALERTA_SEM_POSTAGEM;
+    return `<div class="item-parceiro" style="cursor:default;">
+      <div class="bowl-info">
+        <div class="nome">${escapeHtml(p.parceiroNome)} <span class="tag">${p.tipo_entrega === 'delivery' ? 'Delivery' : 'Presencial'}</span></div>
+        <div class="detalhe">R$ ${formatarMoeda(p.valor_total)} · ${formatarData(p.data)} · ${escapeHtml(p.loja || '')}</div>
+        ${p.itens_pedido ? `<div class="detalhe">🍨 ${escapeHtml(p.itens_pedido)}</div>` : ''}
+        <div class="detalhe" style="${atrasado ? 'color:var(--vermelho);font-weight:600;' : ''}">há ${dias} dia${dias === 1 ? '' : 's'} sem confirmação</div>
+      </div>
+      <button class="btn btn-secundario btn-pequeno btn-marcar-postado" data-id="${p.id}">Marcar postado</button>
+    </div>`;
+  }).join('');
+  div.querySelectorAll('.btn-marcar-postado').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await sb.from('parceiros_pedidos').update({ postou: true }).eq('id', btn.dataset.id);
+      renderPainel();
+    });
+  });
+}
+
 async function renderPainel() {
   const mes = document.getElementById('painelMes').value || mesAtual();
   const catFiltro = document.getElementById('painelCategoria').value;
@@ -460,6 +488,11 @@ async function renderPainel() {
   }));
 
   dadosPorParceiro.sort((a, b) => (b.consumido / (b.limite || 1)) - (a.consumido / (a.limite || 1)));
+
+  const pendentes = dadosPorParceiro
+    .flatMap(d => d.pedidos.filter(p => !p.postou).map(p => ({ ...p, parceiroNome: d.parceiro.nome })))
+    .sort((a, b) => new Date(a.data) - new Date(b.data));
+  renderPendentesPostagem(pendentes);
 
   const totalGeral = dadosPorParceiro.reduce((s, d) => s + d.consumido, 0);
   const totalExcedido = dadosPorParceiro.filter(d => d.consumido > d.limite).length;
