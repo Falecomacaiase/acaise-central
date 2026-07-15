@@ -7,6 +7,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.4/chart.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/4.0.0/jspdf.umd.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/5.0.8/jspdf.plugin.autotable.min.js"></script>
 <style>
   :root{
     --bg:#F7F1E6; --panel:#FFFFFF; --ink:#2B1B33; --muted:#8A7A87; --line:#E8DCCB;
@@ -598,6 +600,113 @@ function gaugeSVG(pct, colorVar){
 }
 function financeTotal(monthObj){ if(!monthObj) return 0; return Number(monthObj.sistema||0)+Number(monthObj.ifood||0)+Number(monthObj.food99||0); }
 
+/* ---------------- PDF export (histórico da unidade) ---------------- */
+function downloadUnitHistoryPDF(){
+  const list = (STATE.record.checklist || []).slice().sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+  if(!list.length){ showToast('Nenhuma auditoria para baixar ainda'); return; }
+  const JSPDF = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
+  if(!JSPDF){ showToast('Não foi possível carregar o gerador de PDF. Confira a internet.'); return; }
+  const doc = new JSPDF({unit:'pt', format:'a4'});
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const margin = 40;
+
+  list.forEach((entry, idx)=>{
+    if(idx>0) doc.addPage();
+    let y = margin;
+    try{ doc.addImage(LOGO_SRC, 'JPEG', margin, y-10, 85, 56); }catch(e){}
+    doc.setFontSize(13); doc.setFont(undefined,'bold');
+    doc.text('CHECKLIST DE SUPERVISÃO — AÇAÍ-SE', margin+95, y+8);
+    doc.setFont(undefined,'normal'); doc.setFontSize(10);
+    doc.text(currentUnitName(), margin+95, y+24);
+    y += 60;
+
+    doc.autoTable({
+      startY: y, theme:'plain', styles:{fontSize:9, cellPadding:2},
+      body: [
+        ['Data da supervisão', fmtDate(entry.visit_date||entry.created_at), 'Horário de início', entry.start_time || '-'],
+        ['Nº de funcionários presentes', entry.employees_present ?? '-', 'Visita anunciada?', entry.announced || '-'],
+        ['Supervisor responsável', entry.supervisor_name || '-', '', ''],
+      ],
+      margin:{left:margin, right:margin},
+      columnStyles:{0:{fontStyle:'bold'}, 2:{fontStyle:'bold'}}
+    });
+    y = doc.lastAutoTable.finalY + 10;
+
+    CHECK_GROUPS.forEach(group=>{
+      if(y > 700){ doc.addPage(); y = margin; }
+      doc.setFontSize(11); doc.setFont(undefined,'bold');
+      doc.text(group.label, margin, y);
+      doc.setFont(undefined,'normal');
+      const body = group.items.map((label, i)=>{
+        const v = entry.items ? entry.items[group.key+'__'+i] : undefined;
+        const situacao = v===2?'OK': v===1?'Parcial': v===0?'NOK': v==='na'?'N/A':'-';
+        return [label, situacao];
+      });
+      doc.autoTable({
+        startY: y+6, head:[['Item de verificação','Situação']], body,
+        styles:{fontSize:8, cellPadding:3}, headStyles:{fillColor:[59,31,78], textColor:255},
+        columnStyles:{1:{cellWidth:60, halign:'center'}}, margin:{left:margin,right:margin}
+      });
+      y = doc.lastAutoTable.finalY + 14;
+    });
+
+    if(y > 620){ doc.addPage(); y = margin; }
+    doc.setFontSize(12); doc.setFont(undefined,'bold');
+    doc.text('PONTUAÇÃO DA SUPERVISÃO', margin, y);
+    doc.setFont(undefined,'normal');
+    y += 8;
+
+    const summaryRows = CHECK_GROUPS.map(group=>{
+      let ok=0, nok=0, parcial=0, na=0;
+      group.items.forEach((_,i)=>{
+        const v = entry.items ? entry.items[group.key+'__'+i] : undefined;
+        if(v===2) ok++; else if(v===1) parcial++; else if(v===0) nok++; else if(v==='na') na++;
+      });
+      const applicable = group.items.length - na;
+      const pct = applicable ? ((ok*2+parcial)/(applicable*2)*100) : 0;
+      return [group.label, group.items.length, ok, parcial, nok, na, pct.toFixed(0)+'%'];
+    });
+    const overallPct = computeEntryScore(entry);
+    const status = classify(overallPct);
+    doc.autoTable({
+      startY: y,
+      head:[['Seção','Total Itens','OK','Parcial','NOK','N/A','% Conformidade']],
+      body: summaryRows,
+      foot:[['TOTAL GERAL','','','','','', (overallPct!==null?overallPct.toFixed(0):'-')+'%']],
+      styles:{fontSize:8}, headStyles:{fillColor:[59,31,78], textColor:255},
+      footStyles:{fillColor:[139,92,168], textColor:255, fontStyle:'bold'},
+      margin:{left:margin,right:margin}
+    });
+    y = doc.lastAutoTable.finalY + 14;
+
+    if(y > 700){ doc.addPage(); y = margin; }
+    doc.setFontSize(10); doc.setFont(undefined,'bold');
+    doc.text('Classificação: ' + status.label, margin, y);
+    doc.setFont(undefined,'normal');
+    y += 14;
+    if(status.action){
+      doc.setFontSize(9);
+      const actionLines = doc.splitTextToSize(status.action, pageWidth-2*margin);
+      doc.text(actionLines, margin, y);
+      y += actionLines.length*11 + 10;
+    }
+
+    if(y > 700){ doc.addPage(); y = margin; }
+    doc.setFontSize(10); doc.setFont(undefined,'bold');
+    doc.text('Observações gerais', margin, y);
+    doc.setFont(undefined,'normal');
+    y += 14;
+    doc.setFontSize(9);
+    const obsLines = doc.splitTextToSize(entry.observation || '(sem observação escrita)', pageWidth-2*margin);
+    doc.text(obsLines, margin, y);
+    y += obsLines.length*11 + 10;
+    if(entry.missing_products){ doc.text('Produtos em falta: '+entry.missing_products, margin, y); y+=14; }
+    if(entry.negative_reviews){ doc.text('Avaliações negativas: '+entry.negative_reviews, margin, y); y+=14; }
+  });
+
+  doc.save('Supervisao_'+slugify(currentUnitName())+'.pdf');
+}
+
 /* ================= SUPERVISOR VIEW ================= */
 function renderSupervisorView(){
   const app = document.getElementById('app');
@@ -725,52 +834,6 @@ function renderSupervisorView(){
     }
   };
 
-  // Finance
-  const fin = STATE.record.finance || {};
-  const thisMonth = currentMonthKey();
-  const existingThisMonth = fin[thisMonth] || {};
-  const financeCard = el(`
-    <div class="card">
-      <h2>Faturamento mensal</h2>
-      <p class="subtitle">Sistema (loja) e delivery separados por plataforma.</p>
-      <div class="form-grid">
-        <div class="field"><label>Mês</label><input type="month" id="fin-month" value="${thisMonth}"></div>
-        <div class="field"><label>Faturamento Sistema (loja)</label><input type="number" id="fin-sistema" min="0" step="0.01" value="${existingThisMonth.sistema||''}"></div>
-        <div class="field"><label>Faturamento iFood</label><input type="number" id="fin-ifood" min="0" step="0.01" value="${existingThisMonth.ifood||''}"></div>
-      </div>
-      <div class="form-grid two"><div class="field"><label>Faturamento 99Food</label><input type="number" id="fin-food99" min="0" step="0.01" value="${existingThisMonth.food99||''}"></div></div>
-      <button class="btn" id="submit-finance">Salvar faturamento</button>
-      <div style="margin-top:16px;overflow-x:auto;">${renderFinanceTableHTML()}</div>
-    </div>
-  `);
-  container.appendChild(financeCard);
-  financeCard.querySelector('#fin-month').onchange = (e)=>{
-    const data = (STATE.record.finance||{})[e.target.value] || {};
-    financeCard.querySelector('#fin-sistema').value = data.sistema || '';
-    financeCard.querySelector('#fin-ifood').value = data.ifood || '';
-    financeCard.querySelector('#fin-food99').value = data.food99 || '';
-  };
-  financeCard.querySelector('#submit-finance').onclick = async ()=>{
-    const month = financeCard.querySelector('#fin-month').value;
-    if(!month){ showToast('Selecione o mês'); return; }
-    const btn = financeCard.querySelector('#submit-finance');
-    btn.disabled = true; btn.textContent = 'Salvando…';
-    try{
-      await upsertFinance({
-        unit_slug: STATE.currentUnitSlug, month,
-        sistema: Number(financeCard.querySelector('#fin-sistema').value || 0),
-        ifood: Number(financeCard.querySelector('#fin-ifood').value || 0),
-        food99: Number(financeCard.querySelector('#fin-food99').value || 0),
-      });
-      showToast('Faturamento salvo');
-      STATE.record = await loadUnitData(STATE.currentUnitSlug);
-      renderSupervisorView();
-    }catch(e){
-      showToast('Falha ao salvar faturamento.');
-      btn.disabled = false; btn.textContent = 'Salvar faturamento';
-    }
-  };
-
   // Tasks
   const tasks = STATE.record.tasks || [];
   const pending = tasks.filter(t=>t.status==='pending');
@@ -791,8 +854,17 @@ function renderSupervisorView(){
     });
   }
 
-  const obsCard = el(`<div class="card"><h2>Histórico de auditorias</h2><p class="subtitle">Nada aqui é apagado — todo check fica registrado.</p><div id="sup-obs-list"></div></div>`);
+  const obsCard = el(`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+        <div><h2 style="margin-bottom:2px;">Histórico de auditorias</h2><p class="subtitle" style="margin-bottom:0;">Nada aqui é apagado — todo check fica registrado.</p></div>
+        <button class="btn small ghost" id="download-pdf-sup" style="border:1px solid var(--purple-deep);white-space:nowrap;">Baixar histórico em PDF</button>
+      </div>
+      <div id="sup-obs-list" style="margin-top:14px;"></div>
+    </div>
+  `);
   container.appendChild(obsCard);
+  obsCard.querySelector('#download-pdf-sup').onclick = downloadUnitHistoryPDF;
   renderObservationsInto(obsCard.querySelector('#sup-obs-list'));
 }
 
@@ -935,8 +1007,17 @@ function renderFranqueadoView(){
   `);
   container.appendChild(financeCard);
 
-  const obsCard = el(`<div class="card"><h2>Observações da supervisão</h2><div id="fran-obs-list"></div></div>`);
+  const obsCard = el(`
+    <div class="card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+        <h2 style="margin-bottom:0;">Observações da supervisão</h2>
+        <button class="btn small ghost" id="download-pdf-fran" style="border:1px solid var(--purple-deep);white-space:nowrap;">Baixar histórico em PDF</button>
+      </div>
+      <div id="fran-obs-list" style="margin-top:14px;"></div>
+    </div>
+  `);
   container.appendChild(obsCard);
+  obsCard.querySelector('#download-pdf-fran').onclick = downloadUnitHistoryPDF;
   renderObservationsInto(obsCard.querySelector('#fran-obs-list'));
 
   requestAnimationFrame(()=>{
@@ -1019,7 +1100,63 @@ async function renderNetworkView(){
     </div>
   `));
 
-  const rankCard = el(`<div class="card"><h2>Ranking por conformidade (piores primeiro)</h2><p class="subtitle">Onde a franqueadora precisa colocar energia agora</p><div id="unit-rank-list"></div></div>`);
+  const financeEntryCard = el(`
+    <div class="card">
+      <h2>Lançar faturamento por unidade</h2>
+      <p class="subtitle">Sistema (loja), iFood e 99Food — lance quando o mês fechar. Cada canal fica separado.</p>
+      <div class="form-grid">
+        <div class="field"><label>Unidade</label><select id="net-fin-unit"></select></div>
+        <div class="field"><label>Mês</label><input type="month" id="net-fin-month" value="${thisMonth}"></div>
+        <div class="field"><label>Faturamento Sistema (loja)</label><input type="number" id="net-fin-sistema" min="0" step="0.01"></div>
+      </div>
+      <div class="form-grid two">
+        <div class="field"><label>Faturamento iFood</label><input type="number" id="net-fin-ifood" min="0" step="0.01"></div>
+        <div class="field"><label>Faturamento 99Food</label><input type="number" id="net-fin-food99" min="0" step="0.01"></div>
+      </div>
+      <button class="btn" id="net-fin-submit">Salvar faturamento</button>
+    </div>
+  `);
+  container.appendChild(financeEntryCard);
+
+  const financeBySlug = {};
+  records.forEach(({unit, record})=>{ financeBySlug[unit.slug] = record.finance || {}; });
+
+  const netUnitSelect = financeEntryCard.querySelector('#net-fin-unit');
+  netUnitSelect.innerHTML = STATE.units.map(u=>`<option value="${u.slug}">${u.name}</option>`).join('');
+
+  function refillNetFinFields(){
+    const slug = netUnitSelect.value;
+    const month = financeEntryCard.querySelector('#net-fin-month').value;
+    const data = (financeBySlug[slug] || {})[month] || {};
+    financeEntryCard.querySelector('#net-fin-sistema').value = data.sistema || '';
+    financeEntryCard.querySelector('#net-fin-ifood').value = data.ifood || '';
+    financeEntryCard.querySelector('#net-fin-food99').value = data.food99 || '';
+  }
+  refillNetFinFields();
+  netUnitSelect.onchange = refillNetFinFields;
+  financeEntryCard.querySelector('#net-fin-month').onchange = refillNetFinFields;
+
+  financeEntryCard.querySelector('#net-fin-submit').onclick = async ()=>{
+    const slug = netUnitSelect.value;
+    const month = financeEntryCard.querySelector('#net-fin-month').value;
+    if(!slug || !month){ showToast('Selecione unidade e mês'); return; }
+    const btn = financeEntryCard.querySelector('#net-fin-submit');
+    btn.disabled = true; btn.textContent = 'Salvando…';
+    try{
+      await upsertFinance({
+        unit_slug: slug, month,
+        sistema: Number(financeEntryCard.querySelector('#net-fin-sistema').value || 0),
+        ifood: Number(financeEntryCard.querySelector('#net-fin-ifood').value || 0),
+        food99: Number(financeEntryCard.querySelector('#net-fin-food99').value || 0),
+      });
+      showToast('Faturamento salvo');
+      renderNetworkView();
+    }catch(e){
+      showToast('Falha ao salvar faturamento.');
+      btn.disabled = false; btn.textContent = 'Salvar faturamento';
+    }
+  };
+
   container.appendChild(rankCard);
   const rankList = rankCard.querySelector('#unit-rank-list');
   if(!rows.length){ rankList.appendChild(el(`<div class="empty-state">Nenhuma unidade cadastrada ainda.</div>`)); }
