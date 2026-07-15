@@ -1135,85 +1135,154 @@ async function gerarRelatorio() {
   const el = document.getElementById('relatorioResultado');
   el.innerHTML = '<p class="small">Carregando...</p>';
 
-  // Load all pedidos from storage
-  let todosPedidos = [];
+  const nomeMes = document.getElementById('relFiltroMes').selectedOptions[0]?.textContent || 'Todos';
+
+  function noMes(dataStr) {
+    const d = new Date(dataStr);
+    const mesOk = !mes || String(d.getMonth()+1).padStart(2,'0') === mes;
+    const anoOk = !ano || String(d.getFullYear()) === ano;
+    return mesOk && anoOk;
+  }
+
+  // Estrutura: consumo[unidade][itemId] = { nome, qtd, valor, entregas: [{data, qtd}] }
+  const consumo = {};
+  function addConsumo(unid, itemId, nomeItem, qtd, valor, data) {
+    if (!consumo[unid]) consumo[unid] = {};
+    if (!consumo[unid][itemId]) consumo[unid][itemId] = { nome: nomeItem, qtd: 0, valor: 0, entregas: [] };
+    consumo[unid][itemId].qtd += qtd;
+    consumo[unid][itemId].valor += valor;
+    consumo[unid][itemId].entregas.push({ data, qtd });
+  }
+
+  // 1. Pedidos despachados
   try {
     const list = await safeList('pedido:', true);
     if (list && list.keys) {
       for (const k of list.keys) {
         try {
           const r = await safeGet(k, true);
-          if (r && r.value) todosPedidos.push(parseValue(r.value));
+          if (!r || !r.value) continue;
+          const p = parseValue(r.value);
+          if (!p || !p.unidade || !p.despachado || !p.dataDespacho) continue;
+          if (!noMes(p.dataDespacho)) continue;
+          if (unidade && p.unidade !== unidade) continue;
+          Object.entries(p.itens||{}).forEach(([id, it]) => {
+            addConsumo(p.unidade, id, it.nome, it.qtd, it.total||0, p.dataDespacho);
+          });
         } catch(e) {}
       }
     }
   } catch(e) {}
 
-  // Filter
-  const pedidosFiltrados = todosPedidos.filter(p => {
-    const data = new Date(p.dataEnvio);
-    const mesOk = !mes || String(data.getMonth()+1).padStart(2,'0') === mes;
-    const anoOk = !ano || String(data.getFullYear()) === ano;
-    const unidOk = !unidade || p.unidade === unidade;
-    return mesOk && anoOk && unidOk;
-  }).sort((a,b) => new Date(b.dataEnvio) - new Date(a.dataEnvio));
+  // 2. Saídas avulsas
+  try {
+    const list = await safeList('saida:avulsa:', true);
+    if (list && list.keys) {
+      for (const k of list.keys) {
+        try {
+          const r = await safeGet(k, true);
+          if (!r || !r.value) continue;
+          const s = parseValue(r.value);
+          if (!s || !s.unidade || !noMes(s.data)) continue;
+          if (unidade && s.unidade !== unidade) continue;
+          const itemCat = Object.values(CATALOGO).flat().find(i => i.id === s.itemId);
+          const preco = itemState[s.itemId]?.venda || itemCat?.preco || 0;
+          addConsumo(s.unidade, s.itemId || s.nome, s.nome, s.qtd, s.qtd * preco, s.data);
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
 
-  if (pedidosFiltrados.length === 0) {
-    el.innerHTML = `<p class="small">Nenhum pedido encontrado para o filtro selecionado.</p>`;
+  if (Object.keys(consumo).length === 0) {
+    el.innerHTML = `<p class="small">Nenhum consumo encontrado para o período selecionado.</p>`;
     return;
   }
 
-  // Group by unit
-  const porUnidade = {};
-  pedidosFiltrados.forEach(p => {
-    if (!porUnidade[p.unidade]) porUnidade[p.unidade] = { pedidos: [], total: 0 };
-    porUnidade[p.unidade].pedidos.push(p);
-    porUnidade[p.unidade].total += Object.values(p.itens).reduce((s,i)=>s+(i.total||0),0);
+  // Totalizador geral da rede (consumo por item, todas as lojas)
+  const totalRede = {};
+  Object.values(consumo).forEach(itens => {
+    Object.entries(itens).forEach(([id, dados]) => {
+      if (!totalRede[id]) totalRede[id] = { nome: dados.nome, qtd: 0, valor: 0 };
+      totalRede[id].qtd += dados.qtd;
+      totalRede[id].valor += dados.valor;
+    });
   });
 
-  const nomeMes = document.getElementById('relFiltroMes').selectedOptions[0]?.textContent || 'Todos';
-  const totalGeral = pedidosFiltrados.reduce((s,p)=>s+Object.values(p.itens).reduce((ss,i)=>ss+(i.total||0),0),0);
+  const totalGeralValor = Object.values(totalRede).reduce((s,i)=>s+i.valor,0);
 
   let html = `
     <div style="border-bottom:2px solid #5B2D8E;padding-bottom:10px;margin-bottom:16px">
-      <div style="font-size:18px;font-weight:700;color:#5B2D8E">Relatório de Pedidos — ${unidade || 'Todas as unidades'}</div>
-      <div class="small">Período: ${nomeMes}/${ano} &nbsp;•&nbsp; ${pedidosFiltrados.length} pedido(s) encontrado(s)</div>
+      <div style="font-size:18px;font-weight:700;color:#5B2D8E">Consumo Real — ${unidade || 'Toda a rede'}</div>
+      <div class="small">Período: ${nomeMes}/${ano} • Inclui pedidos despachados + saídas avulsas</div>
     </div>`;
 
-  Object.entries(porUnidade).forEach(([nome, dados]) => {
-    html += `<div style="margin-bottom:24px">
-      <div style="background:#5B2D8E;color:#fff;padding:8px 14px;border-radius:6px;display:flex;justify-content:space-between;align-items:center">
-        <strong>${nome}</strong>
-        <span>${dados.pedidos.length} pedido(s) — R$ ${dados.total.toFixed(2).replace('.',',')}</span>
-      </div>`;
+  // Por unidade
+  Object.entries(consumo).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([nomeUnid, itens]) => {
+    const totalUnid = Object.values(itens).reduce((s,i)=>s+i.valor,0);
+    const totalQtdUnid = Object.values(itens).reduce((s,i)=>s+i.qtd,0);
 
-    dados.pedidos.forEach(p => {
-      const totalPed = Object.values(p.itens).reduce((s,i)=>s+(i.total||0),0);
-      const status = p.urgencia ? '🚨 Urgência' : p.despachado ? '✅ Despachado' : '⏳ Pendente';
-      html += `<div style="border:1px solid #eee;border-radius:6px;padding:12px;margin-top:8px">
-        <div class="flex-between" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">
-          <div>
-            <strong style="color:#5B2D8E">${p.numeroPedido||'—'}</strong>
-            <span class="small" style="margin-left:8px">${new Date(p.dataEnvio).toLocaleDateString('pt-BR')} • ${p.tipoEntrega||'Entrega'}</span>
-          </div>
-          <div style="display:flex;gap:8px;align-items:center">
-            <span class="small">${status}</span>
-            <strong>R$ ${totalPed.toFixed(2).replace('.',',')}</strong>
-          </div>
-        </div>
-        <table style="font-size:12px;width:100%"><tbody>`;
-      Object.values(p.itens).forEach(it => {
-        html += `<tr><td>${it.nome}</td><td style="text-align:right;width:40px">${it.qtd}</td><td style="text-align:right;width:80px">R$ ${(it.total||0).toFixed(2).replace('.',',')}</td></tr>`;
+    html += `<div style="margin-bottom:20px;border:1px solid #eee;border-radius:8px;overflow:hidden">
+      <div style="background:#5B2D8E;color:#fff;padding:10px 14px;display:flex;justify-content:space-between">
+        <strong style="font-size:15px">${nomeUnid}</strong>
+        <span class="small">${totalQtdUnid} itens • R$ ${totalUnid.toFixed(2).replace('.',',')}</span>
+      </div>
+      <table style="font-size:13px;width:100%">
+      <thead><tr style="background:#F5F0FB">
+        <th style="padding:6px 10px;text-align:left">Item</th>
+        <th style="padding:6px 10px;text-align:center">Qtd total</th>
+        <th style="padding:6px 10px;text-align:left">Entregas</th>
+        <th style="padding:6px 10px;text-align:right">Valor</th>
+      </tr></thead><tbody>`;
+
+    Object.entries(itens).sort((a,b)=>b[1].qtd-a[1].qtd).forEach(([id, dados], idx) => {
+      const bg = idx % 2 === 0 ? '#fff' : '#fafafa';
+      // Agrupa entregas por dia
+      const porDia = {};
+      dados.entregas.forEach(e => {
+        const dia = new Date(e.data).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit'});
+        porDia[dia] = (porDia[dia]||0) + e.qtd;
       });
-      html += `</tbody></table></div>`;
+      const entregasStr = Object.entries(porDia).map(([d,q])=>`${d}: ${q}`).join(' | ');
+      html += `<tr style="background:${bg}">
+        <td style="padding:6px 10px">${dados.nome}</td>
+        <td style="padding:6px 10px;text-align:center;font-weight:700">${dados.qtd}</td>
+        <td style="padding:6px 10px;font-size:11px;color:#666">${entregasStr}</td>
+        <td style="padding:6px 10px;text-align:right">R$ ${dados.valor.toFixed(2).replace('.',',')}</td>
+      </tr>`;
     });
-    html += `</div>`;
+    html += `</tbody></table></div>`;
   });
 
-  html += `<div style="background:#F5F0FB;border-radius:8px;padding:12px 16px;display:flex;justify-content:space-between;font-weight:700;font-size:16px;color:#5B2D8E;margin-top:8px">
-    <span>TOTAL GERAL DO PERÍODO</span><span>R$ ${totalGeral.toFixed(2).replace('.',',')}</span>
-  </div>`;
+  // Totalizador da rede
+  if (!unidade) {
+    html += `<div style="margin-top:8px;border:2px solid #5B2D8E;border-radius:8px;overflow:hidden">
+      <div style="background:#5B2D8E;color:#fff;padding:10px 14px;font-weight:700;font-size:15px">
+        📊 TOTAL GERAL DA REDE — ${nomeMes}/${ano}
+      </div>
+      <table style="font-size:13px;width:100%">
+      <thead><tr style="background:#EDE7F6">
+        <th style="padding:6px 10px;text-align:left">Item</th>
+        <th style="padding:6px 10px;text-align:center">Qtd total</th>
+        <th style="padding:6px 10px;text-align:right">Valor total</th>
+      </tr></thead><tbody>`;
 
+    Object.entries(totalRede).sort((a,b)=>b[1].qtd-a[1].qtd).forEach(([id, dados], idx) => {
+      const bg = idx % 2 === 0 ? '#fff' : '#F9F6FF';
+      html += `<tr style="background:${bg}">
+        <td style="padding:6px 10px">${dados.nome}</td>
+        <td style="padding:6px 10px;text-align:center;font-weight:700">${dados.qtd}</td>
+        <td style="padding:6px 10px;text-align:right">R$ ${dados.valor.toFixed(2).replace('.',',')}</td>
+      </tr>`;
+    });
+
+    html += `</tbody><tfoot><tr style="background:#EDE7F6;font-weight:700;font-size:15px">
+      <td style="padding:10px 10px">TOTAL GERAL</td>
+      <td></td>
+      <td style="padding:10px 10px;text-align:right;color:#5B2D8E">R$ ${totalGeralValor.toFixed(2).replace('.',',')}</td>
+    </tr></tfoot></table></div>`;
+  }
+
+  html += `<button class="btn btn-secondary" onclick="window.print()" style="margin-top:16px">🖨️ Imprimir relatório</button>`;
   el.innerHTML = html;
 }
 
