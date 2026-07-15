@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Controle de Parceiros — Açaí-se</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>🍇 Controle de Parceiros</h1>
+  <div class="subtitulo">Açaí-se · Influencers, Carva Members &amp; Atletas</div>
+
+  <div class="contexto">
+    <input type="text" id="selLoja" list="listaLojasHeader" placeholder="Sua loja...">
+    <datalist id="listaLojasHeader"></datalist>
+    <input type="text" id="inpColaborador" placeholder="Seu nome">
+  </div>
+
+  <nav class="nav-superior" id="navSuperior">
+    <button data-view="lancar" class="ativo">Lançar Pedido</button>
+    <button data-view="parceiros">Parceiros</button>
+    <button data-view="painel">Painel do Gestor</button>
+  </nav>
+</header>
+
+<main>
+
+  <!-- ===================== VIEW: LANÇAR PEDIDO ===================== -->
+  <section class="view ativa" id="view-lancar">
+
+    <div class="card">
+      <h2>Novo pedido</h2>
+
+      <label for="buscaParceiroLancar">Parceiro</label>
+      <input type="text" id="buscaParceiroLancar" placeholder="Buscar por nome ou @instagram...">
+      <div id="resultadoBuscaLancar"></div>
+      <input type="hidden" id="parceiroSelecionadoId">
+
+      <div id="resumoParceiroSelecionado" style="display:none;"></div>
+
+      <label for="inpValorPedido">Valor do pedido (R$)</label>
+      <input type="number" id="inpValorPedido" placeholder="0,00" step="0.01" min="0">
+
+      <label>Tipo</label>
+      <div class="toggle-grupo">
+        <button type="button" class="toggle-btn selecionado" data-tipo="presencial">🏠 Presencial</button>
+        <button type="button" class="toggle-btn" data-tipo="delivery">🛵 Delivery</button>
+      </div>
+
+      <div class="check-linha">
+        <input type="checkbox" id="chkPostou">
+        <label for="chkPostou">Já fez a postagem de divulgação</label>
+      </div>
+
+      <label for="inpObservacao">Observação (opcional)</label>
+      <textarea id="inpObservacao" rows="2" placeholder="Ex: pedido combinado com antecedência..."></textarea>
+
+      <div class="resumo-total" id="resumoTotal" style="display:none;">
+        <div class="linha"><span>Valor do pedido</span><span id="resValorPedido">R$ 0,00</span></div>
+        <div class="linha" id="linhaTaxa" style="display:none;"><span>Taxa de entrega</span><span id="resTaxa">R$ 0,00</span></div>
+        <div class="linha total"><span>Total do consumo</span><span id="resTotal">R$ 0,00</span></div>
+      </div>
+
+      <div id="alertaLimite"></div>
+
+      <button class="btn btn-primario" id="btnSalvarPedido">Registrar pedido</button>
+    </div>
+
+  </section>
+
+  <!-- ===================== VIEW: PARCEIROS ===================== -->
+  <section class="view" id="view-parceiros">
+
+    <div class="card">
+      <h2>Parceiros da marca</h2>
+
+      <div class="busca">
+        <input type="text" id="buscaParceiroLista" placeholder="Buscar parceiro...">
+      </div>
+
+      <div class="linha-filtros">
+        <select id="filtroCategoria">
+          <option value="">Todas categorias</option>
+          <option value="influencer">Influencer</option>
+          <option value="carva_member">Carva Member</option>
+          <option value="atleta">Atleta</option>
+        </select>
+      </div>
+
+      <div class="lista-parceiros" id="listaParceiros">
+        <div class="vazio">Carregando...</div>
+      </div>
+
+      <button class="btn btn-secundario" id="btnNovoParceiro">+ Cadastrar novo parceiro</button>
+    </div>
+
+  </section>
+
+  <!-- ===================== VIEW: DETALHE DE PARCEIRO ===================== -->
+  <section class="view" id="view-detalhe-parceiro">
+    <button class="btn-texto" id="btnVoltarLista">← Voltar</button>
+    <div class="card" id="detalheParceiroConteudo"></div>
+  </section>
+
+  <!-- ===================== VIEW: NOVO PARCEIRO ===================== -->
+  <section class="view" id="view-novo-parceiro">
+    <button class="btn-texto" id="btnVoltarListaDoNovo">← Voltar</button>
+    <div class="card">
+      <h2>Cadastrar parceiro</h2>
+
+      <label for="npNome">Nome</label>
+      <input type="text" id="npNome" placeholder="Nome completo">
+
+      <label for="npInstagram">Instagram</label>
+      <input type="text" id="npInstagram" placeholder="@usuario">
+
+      <label for="npCategoria">Categoria</label>
+      <select id="npCategoria">
+        <option value="influencer">Influencer — R$200/mês</option>
+        <option value="carva_member">Carva Member — R$150/mês</option>
+        <option value="atleta">Atleta — R$250/mês</option>
+      </select>
+
+      <label for="npLoja">Loja de referência</label>
+      <input type="text" id="npLoja" list="listaLojasNovoParceiro" placeholder="Ex: Boa Viagem, Recife">
+      <datalist id="listaLojasNovoParceiro"></datalist>
+
+      <label for="npLimitePersonalizado">Limite mensal personalizado (opcional)</label>
+      <input type="number" id="npLimitePersonalizado" placeholder="Deixe em branco para usar o padrão da categoria" step="0.01" min="0">
+
+      <button class="btn btn-primario" id="btnSalvarNovoParceiro">Salvar parceiro</button>
+    </div>
+  </section>
+
+  <!-- ===================== VIEW: PAINEL DO GESTOR ===================== -->
+  <section class="view" id="view-painel">
+
+    <div class="linha-filtros">
+      <select id="painelMes"></select>
+      <select id="painelCategoria">
+        <option value="">Todas categorias</option>
+        <option value="influencer">Influencer</option>
+        <option value="carva_member">Carva Member</option>
+        <option value="atleta">Atleta</option>
+      </select>
+      <select id="painelLoja"><option value="">Todas as lojas</option></select>
+    </div>
+
+    <div class="stat-grid" id="painelStats"></div>
+
+    <div class="card">
+      <h2>Consumo por parceiro</h2>
+      <div style="overflow-x:auto;">
+        <table class="tabela-painel" id="tabelaPainel">
+          <thead>
+            <tr>
+              <th>Parceiro</th>
+              <th>Loja</th>
+              <th>Consumo</th>
+              <th>Status</th>
+              <th>Post</th>
+            </tr>
+          </thead>
+          <tbody id="corpoTabelaPainel"></tbody>
+        </table>
+      </div>
+    </div>
+
+  </section>
+
+</main>
+
+<nav class="nav-inferior" id="navInferior">
+  <button class="nav-item ativo" data-view="lancar">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+    Lançar
+  </button>
+  <button class="nav-item" data-view="parceiros">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="9" cy="7" r="4"/><path d="M2 21v-2a5 5 0 0 1 5-5h4a5 5 0 0 1 5 5v2"/><circle cx="17" cy="7" r="3" opacity="0.5"/></svg>
+    Parceiros
+  </button>
+  <button class="nav-item" data-view="painel">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3v18h18"/><rect x="7" y="12" width="3" height="6"/><rect x="12" y="8" width="3" height="10"/><rect x="17" y="5" width="3" height="13"/></svg>
+    Painel
+  </button>
+</nav>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
