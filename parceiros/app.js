@@ -38,6 +38,14 @@ function limiteDoParceiro(parceiro) {
   return state.categorias[parceiro.categoria]?.limite_mensal || 0;
 }
 
+function hojeISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+function mesSelecionadoLancar() {
+  const val = document.getElementById('inpDataPedido').value;
+  return val ? val.substring(0, 7) : mesAtual();
+}
 function mesAtual() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
@@ -146,7 +154,7 @@ async function selecionarParceiroLancar(parceiro) {
   document.getElementById('buscaParceiroLancar').value = parceiro.nome;
   document.getElementById('resultadoBuscaLancar').innerHTML = '';
 
-  const pedidos = await getConsumoMensal(parceiro.id, mesAtual());
+  const pedidos = await getConsumoMensal(parceiro.id, mesSelecionadoLancar());
   const consumido = pedidos.reduce((s, p) => s + Number(p.valor_total), 0);
   const limite = limiteDoParceiro(parceiro);
 
@@ -188,7 +196,7 @@ function atualizarResumoTotal() {
   alertaDiv.innerHTML = '';
   const parceiro = state.parceiroSelecionadoLancar;
   if (parceiro && valorPedido > 0) {
-    getConsumoMensal(parceiro.id, mesAtual()).then(pedidos => {
+    getConsumoMensal(parceiro.id, mesSelecionadoLancar()).then(pedidos => {
       const consumidoAtual = pedidos.reduce((s, p) => s + Number(p.valor_total), 0);
       const limite = limiteDoParceiro(parceiro);
       const novoTotal = consumidoAtual + total;
@@ -208,6 +216,7 @@ function limparFormularioLancar() {
   document.getElementById('resumoParceiroSelecionado').style.display = 'none';
   document.getElementById('inpValorPedido').value = '';
   document.getElementById('inpItensPedido').value = '';
+  document.getElementById('inpDataPedido').value = hojeISO();
   document.getElementById('resumoTotal').style.display = 'none';
   document.getElementById('alertaLimite').innerHTML = '';
   state.parceiroSelecionadoLancar = null;
@@ -230,11 +239,13 @@ async function salvarPedido() {
   const itensPedido = document.getElementById('inpItensPedido').value.trim();
   if (!itensPedido) { alert('Preenche o que foi pedido (ex: açaí 300, wrap de frango...).'); return; }
 
+  const dataPedido = document.getElementById('inpDataPedido').value || hojeISO();
+
   const tipo = state.tipoEntregaSelecionado;
   const taxa = tipo === 'delivery' ? TAXA_ENTREGA_DELIVERY : 0;
   const total = valorPedido + taxa;
 
-  const pedidosDoMes = await getConsumoMensal(parceiro.id, mesAtual());
+  const pedidosDoMes = await getConsumoMensal(parceiro.id, mesSelecionadoLancar());
   const consumidoAtual = pedidosDoMes.reduce((s, p) => s + Number(p.valor_total), 0);
   const limite = limiteDoParceiro(parceiro);
   const novoTotal = consumidoAtual + total;
@@ -254,6 +265,7 @@ async function salvarPedido() {
 
   const { error } = await sb.from('parceiros_pedidos').insert({
     parceiro_id: parceiro.id,
+    data: dataPedido,
     valor_pedido: valorPedido,
     tipo_entrega: tipo,
     taxa_entrega: taxa,
@@ -548,12 +560,18 @@ document.getElementById('painelCategoria').addEventListener('change', renderPain
 document.getElementById('painelLoja').addEventListener('change', renderPainel);
 document.getElementById('buscaParceiroLancar').addEventListener('input', onBuscaParceiroLancar);
 document.getElementById('inpValorPedido').addEventListener('input', atualizarResumoTotal);
+document.getElementById('inpDataPedido').addEventListener('change', () => {
+  if (state.parceiroSelecionadoLancar) selecionarParceiroLancar(state.parceiroSelecionadoLancar);
+  else atualizarResumoTotal();
+});
 
 async function init() {
   sb = supabase.createClient(SUPABASE_CONFIG.url, SUPABASE_CONFIG.anonKey);
 
   document.getElementById('selLoja').value = localStorage.getItem('parc_loja') || '';
   document.getElementById('inpColaborador').value = localStorage.getItem('parc_colaborador') || '';
+  document.getElementById('inpDataPedido').value = hojeISO();
+  document.getElementById('inpDataPedido').max = hojeISO();
 
   await carregarCategorias();
   await carregarParceiros();
