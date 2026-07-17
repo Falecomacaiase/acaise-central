@@ -145,6 +145,10 @@
         </div>
       </div>
       <p class="small" style="margin-top:0">Marque as quantidades que sua unidade precisa. Itens indisponíveis aparecem desabilitados.</p>
+      <div style="position:sticky;top:0;z-index:10;background:#fff;padding:8px 0;margin-bottom:4px">
+        <input type="text" id="catalogBusca" placeholder="🔍 Buscar produto..." oninput="renderCatalog()"
+          style="width:100%;padding:10px 14px;font-size:14px;border:2px solid #5B2D8E;border-radius:8px;box-sizing:border-box">
+      </div>
       <div id="catalog"></div>
       <div id="minimoAviso" class="hidden" style="background:#FFF8E1;border-left:3px solid #F57F17;padding:8px 12px;border-radius:4px;margin-top:12px;font-size:13px;color:#F57F17;font-weight:600">
         ⚠️ Valor mínimo de pedido: R$ 300,00. Total atual: <span id="totalAtual">R$ 0,00</span>
@@ -2069,19 +2073,27 @@ window.addEventListener('load', () => {
 function renderCatalog() {
   const wrap = document.getElementById('catalog');
   wrap.innerHTML = "";
+  const busca = document.getElementById('catalogBusca')?.value?.toLowerCase().trim() || '';
   const CATEGORIAS_OCULTAS_LOJA = ["Produção / Insumos"];
+  let totalItensVisiveis = 0;
+
   Object.keys(CATALOGO).forEach(cat => {
     if (CATEGORIAS_OCULTAS_LOJA.includes(cat)) return;
     const itensVisiveis = CATALOGO[cat].filter(item => {
       const st = itemState[item.id];
-      // Só oculta se explicitamente marcado como false — qualquer outro caso mostra
-      return !st || st.disponivel !== false;
+      if (st && st.disponivel === false) return false;
+      if (busca) return item.nome.toLowerCase().includes(busca) || String(item.cod).includes(busca);
+      return true;
     });
     if (itensVisiveis.length === 0) return;
-    const title = document.createElement('div');
-    title.className = "cat-title";
-    title.textContent = cat;
-    wrap.appendChild(title);
+    totalItensVisiveis += itensVisiveis.length;
+
+    if (!busca) {
+      const title = document.createElement('div');
+      title.className = "cat-title";
+      title.textContent = cat;
+      wrap.appendChild(title);
+    }
     itensVisiveis.forEach(item => {
       const preco = (itemState[item.id]?.venda || item.preco);
       const cod = item.cod ? `[${item.cod}] ` : '';
@@ -2089,16 +2101,22 @@ function renderCatalog() {
       row.className = "item-row";
       row.innerHTML = `
         <span class="item-name"><span style="color:#888;font-size:12px">${cod}</span>${item.nome} <span class="small">(R$ ${preco.toFixed(2).replace('.',',')})</span></span>
-        <input type="number" min="0" class="item-qtd" id="qtd_${item.id}" value="0" oninput="updateOrderTotal()">
+        <input type="number" min="0" class="item-qtd" id="qtd_${item.id}" value="${document.getElementById('qtd_'+item.id)?.value||0}" oninput="updateOrderTotal()">
       `;
       wrap.appendChild(row);
     });
   });
+
+  if (busca && totalItensVisiveis === 0) {
+    wrap.innerHTML = `<p class="small" style="color:#888;padding:12px">Nenhum produto encontrado para "${busca}".</p>`;
+  }
+
   const totalBar = document.createElement('div');
   totalBar.className = "flex-between";
   totalBar.style = "margin-top:16px;padding:12px 14px;background:#F5F0FB;border-radius:8px;font-weight:600;";
   totalBar.innerHTML = `<span>Valor estimado do pedido</span><span id="orderTotalValue">R$ 0,00</span>`;
   wrap.appendChild(totalBar);
+  updateOrderTotal();
 }
 
 const VALOR_MINIMO_PEDIDO = 300;
