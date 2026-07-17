@@ -2,6 +2,11 @@
 // Controle de Consumo de Parceiros — Açaí-se
 // =========================================================
 
+const LOJAS_ACAISE = [
+  'Boa Viagem', 'Bv2', 'Dona Lindu', 'Jaqueira', 'FPS', 'Caruaru', 'Piedade',
+  'Graças', 'Porto de Galinhas', 'Costa Dourada', 'Paulista', 'Campina Grande', 'Setúbal',
+];
+
 const state = {
   parceiros: [],
   categorias: {},
@@ -97,14 +102,37 @@ async function getConsumoMensal(parceiroId, mesStr) {
 }
 
 function atualizarListasDeLojas() {
-  const lojas = [...new Set(state.parceiros.map(p => p.loja).filter(Boolean))].sort();
-  const optsDatalist = lojas.map(l => `<option value="${escapeHtml(l)}"></option>`).join('');
-  document.getElementById('listaLojasHeader').innerHTML = optsDatalist;
-  document.getElementById('listaLojasNovoParceiro').innerHTML = optsDatalist;
+  const optsLoja = LOJAS_ACAISE.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+
+  const selHeader = document.getElementById('selLoja');
+  const atualHeader = selHeader.value;
+  selHeader.innerHTML = '<option value="">Sua loja...</option>' + optsLoja;
+  selHeader.value = atualHeader;
+
+  const selNovoParceiro = document.getElementById('npLoja');
+  selNovoParceiro.innerHTML = '<option value="">Nenhuma / não definida</option>' + optsLoja;
 }
 
 // ---------- navegação ----------
+function painelDesbloqueado() {
+  return sessionStorage.getItem('painelDesbloqueado') === '1';
+}
+
+function solicitarSenhaPainel() {
+  const senha = prompt('Senha do Painel do Gestor:');
+  if (senha === null) return false; // cancelou
+  if (senha === SENHA_PAINEL_GESTOR) {
+    sessionStorage.setItem('painelDesbloqueado', '1');
+    return true;
+  }
+  alert('Senha incorreta.');
+  return false;
+}
+
 function mudarView(viewId) {
+  if (viewId === 'painel' && !painelDesbloqueado() && !solicitarSenhaPainel()) {
+    return; // senha errada ou cancelada — não troca de tela
+  }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('ativa'));
   document.getElementById('view-' + viewId).classList.add('ativa');
   document.querySelectorAll('.nav-item').forEach(b => b.classList.toggle('ativo', b.dataset.view === viewId));
@@ -538,9 +566,13 @@ async function renderPainel() {
     const legendaValor = lojaFiltro
       ? `R$ ${formatarMoeda(valorMostrado)} nesta loja <span class="detalhe" style="font-size:0.7rem;">(R$ ${formatarMoeda(d.consumidoTotal)} no total, todas as lojas)</span>`
       : `R$ ${formatarMoeda(valorMostrado)} / ${formatarMoeda(d.limite)}`;
+    const lojasDoMes = [...new Set(d.todosPedidos.map(x => x.loja).filter(Boolean))];
+    const celulaLoja = lojasDoMes.length === 0
+      ? '—'
+      : lojasDoMes.map(l => escapeHtml(l)).join(', ');
     return `<tr>
       <td><strong>${escapeHtml(d.parceiro.nome)}</strong><br><span class="detalhe" style="font-size:0.72rem;">${state.categorias[d.parceiro.categoria]?.label || ''}</span></td>
-      <td>${escapeHtml(d.parceiro.loja || '—')}</td>
+      <td>${celulaLoja}</td>
       <td>
         ${legendaValor}
         <div class="barra"><div class="preenchido" style="width:${pct}%;background:${cor}"></div></div>
@@ -572,7 +604,7 @@ function renderConsumoPorLoja(porLoja) {
 
 function atualizarOpcoesLojaPainel(lojasEncontradas, selecaoAtual) {
   const select = document.getElementById('painelLoja');
-  const lojas = [...new Set(lojasEncontradas)].filter(l => l !== '(sem loja informada)').sort();
+  const lojas = [...new Set([...LOJAS_ACAISE, ...lojasEncontradas.filter(l => l !== '(sem loja informada)')])].sort();
   select.innerHTML = '<option value="">Todas as lojas</option>' +
     lojas.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
   select.value = selecaoAtual;

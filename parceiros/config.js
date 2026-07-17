@@ -22,3 +22,11 @@ const TAXA_ENTREGA_DELIVERY = 7.50;
 // Depois de quantos dias um pedido sem postagem passa a ser
 // destacado no painel do gestor como "atenção".
 const DIAS_ALERTA_SEM_POSTAGEM = 3;
+
+// Senha pra entrar na aba "Painel do Gestor" (só a franqueadora deve saber).
+// Troque por uma senha sua antes de subir pro GitHub.
+// Atenção: isso é uma trava simples contra acesso casual, não uma
+// segurança forte — quem souber olhar o código-fonte consegue ver
+// essa senha. Serve pra afastar curiosidade de atendente/franqueado,
+// não pra proteger dados sigilosos de verdade.
+const SENHA_PAINEL_GESTOR = "troque-esta-senha";

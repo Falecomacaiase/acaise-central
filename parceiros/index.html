@@ -13,8 +13,9 @@
   <div class="subtitulo">Açaí-se · Influencers, Carva Members &amp; Atletas</div>
 
   <div class="contexto">
-    <input type="text" id="selLoja" list="listaLojasHeader" placeholder="Sua loja...">
-    <datalist id="listaLojasHeader"></datalist>
+    <select id="selLoja">
+      <option value="">Sua loja...</option>
+    </select>
     <input type="text" id="inpColaborador" placeholder="Seu nome">
   </div>
 
@@ -122,8 +123,9 @@
       </select>
 
       <label for="npLoja">Loja de referência</label>
-      <input type="text" id="npLoja" list="listaLojasNovoParceiro" placeholder="Ex: Boa Viagem, Recife">
-      <datalist id="listaLojasNovoParceiro"></datalist>
+      <select id="npLoja">
+        <option value="">Nenhuma / não definida</option>
+      </select>
 
       <label for="npLimitePersonalizado">Limite mensal personalizado (opcional)</label>
       <input type="number" id="npLimitePersonalizado" placeholder="Deixe em branco para usar o padrão da categoria" step="0.01" min="0">
@@ -150,7 +152,6 @@
 
     <div class="card" id="cardConsumoPorLoja">
       <h2>Consumo por loja</h2>
-      <div class="detalhe" style="margin-bottom:10px;">Onde os parceiros estão consumindo de fato — útil pra conversas com franqueados sobre investimento em marketing.</div>
       <div id="listaConsumoPorLoja"></div>
     </div>
 
