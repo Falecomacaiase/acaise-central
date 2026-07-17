@@ -29,4 +29,4 @@ const DIAS_ALERTA_SEM_POSTAGEM = 3;
 // segurança forte — quem souber olhar o código-fonte consegue ver
 // essa senha. Serve pra afastar curiosidade de atendente/franqueado,
 // não pra proteger dados sigilosos de verdade.
-const SENHA_PAINEL_GESTOR = "troque-esta-senha";
+const SENHA_PAINEL_GESTOR = "acaise2026admin";
