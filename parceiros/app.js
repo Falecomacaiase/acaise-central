@@ -7,6 +7,12 @@ const LOJAS_ACAISE = [
   'Graças', 'Porto de Galinhas', 'Costa Dourada', 'Paulista', 'Campina Grande', 'Setúbal',
 ];
 
+function normalizarLoja(loja) {
+  if (!loja) return loja;
+  const encontrada = LOJAS_ACAISE.find(l => l.toLowerCase() === loja.trim().toLowerCase());
+  return encontrada || loja.trim();
+}
+
 const state = {
   parceiros: [],
   categorias: {},
@@ -512,7 +518,8 @@ async function renderPainel() {
   const parceirosFiltrados = state.parceiros.filter(p => !catFiltro || p.categoria === catFiltro);
 
   const dadosPorParceiro = await Promise.all(parceirosFiltrados.map(async p => {
-    const todosPedidos = await getConsumoMensal(p.id, mes); // todos os pedidos do mês, em qualquer loja
+    const brutos = await getConsumoMensal(p.id, mes); // todos os pedidos do mês, em qualquer loja
+    const todosPedidos = brutos.map(x => ({ ...x, loja: normalizarLoja(x.loja) }));
     const limite = limiteDoParceiro(p);
     const consumidoTotal = todosPedidos.reduce((s, x) => s + Number(x.valor_total), 0);
     const pedidosNaLoja = lojaFiltro ? todosPedidos.filter(x => (x.loja || '') === lojaFiltro) : todosPedidos;
