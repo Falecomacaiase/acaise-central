@@ -601,8 +601,9 @@ function gaugeSVG(pct, colorVar){
 function financeTotal(monthObj){ if(!monthObj) return 0; return Number(monthObj.sistema||0)+Number(monthObj.ifood||0)+Number(monthObj.food99||0); }
 
 /* ---------------- PDF export (histórico da unidade) ---------------- */
-function downloadUnitHistoryPDF(){
-  const list = (STATE.record.checklist || []).slice().sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
+function downloadUnitHistoryPDF(checklistOverride, unitNameOverride){
+  const unitName = unitNameOverride || currentUnitName();
+  const list = (checklistOverride || STATE.record.checklist || []).slice().sort((a,b)=> new Date(a.created_at) - new Date(b.created_at));
   if(!list.length){ showToast('Nenhuma auditoria para baixar ainda'); return; }
   const JSPDF = (window.jspdf && window.jspdf.jsPDF) ? window.jspdf.jsPDF : window.jsPDF;
   if(!JSPDF){ showToast('Não foi possível carregar o gerador de PDF. Confira a internet.'); return; }
@@ -617,7 +618,7 @@ function downloadUnitHistoryPDF(){
     doc.setFontSize(13); doc.setFont(undefined,'bold');
     doc.text('CHECKLIST DE SUPERVISÃO — AÇAÍ-SE', margin+95, y+8);
     doc.setFont(undefined,'normal'); doc.setFontSize(10);
-    doc.text(currentUnitName(), margin+95, y+24);
+    doc.text(unitName, margin+95, y+24);
     y += 60;
 
     doc.autoTable({
@@ -704,7 +705,7 @@ function downloadUnitHistoryPDF(){
     if(entry.negative_reviews){ doc.text('Avaliações negativas: '+entry.negative_reviews, margin, y); y+=14; }
   });
 
-  doc.save('Supervisao_'+slugify(currentUnitName())+'.pdf');
+  doc.save('Supervisao_'+slugify(unitName)+'.pdf');
 }
 
 /* ================= SUPERVISOR VIEW ================= */
@@ -880,8 +881,8 @@ function renderFinanceTableHTML(){
   return `<table class="fin-table"><thead><tr><th>Mês</th><th>Sistema</th><th>iFood</th><th>99Food</th><th>Total</th></tr></thead><tbody>${rows}</tbody></table>`;
 }
 
-function renderObservationsInto(wrap){
-  const list = (STATE.record.checklist || []).slice().reverse();
+function renderObservationsInto(wrap, checklistOverride){
+  const list = (checklistOverride || STATE.record.checklist || []).slice().reverse();
   if(!list.length){ wrap.appendChild(el(`<div class="empty-state">Nenhuma auditoria registrada ainda.</div>`)); return; }
   list.forEach(entry=>{
     const pct = computeEntryScore(entry);
@@ -1164,17 +1165,45 @@ async function renderNetworkView(){
     rows.forEach(r=>{
       const status = classify(r.score);
       const row = el(`
-        <div class="unit-row">
+        <div class="unit-row" style="cursor:pointer;" data-slug="${r.unit.slug}">
           <div class="u-name">${r.unit.name}</div>
           <span class="badge" style="background:${status.bg};color:${status.color};">${status.label}</span>
           <div class="u-score">${r.score!==null ? r.score.toFixed(0)+'%' : '–'}</div>
           <div class="u-rev">${fmtMoneyShort(r.monthTotal)}/mês</div>
           <div style="font-size:12px;color:var(--muted);">${r.pending} pendente(s)${r.lastDate ? ' · última visita '+fmtDate(r.lastDate) : ''}</div>
+          <span class="switch-link" style="margin-left:auto;">ver supervisões ▾</span>
         </div>
       `);
-      if(r.negFlag) row.appendChild(el(`<span class="obs-flag warn" style="margin-left:auto;">Aval. neg.: ${r.negFlag}</span>`));
+      if(r.negFlag) row.appendChild(el(`<span class="obs-flag warn">Aval. neg.: ${r.negFlag}</span>`));
       if(r.missingFlag) row.appendChild(el(`<span class="obs-flag">Falta: ${r.missingFlag}</span>`));
       rankList.appendChild(row);
+
+      const detail = el(`
+        <div style="display:none;padding:10px 0 18px;border-bottom:1px solid var(--line);">
+          <div style="display:flex;justify-content:flex-end;margin-bottom:8px;">
+            <button class="btn small ghost" style="border:1px solid var(--purple-deep);" data-slug="${r.unit.slug}">Baixar histórico em PDF</button>
+          </div>
+          <div class="unit-detail-obs"></div>
+        </div>
+      `);
+      rankList.appendChild(detail);
+
+      let loaded = false;
+      row.onclick = ()=>{
+        const opening = detail.style.display === 'none';
+        detail.style.display = opening ? 'block' : 'none';
+        row.querySelector('.switch-link').textContent = opening ? 'ocultar supervisões ▴' : 'ver supervisões ▾';
+        if(opening && !loaded){
+          const found = records.find(x=>x.unit.slug===r.unit.slug);
+          renderObservationsInto(detail.querySelector('.unit-detail-obs'), found ? found.record.checklist : []);
+          loaded = true;
+        }
+      };
+      detail.querySelector('button').onclick = (e)=>{
+        e.stopPropagation();
+        const found = records.find(x=>x.unit.slug===r.unit.slug);
+        downloadUnitHistoryPDF(found ? found.record.checklist : [], r.unit.name);
+      };
     });
   }
 
