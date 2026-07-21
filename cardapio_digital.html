@@ -545,7 +545,7 @@ async function carregarDadosDoSupabase(){
         textoHorario = aberta ? `Aberta até ${fecha}` : `Fechada agora · abre ${abre}`;
       }
     }
-    return { id: l.id, nome: l.nome, endereco: '', telefone: l.whatsapp, aberta, textoHorario, linkExterno: l.link_externo || null };
+    return { id: l.id, nome: l.nome, endereco: '', telefone: l.whatsapp, aberta, textoHorario, linkExterno: l.link_externo || null, aceitaDelivery: l.aceita_delivery !== false };
   });
 
   CATEGORIAS = (resCategorias.data || []);
@@ -593,6 +593,7 @@ function montarListaLojas(){
       <div>
         <div class="nome-loja">${loja.nome}</div>
         ${loja.linkExterno ? `<div class="endereco-loja">↗ Pedido pelo site próprio da loja</div>` : ''}
+        ${!loja.linkExterno && !loja.aceitaDelivery ? `<div class="endereco-loja">🏪 Apenas retirada (sem delivery)</div>` : ''}
         ${loja.textoHorario ? `<div class="endereco-loja ${loja.aberta === false ? 'texto-fechado' : ''}">${loja.textoHorario}</div>` : ''}
       </div>
       <div class="check"></div>
@@ -609,6 +610,7 @@ function selecionarLoja(id){
   const btn = document.getElementById('btn-confirmar-loja');
   btn.disabled = false;
   btn.textContent = lojaSelecionada.linkExterno ? 'Ir para o cardápio ↗' : 'Ver cardápio';
+  dadosEntrega.tipoEntrega = lojaSelecionada.aceitaDelivery ? 'delivery' : 'retirada';
 }
 
 function entrarNoCardapio(){
@@ -953,6 +955,7 @@ function renderizarCarrinho(){
       `).join('')}
 
       <div class="dados-entrega">
+        ${lojaSelecionada.aceitaDelivery ? `
         <div class="campo-entrega">
           <label>Como você quer receber?</label>
           <div class="seletor-tipo-entrega">
@@ -960,6 +963,12 @@ function renderizarCarrinho(){
             <div class="opcao-tipo-entrega ${dadosEntrega.tipoEntrega === 'retirada' ? 'ativa' : ''}" onclick="selecionarTipoEntrega('retirada')">🏪 Retirar na loja</div>
           </div>
         </div>
+        ` : `
+        <div class="campo-entrega">
+          <label>Como você vai receber</label>
+          <div class="opcao-tipo-entrega ativa" style="cursor:default;">🏪 Retirar na loja (essa unidade não faz delivery)</div>
+        </div>
+        `}
         <div class="campo-entrega">
           <label>Seu nome</label>
           <input type="text" id="input-nome-cliente" placeholder="Nome completo" value="${dadosEntrega.nome}" oninput="dadosEntrega.nome = this.value">

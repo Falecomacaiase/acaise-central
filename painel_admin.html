@@ -172,6 +172,11 @@
   <div class="modal-admin" id="modal-categoria-admin"></div>
 </div>
 
+<!-- ============ MODAL AJUSTE DE PREÇOS EM MASSA ============ -->
+<div class="overlay-admin" id="overlay-ajuste-precos">
+  <div class="modal-admin" id="modal-ajuste-precos"></div>
+</div>
+
 <script>
 /* =========================================================
    CONFIGURAÇÃO SUPABASE
@@ -279,7 +284,10 @@ function renderizarProdutos(){
   cont.innerHTML = `
     <div class="cabecalho-secao">
       <h2>Produtos</h2>
-      <button class="fab-adicionar" onclick="abrirModalProduto(null)">+ Novo produto</button>
+      <div style="display:flex; gap:8px;">
+        <button class="btn btn-secundario" onclick="abrirModalAjustePrecos()">Ajuste de preços em massa</button>
+        <button class="fab-adicionar" onclick="abrirModalProduto(null)">+ Novo produto</button>
+      </div>
     </div>
     ${cacheProdutos.length === 0 ? '<div class="vazio-tabela">Nenhum produto cadastrado ainda.</div>' : `
     <table class="tabela-admin">
@@ -573,6 +581,69 @@ async function excluirCategoria(id){
 }
 
 /* =========================================================
+   AJUSTE DE PREÇOS EM MASSA
+   ========================================================= */
+function abrirModalAjustePrecos(){
+  renderizarModalAjustePrecos(-15);
+  document.getElementById('overlay-ajuste-precos').classList.add('aberto');
+}
+
+function renderizarModalAjustePrecos(percentual){
+  const fator = 1 + (percentual / 100);
+  const preview = cacheProdutos.map(p => {
+    const novoBase = Math.round(p.preco_base * fator * 100) / 100;
+    const novoPromo = p.preco_promocional != null ? Math.round(p.preco_promocional * fator * 100) / 100 : null;
+    return { nome: p.nome, base: p.preco_base, novoBase, promo: p.preco_promocional, novoPromo };
+  });
+
+  document.getElementById('modal-ajuste-precos').innerHTML = `
+    <h3>Ajuste de preços em massa</h3>
+    <p style="font-size:12.5px; color:var(--texto-suave); margin-bottom:14px;">
+      Aplica esse percentual sobre o preço atual de <strong>todos os ${cacheProdutos.length} produtos</strong> (base e promocional, quando houver). Use negativo pra desconto (ex: -15) e positivo pra aumento.
+    </p>
+    <div class="campo">
+      <label>Percentual (%)</label>
+      <input type="number" step="0.1" id="campo-percentual-ajuste" value="${percentual}" oninput="renderizarModalAjustePrecos(parseFloat(this.value || 0))">
+    </div>
+    <div style="max-height: 260px; overflow-y:auto; border:1.5px solid var(--linha); border-radius:10px; margin-top:10px;">
+      <table class="tabela-admin" style="box-shadow:none;">
+        <thead><tr><th>Produto</th><th>Preço atual</th><th>Novo preço</th></tr></thead>
+        <tbody>
+          ${preview.map(p => `
+            <tr>
+              <td>${p.nome}</td>
+              <td>R$ ${p.base.toFixed(2).replace('.',',')}${p.promo != null ? ` <span style="color:var(--texto-suave);">(promo R$ ${p.promo.toFixed(2).replace('.',',')})</span>` : ''}</td>
+              <td><strong>R$ ${p.novoBase.toFixed(2).replace('.',',')}</strong>${p.novoPromo != null ? ` <span style="color:var(--verde-ok);">(promo R$ ${p.novoPromo.toFixed(2).replace('.',',')})</span>` : ''}</td>
+            </tr>
+          `).join('')}
+        </tbody>
+      </table>
+    </div>
+    <div class="rodape-modal">
+      <button class="btn btn-secundario" onclick="document.getElementById('overlay-ajuste-precos').classList.remove('aberto')">Cancelar</button>
+      <button class="btn btn-primario" onclick="aplicarAjustePrecos(${percentual})">Aplicar a todos os produtos</button>
+    </div>
+  `;
+}
+
+async function aplicarAjustePrecos(percentual){
+  if(!confirm(`Confirma aplicar ${percentual}% em todos os ${cacheProdutos.length} produtos? Essa ação atualiza os preços de uma vez e não tem desfazer automático.`)) return;
+  const fator = 1 + (percentual / 100);
+  for(const p of cacheProdutos){
+    const novoBase = Math.round(p.preco_base * fator * 100) / 100;
+    const dados = { preco_base: novoBase };
+    if(p.preco_promocional != null){
+      dados.preco_promocional = Math.round(p.preco_promocional * fator * 100) / 100;
+    }
+    await sb.from('produtos').update(dados).eq('id', p.id);
+  }
+  document.getElementById('overlay-ajuste-precos').classList.remove('aberto');
+  await carregarProdutos();
+  renderizarProdutos();
+  alert('Preços atualizados com sucesso!');
+}
+
+/* =========================================================
    LOJAS
    ========================================================= */
 function renderizarLojas(){
@@ -580,15 +651,22 @@ function renderizarLojas(){
   cont.innerHTML = `
     <div class="cabecalho-secao">
       <h2>Lojas</h2>
-      <button class="fab-adicionar" onclick="abrirModalLoja()">+ Nova loja</button>
+      <button class="fab-adicionar" onclick="abrirModalLoja(null)">+ Nova loja</button>
     </div>
     <table class="tabela-admin">
-      <thead><tr><th>Nome</th><th>WhatsApp</th><th>Status</th><th>Ações</th></tr></thead>
+      <thead><tr><th>Nome</th><th>WhatsApp</th><th>Delivery?</th><th>Status</th><th>Ações</th></tr></thead>
       <tbody>
         ${cacheLojas.map(l => `
           <tr>
-            <td><strong>${l.nome}</strong></td>
+            <td><strong>${l.nome}</strong>${l.link_externo ? ' <span style="font-size:11px; color:var(--texto-suave);">(link externo)</span>' : ''}</td>
             <td>${l.whatsapp}</td>
+            <td>
+              <label class="toggle">
+                <input type="checkbox" ${l.aceita_delivery !== false ? 'checked' : ''} onchange="alternarDeliveryLoja('${l.id}', this.checked)">
+                <span class="trilho"></span>
+              </label>
+              <span style="font-size:11.5px; color:var(--texto-suave); margin-left:6px;">${l.aceita_delivery !== false ? 'Delivery + Retirada' : 'Só retirada'}</span>
+            </td>
             <td>
               <label class="toggle">
                 <input type="checkbox" ${l.ativo ? 'checked' : ''} onchange="alternarAtivoLoja('${l.id}', this.checked)">
@@ -596,6 +674,7 @@ function renderizarLojas(){
               </label>
             </td>
             <td class="acoes-linha">
+              <button class="btn btn-secundario" onclick="abrirModalLoja('${l.id}')">Editar</button>
               <button class="btn btn-secundario" onclick="abrirModalHorarios('${l.id}')">Horários</button>
               <button class="btn btn-perigo" onclick="excluirLoja('${l.id}')">Excluir</button>
             </td>
@@ -606,25 +685,46 @@ function renderizarLojas(){
   `;
 }
 
-function abrirModalLoja(){
+function abrirModalLoja(id){
+  const loja = id ? cacheLojas.find(l => l.id === id) : null;
   document.getElementById('modal-loja-admin').innerHTML = `
-    <h3>Nova loja</h3>
-    <div class="campo"><label>Nome da loja</label><input type="text" id="campo-nome-loja" placeholder="Ex: Açaí-se Piedade"></div>
-    <div class="campo"><label>WhatsApp (com DDI+DDD, só números)</label><input type="text" id="campo-whatsapp-loja" placeholder="5581999999999"></div>
+    <h3>${loja ? 'Editar loja' : 'Nova loja'}</h3>
+    <div class="campo"><label>Nome da loja</label><input type="text" id="campo-nome-loja" placeholder="Ex: Açaí-se Piedade" value="${loja ? loja.nome : ''}"></div>
+    <div class="campo"><label>WhatsApp (com DDI+DDD, só números)</label><input type="text" id="campo-whatsapp-loja" placeholder="5581999999999" value="${loja ? loja.whatsapp : ''}"></div>
+    <div class="campo"><label>Link externo (opcional — se preenchido, o cliente é redirecionado pra esse link em vez de ver nosso cardápio)</label><input type="text" id="campo-link-loja" placeholder="https://..." value="${loja && loja.link_externo ? loja.link_externo : ''}"></div>
+    <div class="campo">
+      <label style="display:flex; align-items:center; gap:8px;">
+        <input type="checkbox" id="campo-delivery-loja" ${!loja || loja.aceita_delivery !== false ? 'checked' : ''}>
+        Essa loja aceita delivery (desmarque se for só retirada)
+      </label>
+    </div>
     <div class="rodape-modal">
       <button class="btn btn-secundario" onclick="document.getElementById('overlay-loja-admin').classList.remove('aberto')">Cancelar</button>
-      <button class="btn btn-primario" onclick="salvarLoja()">Salvar</button>
+      <button class="btn btn-primario" onclick="salvarLoja('${id || ''}')">Salvar</button>
     </div>
   `;
   document.getElementById('overlay-loja-admin').classList.add('aberto');
 }
 
-async function salvarLoja(){
+async function salvarLoja(id){
   const nome = document.getElementById('campo-nome-loja').value.trim();
   const whatsapp = document.getElementById('campo-whatsapp-loja').value.trim().replace(/\D/g,'');
+  const linkExterno = document.getElementById('campo-link-loja').value.trim();
+  const aceitaDelivery = document.getElementById('campo-delivery-loja').checked;
   if(!nome || !whatsapp) return;
-  await sb.from('lojas').insert({ nome, whatsapp, ativo:true });
+  const dados = { nome, whatsapp, aceita_delivery: aceitaDelivery, link_externo: linkExterno || null };
+  if(id){
+    await sb.from('lojas').update(dados).eq('id', id);
+  } else {
+    await sb.from('lojas').insert({ ...dados, ativo: true });
+  }
   document.getElementById('overlay-loja-admin').classList.remove('aberto');
+  await carregarLojas();
+  renderizarLojas();
+}
+
+async function alternarDeliveryLoja(id, aceita){
+  await sb.from('lojas').update({ aceita_delivery: aceita }).eq('id', id);
   await carregarLojas();
   renderizarLojas();
 }
