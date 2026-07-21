@@ -1158,6 +1158,7 @@ async function renderNetworkView(){
     }
   };
 
+  const rankCard = el(`<div class="card"><h2>Ranking por conformidade (piores primeiro)</h2><p class="subtitle">Onde a franqueadora precisa colocar energia agora — clique numa unidade para ver as supervisões dela</p><div id="unit-rank-list"></div></div>`);
   container.appendChild(rankCard);
   const rankList = rankCard.querySelector('#unit-rank-list');
   if(!rows.length){ rankList.appendChild(el(`<div class="empty-state">Nenhuma unidade cadastrada ainda.</div>`)); }
