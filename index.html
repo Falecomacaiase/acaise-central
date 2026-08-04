@@ -2,20 +2,10 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
 <title>Açaí-Se | Central de Pedidos</title>
-
-<!-- PWA / Atalho na tela inicial -->
-<meta name="apple-mobile-web-app-capable" content="yes">
-<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
-<meta name="apple-mobile-web-app-title" content="Açaí-Se">
-<meta name="application-name" content="Açaí-Se">
-<meta name="theme-color" content="#5B2D8E">
-<link rel="apple-touch-icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 192 192'%3E%3Crect width='192' height='192' rx='40' fill='%235B2D8E'/%3E%3Ccircle cx='96' cy='75' r='38' fill='%23fff' opacity='.15'/%3E%3Cellipse cx='96' cy='85' rx='32' ry='30' fill='%23fff'/%3E%3Ccircle cx='82' cy='76' r='7' fill='%235B2D8E'/%3E%3Ccircle cx='110' cy='76' r='7' fill='%235B2D8E'/%3E%3Ccircle cx='96' cy='88' r='5' fill='%235B2D8E'/%3E%3Ctext x='96' y='148' font-family='Arial' font-weight='bold' font-size='26' fill='%23fff' text-anchor='middle'%3EAÇAÍ-SE%3C/text%3E%3C/svg%3E">
-<link rel="manifest" href="data:application/json,%7B%22name%22%3A%22A%C3%A7a%C3%AD-Se%20Central%22%2C%22short_name%22%3A%22A%C3%A7a%C3%AD-Se%22%2C%22start_url%22%3A%22.%22%2C%22display%22%3A%22standalone%22%2C%22background_color%22%3A%22%235B2D8E%22%2C%22theme_color%22%3A%22%235B2D8E%22%7D">
 <!-- Firebase SDK -->
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore-compat.js"></script>
@@ -123,8 +113,17 @@
 
   <div id="orderScreen" class="card hidden">
     <div class="flex-between">
-      <h2 style="margin:0">Pedido semanal — <span id="orderUnitName"></span></h2>
+      <h2 style="margin:0">Açaí-Se — <span id="orderUnitName"></span></h2>
     </div>
+
+    <!-- ABAS DA LOJA -->
+    <div class="tabs" style="margin:12px 0 0">
+      <button class="tab-btn active" id="tabBtnFazerPedido" onclick="switchLojaTab('fazerPedido')">📋 Fazer Pedido</button>
+      <button class="tab-btn" id="tabBtnMeusPedidos" onclick="switchLojaTab('meusPedidos')">📦 Meus Pedidos</button>
+    </div>
+
+    <!-- ABA: FAZER PEDIDO -->
+    <div id="lojaTabFazerPedido">
     <div style="background:#EDE7F6;border-left:4px solid #5B2D8E;padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0;">
       <span style="font-size:13px;color:#5B2D8E;font-weight:600;">⏱ As entregas são realizadas em até 48h após a confirmação do pedido.</span>
     </div>
@@ -155,10 +154,6 @@
         </div>
       </div>
       <p class="small" style="margin-top:0">Marque as quantidades que sua unidade precisa. Itens indisponíveis aparecem desabilitados.</p>
-      <div style="position:sticky;top:0;z-index:10;background:#fff;padding:8px 0;margin-bottom:4px">
-        <input type="text" id="catalogBusca" placeholder="🔍 Buscar produto..." oninput="renderCatalog()"
-          style="width:100%;padding:10px 14px;font-size:14px;border:2px solid #5B2D8E;border-radius:8px;box-sizing:border-box">
-      </div>
       <div id="catalog"></div>
       <div id="minimoAviso" class="hidden" style="background:#FFF8E1;border-left:3px solid #F57F17;padding:8px 12px;border-radius:4px;margin-top:12px;font-size:13px;color:#F57F17;font-weight:600">
         ⚠️ Valor mínimo de pedido: R$ 300,00. Total atual: <span id="totalAtual">R$ 0,00</span>
@@ -179,6 +174,27 @@
       <div style="font-size:12px;color:#C62828;margin-top:6px">⚠️ Urgência = retirada prioritária. Requer despacho e assinatura de romaneio.</div>
     </div>
     <div id="orderMsg" class="small" style="margin-top:8px"></div>
+    </div><!-- fim lojaTabFazerPedido -->
+
+    <!-- ABA: MEUS PEDIDOS -->
+    <div id="lojaTabMeusPedidos" class="hidden">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin:12px 0 8px">
+        <div style="font-size:14px;color:#555">Histórico dos seus pedidos — mais recente primeiro</div>
+        <button class="btn btn-secondary btn-xs" onclick="carregarMeusPedidos()">🔄 Atualizar</button>
+      </div>
+      <div id="meusPedidosLista"><p class="small">Carregando...</p></div>
+
+      <!-- Romaneio da loja (overlay) -->
+      <div id="romaneioLojaOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+        <div style="background:#fff;border-radius:12px;max-width:600px;width:100%;padding:24px" id="romaneioLojaConteudo">
+          <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+            <button class="btn btn-secondary" onclick="imprimirRomaneioLoja()">🖨️ Imprimir</button>
+            <button class="btn btn-secondary" onclick="document.getElementById('romaneioLojaOverlay').style.display='none'">✕ Fechar</button>
+          </div>
+          <div id="romaneioLojaBody"></div>
+        </div>
+      </div>
+    </div><!-- fim lojaTabMeusPedidos -->
   </div>
 
   <!-- ADMIN -->
@@ -838,6 +854,116 @@ async function verificarAtualizacao() {
 window.addEventListener('load', () => setTimeout(verificarAtualizacao, 4000));
 setInterval(verificarAtualizacao, 600000);
 
+function switchLojaTab(tab) {
+  document.getElementById('lojaTabFazerPedido').classList.toggle('hidden', tab !== 'fazerPedido');
+  document.getElementById('lojaTabMeusPedidos').classList.toggle('hidden', tab !== 'meusPedidos');
+  document.getElementById('tabBtnFazerPedido').classList.toggle('active', tab === 'fazerPedido');
+  document.getElementById('tabBtnMeusPedidos').classList.toggle('active', tab === 'meusPedidos');
+  if (tab === 'meusPedidos') carregarMeusPedidos();
+}
+
+async function carregarMeusPedidos() {
+  const wrap = document.getElementById('meusPedidosLista');
+  wrap.innerHTML = '<p class="small">Carregando...</p>';
+  try {
+    const list = await safeList('pedido:', true);
+    let pedidos = [];
+    if (list && list.keys) {
+      for (const k of list.keys) {
+        try {
+          const r = await safeGet(k, true);
+          if (!r || !r.value) continue;
+          const p = parseValue(r.value);
+          if (!p || p.unidade !== currentUser) continue;
+          p._storageKey = k;
+          pedidos.push(p);
+        } catch(e) {}
+      }
+    }
+    pedidos.sort((a,b) => new Date(b.dataEnvio) - new Date(a.dataEnvio));
+
+    if (pedidos.length === 0) {
+      wrap.innerHTML = '<p class="small" style="color:#888">Nenhum pedido encontrado ainda.</p>';
+      return;
+    }
+
+    let html = '';
+    pedidos.forEach((p, idx) => {
+      const data = new Date(p.dataEnvio).toLocaleString('pt-BR');
+      const total = Object.values(p.itens||{}).reduce((s,i)=>s+(i.total||0),0);
+      const despachado = p.despachado;
+      const statusBadge = despachado
+        ? `<span style="background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700">✅ Despachado</span>`
+        : `<span style="background:#FFF8E1;color:#F57F17;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700">⏳ Aguardando</span>`;
+
+      html += `<div style="border:1px solid #eee;border-radius:8px;padding:12px 14px;margin-bottom:10px;border-left:4px solid ${despachado?'#2E7D32':'#5B2D8E'}">
+        <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
+          <div>
+            <strong style="color:#5B2D8E">${p.numeroPedido||'—'}</strong>
+            ${statusBadge}
+            ${p.urgencia?'<span style="background:#FFEBEE;color:#C62828;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700;margin-left:4px">🚨 URGÊNCIA</span>':''}
+          </div>
+          <div style="font-size:12px;color:#777">${data}</div>
+        </div>
+        <div style="font-size:13px;color:#555;margin-top:6px">${Object.keys(p.itens||{}).length} itens • R$ ${total.toFixed(2).replace('.',',')}
+          ${p.tipoEntrega?` • ${p.tipoEntrega==='Retirada'?'🏪 Retirada':'🚚 Entrega'}`:''}
+        </div>
+        ${p.observacao?`<div style="font-size:12px;color:#888;margin-top:4px;font-style:italic">💬 ${p.observacao}</div>`:''}
+        <button class="btn btn-secondary btn-xs" style="margin-top:8px" onclick="verRomaneioLoja(${idx})">🖨️ Ver romaneio</button>
+      </div>`;
+    });
+    wrap.innerHTML = html;
+    wrap._pedidos = pedidos;
+  } catch(e) {
+    wrap.innerHTML = `<p class="small" style="color:#C62828">Erro ao carregar: ${e.message}</p>`;
+  }
+}
+
+function verRomaneioLoja(idx) {
+  const pedidos = document.getElementById('meusPedidosLista')._pedidos;
+  if (!pedidos || !pedidos[idx]) return;
+  const p = pedidos[idx];
+  const data = new Date(p.dataEnvio).toLocaleString('pt-BR');
+  const total = Object.values(p.itens||{}).reduce((s,i)=>s+(i.total||0),0);
+  let itensHtml = '';
+  Object.values(p.itens||{}).forEach(it => {
+    itensHtml += `<tr><td style="padding:6px 8px">${it.nome}</td>
+      <td style="padding:6px 8px;text-align:center">${it.qtd}</td>
+      <td style="padding:6px 8px;text-align:right">R$ ${(it.precoUnitario||0).toFixed(2).replace('.',',')}</td>
+      <td style="padding:6px 8px;text-align:right;font-weight:700">R$ ${(it.total||0).toFixed(2).replace('.',',')}</td></tr>`;
+  });
+  document.getElementById('romaneioLojaBody').innerHTML = `
+    <div style="text-align:center;margin-bottom:16px">
+      <div style="font-size:24px;font-weight:900;color:#5B2D8E;letter-spacing:2px">AÇAÍ-SE</div>
+      <div style="font-size:12px;color:#888;margin-top:2px">COMPROVANTE DE PEDIDO</div>
+    </div>
+    <table style="width:100%;font-size:13px;margin-bottom:12px">
+      <tr><td><strong>Unidade:</strong></td><td>${p.unidade}</td><td><strong>Data:</strong></td><td>${data}</td></tr>
+      <tr><td><strong>Pedido:</strong></td><td style="color:#5B2D8E;font-weight:700">${p.numeroPedido||'—'}</td>
+          <td><strong>Status:</strong></td><td>${p.despachado?'✅ Despachado':'⏳ Aguardando despacho'}</td></tr>
+      <tr><td><strong>Tipo:</strong></td><td>${p.tipoEntrega||'—'}</td>
+          <td><strong>Responsável:</strong></td><td>${p.nomeResponsavel||'—'}</td></tr>
+    </table>
+    <hr style="border:1px solid #eee;margin:12px 0">
+    <table style="width:100%;font-size:13px;border-collapse:collapse">
+      <thead><tr style="background:#5B2D8E;color:#fff">
+        <th style="padding:8px;text-align:left">Item</th>
+        <th style="padding:8px;text-align:center">Qtd</th>
+        <th style="padding:8px;text-align:right">Preço unit.</th>
+        <th style="padding:8px;text-align:right">Total</th>
+      </tr></thead>
+      <tbody>${itensHtml}</tbody>
+      <tfoot><tr style="background:#EDE7F6;font-weight:700;font-size:15px">
+        <td colspan="3" style="padding:10px 8px">TOTAL DO PEDIDO</td>
+        <td style="padding:10px 8px;text-align:right;color:#5B2D8E">R$ ${total.toFixed(2).replace('.',',')}</td>
+      </tr></tfoot>
+    </table>
+    ${p.observacao?`<div style="margin-top:12px;padding:10px;background:#FFF8E1;border-radius:6px;font-size:13px"><strong>💬 Observação:</strong> ${p.observacao}</div>`:''}`;
+  document.getElementById('romaneioLojaOverlay').style.display = 'flex';
+}
+
+function imprimirRomaneioLoja() { window.print(); }
+
 function switchAdminTab(tab) {
   ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Compras','Log'].forEach(t => {
     const el = document.getElementById('tab'+t);
@@ -1106,12 +1232,6 @@ async function confirmarDespacho() {
     btn.textContent = '✅ Já despachado';
     btn.style.background = '#aaa';
 
-    await registrarLog('Saída',
-      `Despacho — ${pedidoAtualRomaneio.numeroPedido||''} — ${Object.keys(itens).length} itens — ${pedidoAtualRomaneio.unidade}`,
-      currentUser, pedidoAtualRomaneio.unidade);
-
-    setTimeout(() => window.print(), 500);
-
   } catch(e) {
     btn.disabled = false;
     btn.textContent = '✅ Confirmar despacho e imprimir';
@@ -1149,154 +1269,85 @@ async function gerarRelatorio() {
   const el = document.getElementById('relatorioResultado');
   el.innerHTML = '<p class="small">Carregando...</p>';
 
-  const nomeMes = document.getElementById('relFiltroMes').selectedOptions[0]?.textContent || 'Todos';
-
-  function noMes(dataStr) {
-    const d = new Date(dataStr);
-    const mesOk = !mes || String(d.getMonth()+1).padStart(2,'0') === mes;
-    const anoOk = !ano || String(d.getFullYear()) === ano;
-    return mesOk && anoOk;
-  }
-
-  // Estrutura: consumo[unidade][itemId] = { nome, qtd, valor, entregas: [{data, qtd}] }
-  const consumo = {};
-  function addConsumo(unid, itemId, nomeItem, qtd, valor, data) {
-    if (!consumo[unid]) consumo[unid] = {};
-    if (!consumo[unid][itemId]) consumo[unid][itemId] = { nome: nomeItem, qtd: 0, valor: 0, entregas: [] };
-    consumo[unid][itemId].qtd += qtd;
-    consumo[unid][itemId].valor += valor;
-    consumo[unid][itemId].entregas.push({ data, qtd });
-  }
-
-  // 1. Pedidos despachados
+  // Load all pedidos from storage
+  let todosPedidos = [];
   try {
     const list = await safeList('pedido:', true);
     if (list && list.keys) {
       for (const k of list.keys) {
         try {
           const r = await safeGet(k, true);
-          if (!r || !r.value) continue;
-          const p = parseValue(r.value);
-          if (!p || !p.unidade || !p.despachado || !p.dataDespacho) continue;
-          if (!noMes(p.dataDespacho)) continue;
-          if (unidade && p.unidade !== unidade) continue;
-          Object.entries(p.itens||{}).forEach(([id, it]) => {
-            addConsumo(p.unidade, id, it.nome, it.qtd, it.total||0, p.dataDespacho);
-          });
+          if (r && r.value) todosPedidos.push(parseValue(r.value));
         } catch(e) {}
       }
     }
   } catch(e) {}
 
-  // 2. Saídas avulsas
-  try {
-    const list = await safeList('saida:avulsa:', true);
-    if (list && list.keys) {
-      for (const k of list.keys) {
-        try {
-          const r = await safeGet(k, true);
-          if (!r || !r.value) continue;
-          const s = parseValue(r.value);
-          if (!s || !s.unidade || !noMes(s.data)) continue;
-          if (unidade && s.unidade !== unidade) continue;
-          const itemCat = Object.values(CATALOGO).flat().find(i => i.id === s.itemId);
-          const preco = itemState[s.itemId]?.venda || itemCat?.preco || 0;
-          addConsumo(s.unidade, s.itemId || s.nome, s.nome, s.qtd, s.qtd * preco, s.data);
-        } catch(e) {}
-      }
-    }
-  } catch(e) {}
+  // Filter
+  const pedidosFiltrados = todosPedidos.filter(p => {
+    const data = new Date(p.dataEnvio);
+    const mesOk = !mes || String(data.getMonth()+1).padStart(2,'0') === mes;
+    const anoOk = !ano || String(data.getFullYear()) === ano;
+    const unidOk = !unidade || p.unidade === unidade;
+    return mesOk && anoOk && unidOk;
+  }).sort((a,b) => new Date(b.dataEnvio) - new Date(a.dataEnvio));
 
-  if (Object.keys(consumo).length === 0) {
-    el.innerHTML = `<p class="small">Nenhum consumo encontrado para o período selecionado.</p>`;
+  if (pedidosFiltrados.length === 0) {
+    el.innerHTML = `<p class="small">Nenhum pedido encontrado para o filtro selecionado.</p>`;
     return;
   }
 
-  // Totalizador geral da rede (consumo por item, todas as lojas)
-  const totalRede = {};
-  Object.values(consumo).forEach(itens => {
-    Object.entries(itens).forEach(([id, dados]) => {
-      if (!totalRede[id]) totalRede[id] = { nome: dados.nome, qtd: 0, valor: 0 };
-      totalRede[id].qtd += dados.qtd;
-      totalRede[id].valor += dados.valor;
-    });
+  // Group by unit
+  const porUnidade = {};
+  pedidosFiltrados.forEach(p => {
+    if (!porUnidade[p.unidade]) porUnidade[p.unidade] = { pedidos: [], total: 0 };
+    porUnidade[p.unidade].pedidos.push(p);
+    porUnidade[p.unidade].total += Object.values(p.itens).reduce((s,i)=>s+(i.total||0),0);
   });
 
-  const totalGeralValor = Object.values(totalRede).reduce((s,i)=>s+i.valor,0);
+  const nomeMes = document.getElementById('relFiltroMes').selectedOptions[0]?.textContent || 'Todos';
+  const totalGeral = pedidosFiltrados.reduce((s,p)=>s+Object.values(p.itens).reduce((ss,i)=>ss+(i.total||0),0),0);
 
   let html = `
     <div style="border-bottom:2px solid #5B2D8E;padding-bottom:10px;margin-bottom:16px">
-      <div style="font-size:18px;font-weight:700;color:#5B2D8E">Consumo Real — ${unidade || 'Toda a rede'}</div>
-      <div class="small">Período: ${nomeMes}/${ano} • Inclui pedidos despachados + saídas avulsas</div>
+      <div style="font-size:18px;font-weight:700;color:#5B2D8E">Relatório de Pedidos — ${unidade || 'Todas as unidades'}</div>
+      <div class="small">Período: ${nomeMes}/${ano} &nbsp;•&nbsp; ${pedidosFiltrados.length} pedido(s) encontrado(s)</div>
     </div>`;
 
-  // Por unidade
-  Object.entries(consumo).sort((a,b)=>a[0].localeCompare(b[0])).forEach(([nomeUnid, itens]) => {
-    const totalUnid = Object.values(itens).reduce((s,i)=>s+i.valor,0);
-    const totalQtdUnid = Object.values(itens).reduce((s,i)=>s+i.qtd,0);
+  Object.entries(porUnidade).forEach(([nome, dados]) => {
+    html += `<div style="margin-bottom:24px">
+      <div style="background:#5B2D8E;color:#fff;padding:8px 14px;border-radius:6px;display:flex;justify-content:space-between;align-items:center">
+        <strong>${nome}</strong>
+        <span>${dados.pedidos.length} pedido(s) — R$ ${dados.total.toFixed(2).replace('.',',')}</span>
+      </div>`;
 
-    html += `<div style="margin-bottom:20px;border:1px solid #eee;border-radius:8px;overflow:hidden">
-      <div style="background:#5B2D8E;color:#fff;padding:10px 14px;display:flex;justify-content:space-between">
-        <strong style="font-size:15px">${nomeUnid}</strong>
-        <span class="small">${totalQtdUnid} itens • R$ ${totalUnid.toFixed(2).replace('.',',')}</span>
-      </div>
-      <table style="font-size:13px;width:100%">
-      <thead><tr style="background:#F5F0FB">
-        <th style="padding:6px 10px;text-align:left">Item</th>
-        <th style="padding:6px 10px;text-align:center">Qtd total</th>
-        <th style="padding:6px 10px;text-align:left">Entregas</th>
-        <th style="padding:6px 10px;text-align:right">Valor</th>
-      </tr></thead><tbody>`;
-
-    Object.entries(itens).sort((a,b)=>b[1].qtd-a[1].qtd).forEach(([id, dados], idx) => {
-      const bg = idx % 2 === 0 ? '#fff' : '#fafafa';
-      // Agrupa entregas por dia
-      const porDia = {};
-      dados.entregas.forEach(e => {
-        const dia = new Date(e.data).toLocaleDateString('pt-BR', {day:'2-digit',month:'2-digit'});
-        porDia[dia] = (porDia[dia]||0) + e.qtd;
+    dados.pedidos.forEach(p => {
+      const totalPed = Object.values(p.itens).reduce((s,i)=>s+(i.total||0),0);
+      const status = p.urgencia ? '🚨 Urgência' : p.despachado ? '✅ Despachado' : '⏳ Pendente';
+      html += `<div style="border:1px solid #eee;border-radius:6px;padding:12px;margin-top:8px">
+        <div class="flex-between" style="flex-wrap:wrap;gap:6px;margin-bottom:8px">
+          <div>
+            <strong style="color:#5B2D8E">${p.numeroPedido||'—'}</strong>
+            <span class="small" style="margin-left:8px">${new Date(p.dataEnvio).toLocaleDateString('pt-BR')} • ${p.tipoEntrega||'Entrega'}</span>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <span class="small">${status}</span>
+            <strong>R$ ${totalPed.toFixed(2).replace('.',',')}</strong>
+          </div>
+        </div>
+        <table style="font-size:12px;width:100%"><tbody>`;
+      Object.values(p.itens).forEach(it => {
+        html += `<tr><td>${it.nome}</td><td style="text-align:right;width:40px">${it.qtd}</td><td style="text-align:right;width:80px">R$ ${(it.total||0).toFixed(2).replace('.',',')}</td></tr>`;
       });
-      const entregasStr = Object.entries(porDia).map(([d,q])=>`${d}: ${q}`).join(' | ');
-      html += `<tr style="background:${bg}">
-        <td style="padding:6px 10px">${dados.nome}</td>
-        <td style="padding:6px 10px;text-align:center;font-weight:700">${dados.qtd}</td>
-        <td style="padding:6px 10px;font-size:11px;color:#666">${entregasStr}</td>
-        <td style="padding:6px 10px;text-align:right">R$ ${dados.valor.toFixed(2).replace('.',',')}</td>
-      </tr>`;
+      html += `</tbody></table></div>`;
     });
-    html += `</tbody></table></div>`;
+    html += `</div>`;
   });
 
-  // Totalizador da rede
-  if (!unidade) {
-    html += `<div style="margin-top:8px;border:2px solid #5B2D8E;border-radius:8px;overflow:hidden">
-      <div style="background:#5B2D8E;color:#fff;padding:10px 14px;font-weight:700;font-size:15px">
-        📊 TOTAL GERAL DA REDE — ${nomeMes}/${ano}
-      </div>
-      <table style="font-size:13px;width:100%">
-      <thead><tr style="background:#EDE7F6">
-        <th style="padding:6px 10px;text-align:left">Item</th>
-        <th style="padding:6px 10px;text-align:center">Qtd total</th>
-        <th style="padding:6px 10px;text-align:right">Valor total</th>
-      </tr></thead><tbody>`;
+  html += `<div style="background:#F5F0FB;border-radius:8px;padding:12px 16px;display:flex;justify-content:space-between;font-weight:700;font-size:16px;color:#5B2D8E;margin-top:8px">
+    <span>TOTAL GERAL DO PERÍODO</span><span>R$ ${totalGeral.toFixed(2).replace('.',',')}</span>
+  </div>`;
 
-    Object.entries(totalRede).sort((a,b)=>b[1].qtd-a[1].qtd).forEach(([id, dados], idx) => {
-      const bg = idx % 2 === 0 ? '#fff' : '#F9F6FF';
-      html += `<tr style="background:${bg}">
-        <td style="padding:6px 10px">${dados.nome}</td>
-        <td style="padding:6px 10px;text-align:center;font-weight:700">${dados.qtd}</td>
-        <td style="padding:6px 10px;text-align:right">R$ ${dados.valor.toFixed(2).replace('.',',')}</td>
-      </tr>`;
-    });
-
-    html += `</tbody><tfoot><tr style="background:#EDE7F6;font-weight:700;font-size:15px">
-      <td style="padding:10px 10px">TOTAL GERAL</td>
-      <td></td>
-      <td style="padding:10px 10px;text-align:right;color:#5B2D8E">R$ ${totalGeralValor.toFixed(2).replace('.',',')}</td>
-    </tr></tfoot></table></div>`;
-  }
-
-  html += `<button class="btn btn-secondary" onclick="window.print()" style="margin-top:16px">🖨️ Imprimir relatório</button>`;
   el.innerHTML = html;
 }
 
@@ -2083,27 +2134,19 @@ window.addEventListener('load', () => {
 function renderCatalog() {
   const wrap = document.getElementById('catalog');
   wrap.innerHTML = "";
-  const busca = document.getElementById('catalogBusca')?.value?.toLowerCase().trim() || '';
   const CATEGORIAS_OCULTAS_LOJA = ["Produção / Insumos"];
-  let totalItensVisiveis = 0;
-
   Object.keys(CATALOGO).forEach(cat => {
     if (CATEGORIAS_OCULTAS_LOJA.includes(cat)) return;
     const itensVisiveis = CATALOGO[cat].filter(item => {
       const st = itemState[item.id];
-      if (st && st.disponivel === false) return false;
-      if (busca) return item.nome.toLowerCase().includes(busca) || String(item.cod).includes(busca);
-      return true;
+      // Só oculta se explicitamente marcado como false — qualquer outro caso mostra
+      return !st || st.disponivel !== false;
     });
     if (itensVisiveis.length === 0) return;
-    totalItensVisiveis += itensVisiveis.length;
-
-    if (!busca) {
-      const title = document.createElement('div');
-      title.className = "cat-title";
-      title.textContent = cat;
-      wrap.appendChild(title);
-    }
+    const title = document.createElement('div');
+    title.className = "cat-title";
+    title.textContent = cat;
+    wrap.appendChild(title);
     itensVisiveis.forEach(item => {
       const preco = (itemState[item.id]?.venda || item.preco);
       const cod = item.cod ? `[${item.cod}] ` : '';
@@ -2111,22 +2154,16 @@ function renderCatalog() {
       row.className = "item-row";
       row.innerHTML = `
         <span class="item-name"><span style="color:#888;font-size:12px">${cod}</span>${item.nome} <span class="small">(R$ ${preco.toFixed(2).replace('.',',')})</span></span>
-        <input type="number" min="0" class="item-qtd" id="qtd_${item.id}" value="${document.getElementById('qtd_'+item.id)?.value||0}" oninput="updateOrderTotal()">
+        <input type="number" min="0" class="item-qtd" id="qtd_${item.id}" value="0" oninput="updateOrderTotal()">
       `;
       wrap.appendChild(row);
     });
   });
-
-  if (busca && totalItensVisiveis === 0) {
-    wrap.innerHTML = `<p class="small" style="color:#888;padding:12px">Nenhum produto encontrado para "${busca}".</p>`;
-  }
-
   const totalBar = document.createElement('div');
   totalBar.className = "flex-between";
   totalBar.style = "margin-top:16px;padding:12px 14px;background:#F5F0FB;border-radius:8px;font-weight:600;";
   totalBar.innerHTML = `<span>Valor estimado do pedido</span><span id="orderTotalValue">R$ 0,00</span>`;
   wrap.appendChild(totalBar);
-  updateOrderTotal();
 }
 
 const VALOR_MINIMO_PEDIDO = 300;
@@ -3098,18 +3135,9 @@ async function loadEstoqueAtualSilencioso() {
 async function excluirPedido(key, numeroPedido) {
   const label = numeroPedido ? `pedido ${numeroPedido}` : 'este pedido';
   if (!confirm(`Confirma a exclusão do ${label}? Esta ação não pode ser desfeita.`)) return;
-  if (!key) { alert('Chave não identificada. Atualize a lista e tente novamente.'); return; }
+  if (!key) { alert('Chave do pedido não identificada. Atualize a lista e tente novamente.'); return; }
   try {
-    // Tenta deletar com toDocId (novos pedidos)
-    const docId1 = toDocId(key);
-    await _col.doc(docId1).delete();
-    // Tenta também com encodeURIComponent (pedidos migrados)
-    try {
-      const docId2 = encodeURIComponent(key);
-      if (docId2 !== docId1) await _col.doc(docId2).delete();
-    } catch(e) {}
-    // Remove do cache local
-    if (_dataCache) delete _dataCache[key];
+    await safeDelete(key);
     _dataCache = null;
     loadAdminData();
   } catch(e) {
@@ -3120,8 +3148,7 @@ async function excluirPedido(key, numeroPedido) {
 function renderConsolidado(pedidos) {
   const totals = {};
   let grandTotal = 0;
-  // Conta apenas pedidos NÃO despachados no consolidado
-  pedidos.filter(p => !p.despachado).forEach(p => {
+  pedidos.forEach(p => {
     Object.entries(p.itens).forEach(([id, info]) => {
       if (!totals[id]) totals[id] = { nome: info.nome, qtd: 0, valor: 0 };
       totals[id].qtd += info.qtd;
