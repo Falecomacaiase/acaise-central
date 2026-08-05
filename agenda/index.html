@@ -1,0 +1,94 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Agenda Açaí-se</title>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="app-header">
+  <h1>📅 Agenda Açaí-se</h1>
+  <div class="subtitulo">Ativações e eventos da marca — visível pra toda a equipe</div>
+
+  <div class="contexto">
+    <select id="selLoja"></select>
+    <button id="btnFranqueadora" class="btn-texto" style="color:#E4C9DD;border:1px solid rgba(255,255,255,0.35);border-radius:10px;padding:8px 12px;">🔒 Franqueadora</button>
+  </div>
+</header>
+
+<main>
+
+  <!-- ===================== VIEW: AGENDA ===================== -->
+  <section class="view ativa" id="view-agenda">
+
+    <div class="linha-filtros">
+      <select id="filtroLoja"><option value="">Todas as lojas</option></select>
+    </div>
+
+    <div class="card">
+      <div class="calendario-header">
+        <button class="btn-texto" id="btnMesAnterior">◀</button>
+        <h2 id="tituloMesCalendario">—</h2>
+        <button class="btn-texto" id="btnMesSeguinte">▶</button>
+      </div>
+      <div class="calendario-dias-semana">
+        <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div>
+      </div>
+      <div class="calendario-grade" id="calendarioGrade"></div>
+    </div>
+
+    <div class="stat-grid" id="statsAgenda"></div>
+
+    <div id="detalheDia"></div>
+
+    <button class="btn btn-primario" id="btnNovoEvento">+ Novo evento</button>
+  </section>
+
+  <!-- ===================== VIEW: NOVO / EDITAR EVENTO ===================== -->
+  <section class="view" id="view-novo-evento">
+    <button class="btn-texto" id="btnVoltarAgenda">← Voltar pra agenda</button>
+
+    <div class="card">
+      <h2 id="tituloFormEvento">Novo evento</h2>
+
+      <label for="evTitulo">Título do evento</label>
+      <input type="text" id="evTitulo" placeholder="Ex: Ativação de rua, treinamento de equipe...">
+
+      <label for="evLoja">Loja</label>
+      <select id="evLoja"></select>
+
+      <label for="evDataInicio">Data</label>
+      <input type="date" id="evDataInicio">
+
+      <label for="evDataFim">Data final (se o evento durar mais de um dia)</label>
+      <input type="date" id="evDataFim">
+
+      <label for="evTipoAcao">Tipo de ação</label>
+      <input type="text" id="evTipoAcao" placeholder="Ex: parceria com influencer, ação esportiva...">
+
+      <label for="evPessoasEsperadas">Pessoas esperadas</label>
+      <input type="number" id="evPessoasEsperadas" min="0" placeholder="Ex: 150">
+
+      <label for="evMaterialNecessario">Material necessário (pra fábrica se programar)</label>
+      <textarea id="evMaterialNecessario" rows="2" placeholder="Ex: 200 copos de 300ml, 50 bowls, banner da marca..."></textarea>
+
+      <label for="evResponsavel">Responsável pelo evento</label>
+      <input type="text" id="evResponsavel" placeholder="Nome de quem está organizando">
+
+      <label for="evObservacoes">Observações (opcional)</label>
+      <textarea id="evObservacoes" rows="2"></textarea>
+
+      <button class="btn btn-primario" id="btnSalvarEvento">Salvar evento</button>
+      <button class="btn btn-secundario" id="btnExcluirEvento" style="display:none;">Excluir este evento</button>
+    </div>
+  </section>
+
+</main>
+
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="config.js"></script>
+<script src="app.js"></script>
+</body>
+</html>
