@@ -247,6 +247,65 @@ function allItemIds(){
   return ids;
 }
 
+/* ---------------- Checklist diário de operações (equipe) ---------------- */
+const DEFAULT_DAILY_GROUPS = [
+  {key:'abertura', label:'Abertura', items:[
+    'Ligar o PC',
+    'Ligar a impressora',
+    'Ligar a TV',
+    'Ligar celular e maquininhas',
+    'Freezer da praça: tirar os açaís e cremes',
+    'Freezer da praça: mudar para resfriador máximo',
+    'Abrir o caixa',
+    'Ativar 99Food e WhatsApp',
+    'Verificar itens pausados no iFood',
+    'Ligar o som ambiente',
+    'Limpar balcão e cardápios',
+    'Organizar e limpar freezer de bebidas',
+    'Fazer a limpeza da cozinha e frente da loja',
+    'Rebater o açaí da praça',
+    'Verificar textura dos cremes antes de voltar pro freezer',
+    'Verificar validade dos produtos',
+    'Conferir mercadorias recebidas',
+    'Acompanhar temperatura de açaís/cremes a cada 30 min',
+    'Deixar açaí batido pronto para o dia seguinte',
+    'Verificar estoque de uso diário',
+    'Lançar pedido de compra no aplicativo',
+  ]},
+  {key:'fechamento', label:'Fechamento', items:[
+    'Desligar letreiro e baixar o toldo às 22:30',
+    'Fechar o caixa',
+    'Enviar foto do fechamento do caixa',
+    'Desligar PC, impressora e TV',
+    'Desligar maquininhas e ar-condicionado',
+    'Verificar lacres dos potes de acompanhamentos',
+    'Verificar lacres dos produtos secos',
+    'Verificar lacre dos produtos da geladeira',
+    'Verificar lacres do freezer da praça',
+    'Deixar o freezer da praça na temperatura mínima de congelador',
+    'Fazer limpeza final da cozinha e retirar o lixo',
+    'Apagar as luzes',
+    'Fechar o toldo',
+  ]},
+];
+function allDailyItemIds(groups){
+  const g = groups || DEFAULT_DAILY_GROUPS;
+  const ids = [];
+  g.forEach(gr=>gr.items.forEach((_,i)=>ids.push(gr.key+'__'+i)));
+  return ids;
+}
+function getDailyGroups(){
+  if(STATE.unitRow && Array.isArray(STATE.unitRow.daily_tasks) && STATE.unitRow.daily_tasks.length){
+    return STATE.unitRow.daily_tasks;
+  }
+  return DEFAULT_DAILY_GROUPS;
+}
+function groupsForEntry(entry){
+  if(entry && Array.isArray(entry.groups_snapshot) && entry.groups_snapshot.length) return entry.groups_snapshot;
+  return DEFAULT_DAILY_GROUPS;
+}
+function parseTaskLines(text){ return text.split('\n').map(s=>s.trim()).filter(Boolean); }
+
 let STATE = {
   role: null, currentUnitSlug: null, unitRow: null, record: null,
   units: [], draftItems: {}, groupCollapse: {}, supervisorAuthed: false,
@@ -289,15 +348,25 @@ async function loadUnitRow(slug){
 }
 async function loadUnitData(slug){
   try{
-    const [checklist, tasks, financeRows] = await Promise.all([
+    const [checklist, tasks, financeRows, dailyChecks] = await Promise.all([
       sb('supervisao_checks?unit_slug=eq.'+encodeURIComponent(slug)+'&order=created_at.asc'),
       sb('supervisao_tasks?unit_slug=eq.'+encodeURIComponent(slug)+'&order=created_at.asc'),
       sb('supervisao_finance?unit_slug=eq.'+encodeURIComponent(slug)),
+      sb('supervisao_daily_checks?unit_slug=eq.'+encodeURIComponent(slug)+'&order=check_date.desc,opened_at.desc'),
     ]);
     const finance = {};
     (financeRows||[]).forEach(r=>{ finance[r.month] = {sistema:Number(r.sistema||0), ifood:Number(r.ifood||0), food99:Number(r.food99||0)}; });
-    return {checklist: checklist||[], tasks: tasks||[], finance};
-  }catch(e){ showToast('Erro ao carregar dados da unidade'); return {checklist:[], tasks:[], finance:{}}; }
+    return {checklist: checklist||[], tasks: tasks||[], finance, dailyChecks: dailyChecks||[]};
+  }catch(e){ showToast('Erro ao carregar dados da unidade'); return {checklist:[], tasks:[], finance:{}, dailyChecks:[]}; }
+}
+async function createDailyCheck(slug, groups){
+  const g = groups || DEFAULT_DAILY_GROUPS;
+  const items = {}; allDailyItemIds(g).forEach(id=>items[id]=false);
+  const rows = await sb('supervisao_daily_checks', {method:'POST', body: JSON.stringify([{unit_slug:slug, check_date: todayDateStr(), items, groups_snapshot: g}])});
+  return rows && rows[0] ? rows[0] : null;
+}
+async function patchDailyCheck(id, patch){
+  await sb('supervisao_daily_checks?id=eq.'+encodeURIComponent(id), {method:'PATCH', body: JSON.stringify(patch)});
 }
 async function addUnit(name){
   const slug = slugify(name);
@@ -908,6 +977,149 @@ function renderObservationsInto(wrap, checklistOverride){
     wrap.appendChild(item);
   });
 }
+/* ---------------- Checklist diário (equipe) ---------------- */
+function dailyProgress(entry){
+  const ids = allDailyItemIds(groupsForEntry(entry));
+  let done=0;
+  ids.forEach(id=>{ if(entry.items && entry.items[id]) done++; });
+  return {done, total: ids.length};
+}
+function renderDailyChecklistCard(container){
+  const dailyChecks = STATE.record.dailyChecks || [];
+  const today = todayDateStr();
+  const todayEntry = dailyChecks.find(d=>d.check_date===today);
+  const history = dailyChecks.filter(d=>d.check_date!==today);
+
+  const card = el(`
+    <div class="card">
+      <h2>Checklist Diário da Equipe</h2>
+      <p class="subtitle">Abertura e fechamento da loja — a equipe marca em tempo real, e fica arquivado pra você conferir depois.</p>
+      <div id="daily-today-wrap"></div>
+    </div>
+  `);
+  container.appendChild(card);
+  const wrap = card.querySelector('#daily-today-wrap');
+
+  if(!todayEntry){
+    wrap.appendChild(el(`
+      <div style="text-align:center;padding:18px 10px;">
+        <p style="color:var(--muted);font-size:13px;margin-bottom:12px;">O dia de hoje (${fmtDate(today)}) ainda não foi aberto.</p>
+        <button class="btn" id="open-day-btn">Abrir o dia</button>
+      </div>
+    `));
+    wrap.querySelector('#open-day-btn').onclick = async ()=>{
+      const btn = wrap.querySelector('#open-day-btn');
+      btn.disabled = true; btn.textContent = 'Abrindo…';
+      try{
+        await createDailyCheck(STATE.currentUnitSlug, getDailyGroups());
+        STATE.record = await loadUnitData(STATE.currentUnitSlug);
+        renderFranqueadoView();
+      }catch(e){ showToast('Falha ao abrir o dia'); btn.disabled=false; btn.textContent='Abrir o dia'; }
+    };
+  } else {
+    const prog = dailyProgress(todayEntry);
+    const isClosed = !!todayEntry.closed_at;
+    wrap.appendChild(el(`
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px;">
+        <span class="status-pill" style="background:${isClosed?'var(--green-bg)':'var(--amber-bg)'};color:${isClosed?'var(--green)':'var(--amber)'};">${isClosed ? 'Dia fechado' : 'Em andamento'}</span>
+        <span style="font-size:13px;color:var(--muted);">${prog.done}/${prog.total} concluídas${isClosed && todayEntry.closed_by ? ' · fechado por '+todayEntry.closed_by : ''}${isClosed && todayEntry.closed_at ? ' às '+new Date(todayEntry.closed_at).toLocaleTimeString('pt-BR',{hour:'2-digit',minute:'2-digit'}) : ''}</span>
+      </div>
+    `));
+
+    groupsForEntry(todayEntry).forEach(group=>{
+      const groupEl = el(`<div style="margin-bottom:14px;"><h4 style="margin:0 0 6px;font-size:13.5px;color:var(--purple-deep);">${group.label}</h4></div>`);
+      group.items.forEach((label, idx)=>{
+        const id = group.key+'__'+idx;
+        const checked = !!todayEntry.items[id];
+        const row = el(`
+          <div class="task-item">
+            <div class="task-check ${checked?'done':''}" ${isClosed?'':'style="cursor:pointer;"'}>${checked?'✓':''}</div>
+            <div class="task-text ${checked?'done':''}">${label}</div>
+          </div>
+        `);
+        if(!isClosed){
+          row.querySelector('.task-check').onclick = async ()=>{
+            const newItems = {...todayEntry.items, [id]: !checked};
+            try{
+              await patchDailyCheck(todayEntry.id, {items:newItems});
+              todayEntry.items = newItems;
+              renderFranqueadoView();
+            }catch(e){ showToast('Falha ao salvar'); }
+          };
+        }
+        groupEl.appendChild(row);
+      });
+      wrap.appendChild(groupEl);
+    });
+
+    if(!isClosed){
+      const closeRow = el(`
+        <div style="margin-top:6px;">
+          <div class="field" style="margin-bottom:10px;"><label>Quem está fechando o dia?</label><input type="text" id="closed-by-input" placeholder="Nome"></div>
+          <button class="btn" id="close-day-btn">Fechar o dia</button>
+        </div>
+      `);
+      wrap.appendChild(closeRow);
+      closeRow.querySelector('#close-day-btn').onclick = async ()=>{
+        const pending = prog.total - prog.done;
+        if(pending>0){
+          const ok = window.confirm('Ainda faltam '+pending+' tarefa(s) marcar. Fechar o dia mesmo assim?');
+          if(!ok) return;
+        }
+        const btn = closeRow.querySelector('#close-day-btn');
+        btn.disabled = true; btn.textContent = 'Fechando…';
+        try{
+          const closedBy = closeRow.querySelector('#closed-by-input').value.trim();
+          await patchDailyCheck(todayEntry.id, {closed_at: todayISO(), closed_by: closedBy});
+          showToast('Dia fechado e arquivado');
+          STATE.record = await loadUnitData(STATE.currentUnitSlug);
+          renderFranqueadoView();
+        }catch(e){ showToast('Falha ao fechar o dia'); btn.disabled=false; btn.textContent='Fechar o dia'; }
+      };
+    }
+  }
+
+  if(history.length){
+    const histCard = el(`<div class="card"><h2>Histórico de dias anteriores</h2><p class="subtitle">Clique num dia pra conferir exatamente o que foi marcado.</p><div id="daily-history-list"></div></div>`);
+    container.appendChild(histCard);
+    const histWrap = histCard.querySelector('#daily-history-list');
+    history.forEach(entry=>{
+      const prog = dailyProgress(entry);
+      const isClosed = !!entry.closed_at;
+      const row = el(`
+        <div class="unit-row" style="cursor:pointer;">
+          <div class="u-name">${fmtDate(entry.check_date)}</div>
+          <span class="badge" style="background:${isClosed?'var(--green-bg)':'var(--red-bg)'};color:${isClosed?'var(--green)':'var(--red)'};">${isClosed?'Fechado':'Não fechado'}</span>
+          <div style="font-size:12px;color:var(--muted);">${prog.done}/${prog.total} tarefas${entry.closed_by?' · '+entry.closed_by:''}</div>
+          <span class="switch-link" style="margin-left:auto;">ver detalhes ▾</span>
+        </div>
+      `);
+      const detail = el(`<div style="display:none;padding:6px 0 16px;border-bottom:1px solid var(--line);"></div>`);
+      groupsForEntry(entry).forEach(group=>{
+        const gEl = el(`<div style="margin-bottom:10px;"><h4 style="margin:0 0 6px;font-size:12.5px;color:var(--purple-deep);">${group.label}</h4></div>`);
+        group.items.forEach((label, idx)=>{
+          const id = group.key+'__'+idx;
+          const checked = !!entry.items[id];
+          gEl.appendChild(el(`
+            <div class="task-item">
+              <div class="task-check ${checked?'done':''}">${checked?'✓':''}</div>
+              <div class="task-text ${checked?'done':''}">${label}</div>
+            </div>
+          `));
+        });
+        detail.appendChild(gEl);
+      });
+      histWrap.appendChild(row);
+      histWrap.appendChild(detail);
+      row.onclick = ()=>{
+        const opening = detail.style.display==='none';
+        detail.style.display = opening ? 'block':'none';
+        row.querySelector('.switch-link').textContent = opening ? 'ocultar detalhes ▴' : 'ver detalhes ▾';
+      };
+    });
+  }
+}
+
 /* ================= FRANQUEADO VIEW ================= */
 function renderFranqueadoView(){
   const app = document.getElementById('app');
@@ -953,6 +1165,8 @@ function renderFranqueadoView(){
     if(parcial.length) attnWrap.appendChild(el(`<div class="attn-box warn"><b>Parcialmente conforme:</b><ul>${parcial.map(x=>'<li>'+x+'</li>').join('')}</ul></div>`));
     if(!nonConforme.length && !parcial.length) attnWrap.appendChild(el(`<div class="attn-ok">Todos os itens auditados estão dentro do padrão. 🎉</div>`));
   }
+
+  renderDailyChecklistCard(container);
 
   const trendCard = el(`<div class="card"><h2>Evolução da conformidade</h2><p class="subtitle">% em cada auditoria</p><canvas id="trend-chart" height="90"></canvas></div>`);
   container.appendChild(trendCard);
@@ -1156,6 +1370,57 @@ async function renderNetworkView(){
       showToast('Falha ao salvar faturamento.');
       btn.disabled = false; btn.textContent = 'Salvar faturamento';
     }
+  };
+
+  const customizeCard = el(`
+    <div class="card">
+      <h2>Personalizar checklist diário por unidade</h2>
+      <p class="subtitle">Cada unidade pode ter sua própria lista de abertura e fechamento. Alterações valem só daqui pra frente — dias já fechados mantêm o checklist de quando foram criados.</p>
+      <div class="field" style="margin-bottom:14px;"><label>Unidade</label><select id="cust-unit"></select></div>
+      <div class="form-grid two">
+        <div class="field"><label>Abertura (uma tarefa por linha)</label><textarea id="cust-abertura" style="min-height:220px;"></textarea></div>
+        <div class="field"><label>Fechamento (uma tarefa por linha)</label><textarea id="cust-fechamento" style="min-height:220px;"></textarea></div>
+      </div>
+      <button class="btn" id="cust-save" style="margin-top:6px;">Salvar checklist desta unidade</button>
+      <p class="hint" id="cust-hint"></p>
+    </div>
+  `);
+  container.appendChild(customizeCard);
+  const custUnitSelect = customizeCard.querySelector('#cust-unit');
+  custUnitSelect.innerHTML = STATE.units.map(u=>`<option value="${u.slug}">${u.name}</option>`).join('');
+
+  async function refillCustomizeFields(){
+    const slug = custUnitSelect.value;
+    const hint = customizeCard.querySelector('#cust-hint');
+    hint.textContent = 'Carregando…';
+    const row = await loadUnitRow(slug);
+    const groups = (Array.isArray(row.daily_tasks) && row.daily_tasks.length) ? row.daily_tasks : DEFAULT_DAILY_GROUPS;
+    const abertura = groups.find(g=>g.key==='abertura') || {items:[]};
+    const fechamento = groups.find(g=>g.key==='fechamento') || {items:[]};
+    customizeCard.querySelector('#cust-abertura').value = abertura.items.join('\n');
+    customizeCard.querySelector('#cust-fechamento').value = fechamento.items.join('\n');
+    hint.textContent = row.daily_tasks ? 'Essa unidade já tem um checklist personalizado.' : 'Mostrando o checklist padrão (ainda não personalizado pra essa unidade).';
+  }
+  refillCustomizeFields();
+  custUnitSelect.onchange = refillCustomizeFields;
+
+  customizeCard.querySelector('#cust-save').onclick = async ()=>{
+    const slug = custUnitSelect.value;
+    const groups = [
+      {key:'abertura', label:'Abertura', items: parseTaskLines(customizeCard.querySelector('#cust-abertura').value)},
+      {key:'fechamento', label:'Fechamento', items: parseTaskLines(customizeCard.querySelector('#cust-fechamento').value)},
+    ];
+    if(!groups[0].items.length && !groups[1].items.length){ showToast('Adicione ao menos uma tarefa'); return; }
+    const btn = customizeCard.querySelector('#cust-save');
+    btn.disabled = true; btn.textContent = 'Salvando…';
+    try{
+      await sb('supervisao_units?slug=eq.'+encodeURIComponent(slug), {method:'PATCH', body: JSON.stringify({daily_tasks: groups})});
+      showToast('Checklist da unidade atualizado');
+      customizeCard.querySelector('#cust-hint').textContent = 'Essa unidade já tem um checklist personalizado.';
+    }catch(e){
+      showToast('Falha ao salvar checklist');
+    }
+    btn.disabled = false; btn.textContent = 'Salvar checklist desta unidade';
   };
 
   const rankCard = el(`<div class="card"><h2>Ranking por conformidade (piores primeiro)</h2><p class="subtitle">Onde a franqueadora precisa colocar energia agora — clique numa unidade para ver as supervisões dela</p><div id="unit-rank-list"></div></div>`);
