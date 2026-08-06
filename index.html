@@ -765,14 +765,13 @@ async function saveDocument(key, value) {
 }
 
 async function deleteDocument(key) {
-  const docId = toDocId(key);
-  await _col.doc(docId).delete();
-  if (_dataCache) delete _dataCache[key];
-}
-
-async function deleteDocument(key) {
-  const docId = key.replace(/\//g, '_');
-  await _col.doc(docId).delete();
+  // Tenta deletar com ambos os formatos de ID possíveis
+  const docId1 = toDocId(key);
+  const docId2 = encodeURIComponent(key);
+  try { await _col.doc(docId1).delete(); } catch(e) {}
+  if (docId2 !== docId1) {
+    try { await _col.doc(docId2).delete(); } catch(e) {}
+  }
   if (_dataCache) delete _dataCache[key];
 }
 
@@ -3219,7 +3218,7 @@ async function excluirPedido(key, numeroPedido) {
 function renderConsolidado(pedidos) {
   const totals = {};
   let grandTotal = 0;
-  pedidos.forEach(p => {
+  pedidos.filter(p => !p.despachado).forEach(p => {
     Object.entries(p.itens).forEach(([id, info]) => {
       if (!totals[id]) totals[id] = { nome: info.nome, qtd: 0, valor: 0 };
       totals[id].qtd += info.qtd;
