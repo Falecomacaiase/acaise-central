@@ -1169,7 +1169,20 @@ function renderRomaneioBody(jaDespachou) {
 
   document.getElementById('romaneioBody').innerHTML = `
     ${!jaDespachou ? `<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#F57F17">
-      ✏️ <strong>Antes de despachar</strong> — você pode ajustar quantidades ou remover itens que não serão entregues. O total é recalculado automaticamente.
+      ✏️ <strong>Antes de despachar</strong> — ajuste quantidades, remova itens (✕) ou adicione novos itens abaixo.
+    </div>
+    <div style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:6px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:#2E7D32;margin-bottom:6px">➕ Adicionar item ao pedido</div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">
+        <select id="romaneioAddItem" style="flex:2;min-width:180px;padding:6px;border:1px solid #A5D6A7;border-radius:4px;font-size:13px">
+          <option value="">— Selecione o item —</option>
+          ${Object.entries(CATALOGO).filter(([cat])=>cat!=='Produção / Insumos').map(([cat,itens])=>
+            `<optgroup label="${cat}">${itens.map(it=>`<option value="${it.id}" data-nome="${it.nome}" data-preco="${itemState[it.id]?.venda||it.preco}">[${it.cod}] ${it.nome}</option>`).join('')}</optgroup>`
+          ).join('')}
+        </select>
+        <input type="number" id="romaneioAddQtd" min="1" value="1" placeholder="Qtd" style="width:64px;padding:6px;border:1px solid #A5D6A7;border-radius:4px;font-size:13px;text-align:center">
+        <button onclick="adicionarItemRomaneio()" style="background:#2E7D32;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:13px;cursor:pointer;font-weight:600">➕ Adicionar</button>
+      </div>
     </div>` : ''}
     <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid #5B2D8E;padding-bottom:16px">
       <div style="font-size:26px;font-weight:800;color:#5B2D8E;letter-spacing:1px">AÇAÍ-SE</div>
@@ -1198,6 +1211,34 @@ function renderRomaneioBody(jaDespachou) {
     </div>
     <div style="margin-top:8px;text-align:center;font-size:11px;color:#aaa">Açaí-Se Franquias • ${new Date().toLocaleString('pt-BR')}</div>
   `;
+}
+
+function adicionarItemRomaneio() {
+  const sel = document.getElementById('romaneioAddItem');
+  const qtdEl = document.getElementById('romaneioAddQtd');
+  const itemId = sel.value;
+  const qtd = parseInt(qtdEl.value) || 1;
+  if (!itemId) { alert('Selecione um item.'); return; }
+
+  const opt = sel.querySelector(`option[value="${itemId}"]`);
+  const nome = opt?.dataset.nome || '';
+  const preco = parseFloat(opt?.dataset.preco) || 0;
+
+  // Se item já existe no pedido, soma a quantidade
+  if (pedidoAtualRomaneio.itens[itemId]) {
+    pedidoAtualRomaneio.itens[itemId].qtd += qtd;
+    pedidoAtualRomaneio.itens[itemId].total = pedidoAtualRomaneio.itens[itemId].qtd * preco;
+  } else {
+    pedidoAtualRomaneio.itens[itemId] = {
+      nome, qtd, precoUnitario: preco, preco, total: qtd * preco
+    };
+  }
+
+  // Re-renderiza o romaneio mantendo o painel de adicionar
+  renderRomaneioBody(false);
+  // Limpa seleção
+  document.getElementById('romaneioAddItem').value = '';
+  document.getElementById('romaneioAddQtd').value = 1;
 }
 
 function atualizarItemRomaneio(itemId, novaQtd) {
@@ -3298,4 +3339,3 @@ function renderPorUnidade(pedidos) {
 
 </body>
 </html>
- 
