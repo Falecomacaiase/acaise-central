@@ -352,8 +352,12 @@
 
       <!-- Modal inline de edição de preço -->
       <div id="editPrecoBox" class="hidden" style="background:#F5F0FB;border:1px solid #C5B3E6;border-radius:8px;padding:16px;margin-top:16px">
-        <h4 style="margin:0 0 12px">Editar preços — <span id="editNomeItem"></span></h4>
+        <h4 style="margin:0 0 12px">✏️ Editar item — <span id="editNomeItem" style="color:#5B2D8E"></span></h4>
         <input type="hidden" id="editItemId">
+        <div class="field">
+          <label>Nome do item</label>
+          <input type="text" id="editNomeInput" placeholder="Nome do produto" style="font-size:14px">
+        </div>
         <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
           <div class="field">
             <label>Preço de custo (R$)</label>
@@ -365,7 +369,7 @@
           </div>
         </div>
         <div style="display:flex;gap:8px">
-          <button class="btn" onclick="salvarPrecos()">Salvar preços</button>
+          <button class="btn" onclick="salvarItem()">✅ Salvar alterações</button>
           <button class="btn btn-secondary" onclick="document.getElementById('editPrecoBox').classList.add('hidden')">Cancelar</button>
         </div>
         <div id="editPrecoMsg" class="small" style="margin-top:6px"></div>
@@ -1107,7 +1111,7 @@ async function excluirPedidoIdx(idx) {
 }
 
 function abrirRomaneio(pedido) {
-  pedidoAtualRomaneio = pedido;
+  pedidoAtualRomaneio = JSON.parse(JSON.stringify(pedido)); // deep copy para edição
   const jaDespachou = pedido.despachado === true;
   const btnDespachar = document.getElementById('btnDespachar');
   const statusMsg = document.getElementById('romaneioStatusMsg');
@@ -1117,7 +1121,7 @@ function abrirRomaneio(pedido) {
     btnDespachar.style.background = '#aaa';
     btnDespachar.textContent = '✅ Já despachado';
     statusMsg.style.color = '#2E7D32';
-    statusMsg.textContent = `Despachado em ${new Date(pedido.dataDespacho).toLocaleString('pt-BR')} — estoque já foi descontado.`;
+    statusMsg.textContent = `Despachado em ${new Date(pedido.dataDespacho).toLocaleString('pt-BR')}`;
   } else {
     btnDespachar.disabled = false;
     btnDespachar.style.background = '#2E7D32';
@@ -1125,29 +1129,56 @@ function abrirRomaneio(pedido) {
     statusMsg.textContent = '';
   }
 
-  const total = Object.values(pedido.itens).reduce((s,i)=>s+(i.total||0),0);
-  const dataFormatada = new Date(pedido.dataEnvio).toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+  renderRomaneioBody(jaDespachou);
+  document.getElementById('romaneioOverlay').style.display = 'flex';
+}
+
+function renderRomaneioBody(jaDespachou) {
+  const pedido = pedidoAtualRomaneio;
+  const dataFormatada = new Date(pedido.dataEnvio).toLocaleString('pt-BR');
   const tipoIcon = pedido.tipoEntrega === 'Retirada' ? '🏪' : '🚚';
 
   let linhas = '';
-  Object.values(pedido.itens).forEach((it,i) => {
+  Object.entries(pedido.itens).forEach(([id, it], i) => {
     const bg = i%2===0 ? '#fff' : '#F9F6FF';
-    linhas += `<tr style="background:${bg}">
-      <td style="padding:7px 10px;border-bottom:1px solid #eee">${it.nome}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:center">${it.qtd}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right">R$ ${(it.preco||0).toFixed(2).replace('.',',')}</td>
-      <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right"><strong>R$ ${(it.total||0).toFixed(2).replace('.',',')}</strong></td>
-    </tr>`;
+    if (jaDespachou) {
+      // Despachado — só visualização
+      linhas += `<tr style="background:${bg}">
+        <td style="padding:7px 10px;border-bottom:1px solid #eee">${it.nome}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:center">${it.qtd}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right">R$ ${(it.precoUnitario||it.preco||0).toFixed(2).replace('.',',')}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right"><strong>R$ ${(it.total||0).toFixed(2).replace('.',',')}</strong></td>
+      </tr>`;
+    } else {
+      // Não despachado — quantidade editável + botão remover
+      linhas += `<tr style="background:${bg}" id="romaneioRow_${id}">
+        <td style="padding:7px 10px;border-bottom:1px solid #eee">${it.nome}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:center">
+          <input type="number" min="0" value="${it.qtd}" style="width:56px;text-align:center;padding:3px;border:1px solid #C5B3E6;border-radius:4px;font-size:13px"
+            oninput="atualizarItemRomaneio('${id}', this.value)">
+        </td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right">R$ ${(it.precoUnitario||it.preco||0).toFixed(2).replace('.',',')}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right" id="romaneioTotal_${id}"><strong>R$ ${(it.total||0).toFixed(2).replace('.',',')}</strong></td>
+        <td style="padding:4px 6px;border-bottom:1px solid #eee">
+          <button onclick="removerItemRomaneio('${id}')" title="Remover item" style="background:none;border:none;cursor:pointer;color:#C62828;font-size:16px">✕</button>
+        </td>
+      </tr>`;
+    }
   });
 
+  const total = Object.values(pedido.itens).reduce((s,i)=>s+(i.total||0),0);
+
   document.getElementById('romaneioBody').innerHTML = `
+    ${!jaDespachou ? `<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#F57F17">
+      ✏️ <strong>Antes de despachar</strong> — você pode ajustar quantidades ou remover itens que não serão entregues. O total é recalculado automaticamente.
+    </div>` : ''}
     <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid #5B2D8E;padding-bottom:16px">
       <div style="font-size:26px;font-weight:800;color:#5B2D8E;letter-spacing:1px">AÇAÍ-SE</div>
       <div style="font-size:13px;color:#777;margin-top:4px">ROMANEIO DE PEDIDO${jaDespachou ? ' — DESPACHADO ✓' : ''}</div>
     </div>
     <table style="width:100%;font-size:13px;margin-bottom:16px">
       <tr><td style="padding:4px 0"><strong>Unidade:</strong></td><td>${pedido.unidade}</td><td><strong>Data:</strong></td><td>${dataFormatada}</td></tr>
-      <tr><td style="padding:4px 0"><strong>Tipo:</strong></td><td>${tipoIcon} ${pedido.tipoEntrega||'Entrega'}</td><td><strong>Semana:</strong></td><td>${pedido.semana}</td></tr>
+      <tr><td style="padding:4px 0"><strong>Tipo:</strong></td><td>${tipoIcon} ${pedido.tipoEntrega||'Entrega'}</td><td><strong>Semana:</strong></td><td>${pedido.semana||''}</td></tr>
     </table>
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:#5B2D8E;color:#fff">
@@ -1155,11 +1186,12 @@ function abrirRomaneio(pedido) {
         <th style="padding:8px 10px;text-align:center">Qtd</th>
         <th style="padding:8px 10px;text-align:right">Preço unit.</th>
         <th style="padding:8px 10px;text-align:right">Total</th>
+        ${!jaDespachou ? '<th style="padding:8px 10px"></th>' : ''}
       </tr></thead>
       <tbody>${linhas}</tbody>
     </table>
     <div style="display:flex;justify-content:flex-end;margin-top:12px;padding:12px 10px;background:#F5F0FB;border-radius:6px">
-      <span style="font-size:15px;font-weight:700;color:#5B2D8E">TOTAL: R$ ${total.toFixed(2).replace('.',',')}</span>
+      <span style="font-size:15px;font-weight:700;color:#5B2D8E" id="romaneioGrandTotal">TOTAL: R$ ${total.toFixed(2).replace('.',',')}</span>
     </div>
     <div style="margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:40px">
       <div><div style="border-top:1.5px solid #333;padding-top:6px;text-align:center;font-size:12px;color:#555">Responsável pela separação</div></div>
@@ -1167,7 +1199,32 @@ function abrirRomaneio(pedido) {
     </div>
     <div style="margin-top:8px;text-align:center;font-size:11px;color:#aaa">Açaí-Se Franquias • ${new Date().toLocaleString('pt-BR')}</div>
   `;
-  document.getElementById('romaneioOverlay').style.display = 'flex';
+}
+
+function atualizarItemRomaneio(itemId, novaQtd) {
+  const qtd = Math.max(0, parseInt(novaQtd) || 0);
+  if (!pedidoAtualRomaneio.itens[itemId]) return;
+  const preco = pedidoAtualRomaneio.itens[itemId].precoUnitario || pedidoAtualRomaneio.itens[itemId].preco || 0;
+  pedidoAtualRomaneio.itens[itemId].qtd = qtd;
+  pedidoAtualRomaneio.itens[itemId].total = qtd * preco;
+  // Atualiza total da linha
+  const totalEl = document.getElementById(`romaneioTotal_${itemId}`);
+  if (totalEl) totalEl.innerHTML = `<strong>R$ ${(qtd * preco).toFixed(2).replace('.',',')}</strong>`;
+  atualizarTotalRomaneio();
+}
+
+function removerItemRomaneio(itemId) {
+  if (!pedidoAtualRomaneio.itens[itemId]) return;
+  delete pedidoAtualRomaneio.itens[itemId];
+  const row = document.getElementById(`romaneioRow_${itemId}`);
+  if (row) row.remove();
+  atualizarTotalRomaneio();
+}
+
+function atualizarTotalRomaneio() {
+  const total = Object.values(pedidoAtualRomaneio.itens).reduce((s,i)=>s+(i.total||0),0);
+  const el = document.getElementById('romaneioGrandTotal');
+  if (el) el.textContent = `TOTAL: R$ ${total.toFixed(2).replace('.',',')}`;
 }
 
 async function confirmarDespacho() {
@@ -1745,6 +1802,7 @@ async function toggleDisponivel(itemId, valor) {
 function abrirEditPreco(itemId, nome, custo, venda) {
   document.getElementById('editItemId').value = itemId;
   document.getElementById('editNomeItem').textContent = nome;
+  document.getElementById('editNomeInput').value = nome;
   document.getElementById('editCusto').value = custo;
   document.getElementById('editVenda').value = venda;
   document.getElementById('editPrecoMsg').textContent = '';
@@ -1752,25 +1810,38 @@ function abrirEditPreco(itemId, nome, custo, venda) {
   document.getElementById('editPrecoBox').scrollIntoView({ behavior: 'smooth' });
 }
 
-async function salvarPrecos() {
+async function salvarItem() {
   const itemId = document.getElementById('editItemId').value;
+  const novoNome = document.getElementById('editNomeInput').value.trim();
   const custo = parseFloat(document.getElementById('editCusto').value);
   const venda = parseFloat(document.getElementById('editVenda').value);
-  if (!itemId || isNaN(venda) || venda <= 0) {
-    document.getElementById('editPrecoMsg').textContent = 'Informe valores válidos.';
-    return;
+  const msg = document.getElementById('editPrecoMsg');
+
+  if (!itemId || !novoNome) { msg.style.color='#C62828'; msg.textContent = 'Informe o nome do item.'; return; }
+  if (isNaN(venda) || venda <= 0) { msg.style.color='#C62828'; msg.textContent = 'Informe um preço de venda válido.'; return; }
+
+  // Atualiza no catálogo em memória
+  const item = Object.values(CATALOGO).flat().find(i => i.id === itemId);
+  if (item) {
+    item.nome = novoNome;
+    item.preco = venda;
   }
+
+  // Atualiza itemState
   if (!itemState[itemId]) itemState[itemId] = { disponivel: true };
   itemState[itemId].custo = isNaN(custo) ? null : custo;
   itemState[itemId].venda = venda;
-  // Atualiza o preço no CATALOGO em memória para afetar pedidos em tempo real
-  const item = Object.values(CATALOGO).flat().find(i => i.id === itemId);
-  if (item) item.preco = venda;
+  itemState[itemId].nomeCustom = novoNome;
+
   await saveItemState();
-  document.getElementById('editPrecoMsg').style.color = '#2E7D32';
-  document.getElementById('editPrecoMsg').textContent = '✅ Preços atualizados!';
+  msg.style.color = '#2E7D32';
+  msg.textContent = '✅ Alterações salvas!';
+  document.getElementById('editNomeItem').textContent = novoNome;
   renderGestaoItens();
 }
+
+// Mantém salvarPrecos como alias para compatibilidade
+async function salvarPrecos() { await salvarItem(); }
 
 // ─── CATÁLOGO — filtros para a visão da loja ──────────────────────────────────
 function popularItensSaida() {
