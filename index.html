@@ -699,7 +699,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.07-1";
+const APP_VERSION = "2026.08.07-2";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -1119,6 +1119,7 @@ let pedidoAtualRomaneio = null;
 
 // Cache global de pedidos para evitar problemas com caracteres especiais no onclick
 let _pedidosCache = [];
+let _logCache = [];
 
 function abrirRomaneioIdx(idx) {
   const pedido = _pedidosCache[idx];
@@ -2813,7 +2814,10 @@ async function renderLog() {
               descricao: `+${e.qtd} × ${e.nome}${e.fornecedor?' — '+e.fornecedor:''}${e.obs?' ('+e.obs+')':''}`,
               usuario: e.usuario || '—',
               unidade: 'Central',
-              data: e.data
+              data: e.data,
+              _key: k,
+              _itemId: e.itemId,
+              _qtd: e.qtd
             });
           }
         } catch(e) {}
@@ -2837,7 +2841,10 @@ async function renderLog() {
                 : `Despacho de ${Object.keys(s.itens||{}).length} itens`,
               usuario: s.usuario || '—',
               unidade: s.unidade || '',
-              data: s.data
+              data: s.data,
+              _key: isSaidaAvulsa ? k : undefined,
+              _itemId: isSaidaAvulsa ? s.itemId : undefined,
+              _qtd: isSaidaAvulsa ? s.qtd : undefined
             });
           }
         } catch(e) {}
@@ -2864,23 +2871,63 @@ async function renderLog() {
     'Inventário':   { icon:'📝', color:'#6A1B9A', bg:'#F3E5F5' },
   };
 
+  _logCache = [];
   let html = '';
   logs.slice(0,100).forEach(l => {
     const cfg = tipoConfig[l.tipo] || { icon:'•', color:'#555', bg:'#F5F5F5' };
     const dataStr = l.data ? new Date(l.data).toLocaleString('pt-BR') : '—';
+    let btnExcluir = '';
+    if (l._key && l._itemId) {
+      const idx = _logCache.length;
+      _logCache.push(l);
+      btnExcluir = `<button class="btn btn-secondary btn-xs" style="background:#FFEBEE;color:#C62828;margin-left:8px" onclick="excluirLogItemIdx(${idx})" title="Cancelar esta operação e devolver o saldo">🗑️ Excluir</button>`;
+    }
     html += `<div style="display:flex;gap:12px;padding:10px 12px;border-bottom:1px solid #eee;align-items:flex-start">
       <div style="background:${cfg.bg};color:${cfg.color};padding:4px 8px;border-radius:6px;font-size:11px;font-weight:700;white-space:nowrap;min-width:90px;text-align:center">${cfg.icon} ${l.tipo}</div>
-      <div style="flex:1">
-        <div style="font-size:13px">${l.descricao}</div>
-        <div style="font-size:11px;color:#888;margin-top:2px">
-          ${l.unidade ? `<strong>${l.unidade}</strong> • ` : ''}por <strong>${l.usuario}</strong> • ${dataStr}
+      <div style="flex:1;display:flex;justify-content:space-between;align-items:flex-start;gap:8px;flex-wrap:wrap">
+        <div>
+          <div style="font-size:13px">${l.descricao}</div>
+          <div style="font-size:11px;color:#888;margin-top:2px">
+            ${l.unidade ? `<strong>${l.unidade}</strong> • ` : ''}por <strong>${l.usuario}</strong> • ${dataStr}
+          </div>
         </div>
+        ${btnExcluir}
       </div>
     </div>`;
   });
   wrap.innerHTML = `<div style="border:1px solid #eee;border-radius:8px;overflow:hidden">${html}</div>
     <p class="small" style="margin-top:8px">Mostrando ${Math.min(logs.length,100)} de ${logs.length} registro(s).</p>`;
 }
+
+// Cancela uma Entrada ou Saída Avulsa registrada por engano: remove o lançamento
+// e devolve/retira a quantidade do saldo do estoque central, de forma reversa
+// à operação original.
+async function excluirLogItemIdx(idx) {
+  const l = _logCache[idx];
+  if (!l || !l._key || !l._itemId) { alert('Não foi possível identificar este lançamento.'); return; }
+
+  const confirmMsg = l.tipo === 'Entrada'
+    ? `Confirma excluir esta entrada?\n\n${l.descricao}\n\nIsso vai SUBTRAIR ${l._qtd} do saldo atual do item (revertendo o lançamento).`
+    : `Confirma excluir esta saída avulsa?\n\n${l.descricao}\n\nIsso vai DEVOLVER ${l._qtd} ao saldo atual do item (revertendo o lançamento).`;
+  if (!confirm(confirmMsg)) return;
+
+  try {
+    await loadSaldoInicial();
+    if (l.tipo === 'Entrada') {
+      saldoAtual[l._itemId] = Math.max(0, (saldoAtual[l._itemId] || 0) - l._qtd);
+    } else {
+      saldoAtual[l._itemId] = (saldoAtual[l._itemId] || 0) + l._qtd;
+    }
+    await saveDocument('saldoInicial', saldoAtual);
+    await safeDelete(l._key);
+    await registrarLog(l.tipo, `❌ Excluído: ${l.descricao}`, currentUser);
+    renderLog();
+    if (typeof loadEstoqueEHistorico === 'function') loadEstoqueEHistorico();
+  } catch(e) {
+    alert('Erro ao excluir: ' + e.message);
+  }
+}
+
 async function iniciarBoletos() {
   await loadBoletos();
 
