@@ -12,6 +12,8 @@
 <style>
   * { box-sizing: border-box; }
   body { font-family: Arial, Helvetica, sans-serif; margin: 0; background: #F5F2FA; color: #2C2C2A; }
+  body.tem-aviso-atualizacao { padding-top: 48px; }
+  body.tem-aviso-atualizacao .topbar { position: relative; }
   .topbar { background: #5B2D8E; color: #fff; padding: 16px 20px; display: flex; justify-content: space-between; align-items: center; }
   .topbar h1 { font-size: 18px; margin: 0; font-weight: 600; }
   .topbar .sub { font-size: 12px; opacity: .85; margin-top: 2px; }
@@ -694,6 +696,11 @@
 </div>
 
 <script>
+// Versao do app - incremente este numero a cada alteracao publicada no arquivo.
+// O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
+// em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
+const APP_VERSION = "2026.08.07-1";
+
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
 // Senha simples por unidade (trocar depois por sistema real)
@@ -839,19 +846,33 @@ function populateUnitSelect() {
 populateUnitSelect();
 
 // ─── VERIFICADOR DE VERSÃO ────────────────────────────────────────────────────
+// Compara a constante APP_VERSION deste arquivo com a do arquivo publicado no servidor.
+// (Antes comparava o HTML já renderizado na tela, que muda o tempo todo com os dados
+// dos pedidos — por isso o aviso ficava aparecendo quase sempre, mesmo sem versão nova.)
+function fecharAvisoAtualizacao() {
+  const aviso = document.getElementById('avisoAtualizacao');
+  if (aviso) aviso.remove();
+  document.body.classList.remove('tem-aviso-atualizacao');
+}
+
 async function verificarAtualizacao() {
   try {
     const url = window.location.href.split('?')[0];
     const res = await fetch(url + '?_=' + Date.now(), { cache: 'no-store' });
     const texto = await res.text();
-    if (Math.abs(texto.length - document.documentElement.outerHTML.length) > 500) {
+    const match = texto.match(/const\s+APP_VERSION\s*=\s*["']([^"']+)["']/);
+    const versaoServidor = match ? match[1] : null;
+
+    if (versaoServidor && versaoServidor !== APP_VERSION) {
+      if (document.getElementById('avisoAtualizacao')) return;
       const aviso = document.createElement('div');
+      aviso.id = 'avisoAtualizacao';
       aviso.style.cssText = 'position:fixed;top:0;left:0;right:0;z-index:9999;background:#2E7D32;color:#fff;padding:12px 16px;text-align:center;font-family:Arial;font-size:14px;font-weight:600;display:flex;justify-content:center;align-items:center;gap:12px;box-shadow:0 2px 8px rgba(0,0,0,.3)';
-      aviso.innerHTML = `🔄 Nova versão disponível! <button onclick="window.location.href=window.location.href.split('?')[0]+'?v='+Date.now()" style="background:#fff;color:#2E7D32;border:none;padding:6px 14px;border-radius:4px;font-weight:700;cursor:pointer;font-size:13px">Atualizar agora</button>`;
-      if (!document.getElementById('avisoAtualizacao')) {
-        aviso.id = 'avisoAtualizacao';
-        document.body.prepend(aviso);
-      }
+      aviso.innerHTML = `🔄 Nova versão disponível!
+        <button onclick="window.location.href=window.location.href.split('?')[0]+'?v='+Date.now()" style="background:#fff;color:#2E7D32;border:none;padding:6px 14px;border-radius:4px;font-weight:700;cursor:pointer;font-size:13px">Atualizar agora</button>
+        <button onclick="fecharAvisoAtualizacao()" title="Fechar" style="background:transparent;color:#fff;border:none;padding:4px 8px;font-weight:700;cursor:pointer;font-size:16px;line-height:1">✕</button>`;
+      document.body.prepend(aviso);
+      document.body.classList.add('tem-aviso-atualizacao');
     }
   } catch(e) {}
 }
@@ -3334,16 +3355,23 @@ function renderPorUnidade(pedidos) {
 
   // Guarda pedidos no cache global para evitar problemas com caracteres especiais
   _pedidosCache = [];
-  pedidos.sort((a,b) => (b.urgencia?1:0)-(a.urgencia?1:0) || a.unidade.localeCompare(b.unidade));
 
-  let html = "";
-  pedidos.forEach((p, idx) => {
-    _pedidosCache[idx] = p; // salva no cache com índice
+  // Separa pendentes (precisam de ação) de despachados, em vez de misturar tudo em
+  // ordem alfabética por unidade — assim um pedido novo de hoje não fica "escondido"
+  // ao lado de um pedido já despachado da mesma loja em outro dia.
+  const pendentes = pedidos.filter(p => !p.despachado)
+    .sort((a,b) => (b.urgencia?1:0)-(a.urgencia?1:0) || new Date(b.dataEnvio) - new Date(a.dataEnvio));
+  const despachados = pedidos.filter(p => p.despachado)
+    .sort((a,b) => new Date(b.dataEnvio) - new Date(a.dataEnvio));
+
+  function cardHtml(p) {
+    const idx = _pedidosCache.length;
+    _pedidosCache.push(p); // salva no cache com índice
     const totalUnidade = Object.values(p.itens).reduce((s,it) => s + (it.total||0), 0);
     const borderColor = p.urgencia ? '#C62828' : p.despachado ? '#aaa' : '#5B2D8E';
     const numPedido = p.numeroPedido || '—';
     const storageKey = (p._storageKey || p._key || '').replace(/'/g,"\\'");
-    html += `<div class="card" style="margin-top:10px;border-left:4px solid ${borderColor}">
+    let html = `<div class="card" style="margin-top:10px;border-left:4px solid ${borderColor}">
       <div class="flex-between" style="flex-wrap:wrap;gap:6px">
         <div>
           <strong>${p.unidade}</strong>
@@ -3369,8 +3397,32 @@ function renderPorUnidade(pedidos) {
         <span>Total</span><span>R$ ${totalUnidade.toFixed(2).replace('.',',')}</span>
       </div>
     </div>`;
-  });
-  wrap.innerHTML = html; 
+    return html;
+  }
+
+  let html = `<div class="flex-between" style="margin:16px 0 8px">
+    <h4 style="margin:0;color:#5B2D8E">⏳ Pendentes — aguardando despacho</h4>
+    <span class="badge" style="background:#5B2D8E;color:#fff">${pendentes.length}</span>
+  </div>`;
+  if (pendentes.length === 0) {
+    html += `<p class="small">Nenhum pedido pendente no momento. 🎉</p>`;
+  } else {
+    pendentes.forEach(p => { html += cardHtml(p); });
+  }
+
+  html += `<details style="margin-top:24px" ${despachados.length > 0 ? '' : 'open'}>
+    <summary style="cursor:pointer;font-weight:600;color:#777;padding:10px 0;display:flex;align-items:center;gap:8px">
+      <span>✅ Despachados</span><span class="badge" style="background:#eee;color:#888">${despachados.length}</span>
+    </summary>
+    <div style="margin-top:4px">`;
+  if (despachados.length === 0) {
+    html += `<p class="small">Nenhum pedido despachado ainda.</p>`;
+  } else {
+    despachados.forEach(p => { html += cardHtml(p); });
+  }
+  html += `</div></details>`;
+
+  wrap.innerHTML = html;
 }
 </script>
 
