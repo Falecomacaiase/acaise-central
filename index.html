@@ -683,6 +683,7 @@
     <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:16px;flex-wrap:wrap" class="no-print">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" id="btnDespachar" onclick="confirmarDespacho()" style="background:#2E7D32">✅ Confirmar despacho e imprimir</button>
+        <button class="btn" id="btnSalvarRomaneio" onclick="salvarEdicaoRomaneio()" style="background:#1565C0">💾 Salvar alterações</button>
         <button class="btn btn-secondary" onclick="window.print()">🖨️ Só imprimir</button>
       </div>
       <button class="btn btn-secondary" onclick="fecharRomaneio()">✕ Fechar</button>
@@ -1121,11 +1122,13 @@ function abrirRomaneio(pedido) {
     btnDespachar.textContent = '✅ Já despachado';
     statusMsg.style.color = '#2E7D32';
     statusMsg.textContent = `Despachado em ${new Date(pedido.dataDespacho).toLocaleString('pt-BR')}`;
+    document.getElementById('btnSalvarRomaneio').style.display = 'none';
   } else {
     btnDespachar.disabled = false;
     btnDespachar.style.background = '#2E7D32';
     btnDespachar.textContent = '✅ Confirmar despacho e imprimir';
     statusMsg.textContent = '';
+    document.getElementById('btnSalvarRomaneio').style.display = 'inline-block';
   }
 
   renderRomaneioBody(jaDespachou);
@@ -1335,6 +1338,40 @@ async function confirmarDespacho() {
     statusMsg.style.color = '#C62828';
     statusMsg.textContent = 'Erro: ' + e.message;
     console.error('Erro despacho:', e);
+  }
+}
+
+async function salvarEdicaoRomaneio() {
+  const btn = document.getElementById('btnSalvarRomaneio');
+  const statusMsg = document.getElementById('romaneioStatusMsg');
+  if (!pedidoAtualRomaneio || !pedidoAtualRomaneio._storageKey) {
+    statusMsg.style.color = '#C62828';
+    statusMsg.textContent = 'Chave do pedido não encontrada.';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = '💾 Salvando...';
+  statusMsg.textContent = '';
+  try {
+    // Recalcula total geral do pedido
+    pedidoAtualRomaneio.total = Object.values(pedidoAtualRomaneio.itens).reduce((s,i)=>s+(i.total||0),0);
+    await saveDocument(pedidoAtualRomaneio._storageKey, pedidoAtualRomaneio);
+    if (_dataCache) _dataCache[pedidoAtualRomaneio._storageKey] = pedidoAtualRomaneio;
+    btn.disabled = false;
+    btn.textContent = '✅ Salvo!';
+    btn.style.background = '#2E7D32';
+    statusMsg.style.color = '#2E7D32';
+    statusMsg.textContent = 'Alterações salvas com sucesso!';
+    setTimeout(() => {
+      btn.textContent = '💾 Salvar alterações';
+      btn.style.background = '#1565C0';
+      statusMsg.textContent = '';
+    }, 3000);
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '💾 Salvar alterações';
+    statusMsg.style.color = '#C62828';
+    statusMsg.textContent = 'Erro ao salvar: ' + e.message;
   }
 }
 
@@ -3329,7 +3366,7 @@ function renderPorUnidade(pedidos) {
     html += `</tbody></table>
       ${p.observacao ? `<div style="margin-top:8px;padding:8px 10px;background:#FFF8E1;border-left:3px solid #F57F17;border-radius:4px;font-size:12px"><strong>💬 Observação:</strong> ${p.observacao}</div>` : ''}
       <div class="flex-between" style="margin-top:8px;font-weight:600;border-top:1px solid #eee;padding-top:8px">
-        <span>Total</span><span>R$ ${totalUnidade.toFixed(2).replace('.',',')}</span> 
+        <span>Total</span><span>R$ ${totalUnidade.toFixed(2).replace('.',',')}</span>
       </div>
     </div>`;
   });
