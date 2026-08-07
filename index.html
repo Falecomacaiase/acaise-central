@@ -312,9 +312,15 @@
         <div id="saidaMsg" class="small" style="margin-top:6px"></div>
       </div>
 
-      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px">
+      <div style="display:flex;justify-content:space-between;align-items:center;margin-top:24px;flex-wrap:wrap;gap:8px">
         <h3 style="margin:0">Estoque atual da central</h3>
-        <button class="btn btn-secondary" onclick="imprimirEstoque()" style="font-size:13px">🖨️ Imprimir estoque</button>
+        <div style="display:flex;gap:14px;align-items:center;flex-wrap:wrap">
+          <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;color:#555;margin:0">
+            <input type="checkbox" id="estoqueOcultarInativos" checked onchange="renderEstoqueAtual()" style="width:auto">
+            Ocultar itens pausados/inativos
+          </label>
+          <button class="btn btn-secondary" onclick="imprimirEstoque()" style="font-size:13px">🖨️ Imprimir estoque</button>
+        </div>
       </div>
       <div id="estoqueAtualTable"></div>
 
@@ -699,7 +705,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.07-2";
+const APP_VERSION = "2026.08.07-3";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -1715,6 +1721,7 @@ function toggleHistorico() {
 
 async function iniciarEntradas() {
   await loadSaldoInicial();
+  await loadItemState();
   await loadFornecedores();
   popularSelectFornecedor();
 
@@ -2109,6 +2116,67 @@ function imprimirEstoque() {
   setTimeout(() => win.print(), 500);
 }
 
+// Monta a tabela "Estoque atual da central": filtra itens pausados/inativos
+// (mesma flag usada em Gestão de Itens) e soma o valor total em mercadoria
+// (saldo × preço de custo) ao final da tabela.
+function renderEstoqueAtual() {
+  const wrap = document.getElementById('estoqueAtualTable');
+  if (!wrap) return;
+  const ocultarInativos = document.getElementById('estoqueOcultarInativos')?.checked ?? true;
+  const VERMELHO_CRITICO = 5;
+  let valorTotalEstoque = 0;
+  let itensOcultos = 0;
+
+  let tableHtml = `<table id="tabelaEstoqueImprimivel"><thead><tr>
+    <th style="width:60px;text-align:center">CÓD</th>
+    <th>Item</th>
+    <th style="text-align:right;width:90px">Saldo</th>
+    <th style="text-align:right;width:110px">Valor (R$)</th>
+    <th style="text-align:center;width:100px">Status</th>
+  </tr></thead><tbody>`;
+
+  Object.entries(CATALOGO).forEach(([cat, items]) => {
+    const itemsVisiveis = items.filter(item => !ocultarInativos || itemState[item.id]?.disponivel !== false);
+    itensOcultos += items.length - itemsVisiveis.length;
+    if (itemsVisiveis.length === 0) return;
+
+    tableHtml += `<tr><td colspan="5" style="background:#5B2D8E;color:#fff;font-weight:700;padding:5px 10px;font-size:12px">${cat}</td></tr>`;
+    itemsVisiveis.forEach(item => {
+      const atual = saldoAtual[item.id] !== undefined ? saldoAtual[item.id] : item.estoqueCentral;
+      item._estoqueAtual = atual;
+      const pausado = itemState[item.id]?.disponivel === false;
+      const precoUnit = itemState[item.id]?.custo || item.preco || 0;
+      const valorItem = atual * precoUnit;
+      valorTotalEstoque += valorItem;
+
+      const status = pausado ? `<span class="badge" style="background:#eee;color:#888">⏸️ Pausado</span>`
+                   : atual <= 0 ? `<span class="badge badge-red">Zerado</span>`
+                   : atual <= VERMELHO_CRITICO ? `<span class="badge badge-yellow">Crítico</span>`
+                   : `<span class="badge badge-green">OK</span>`;
+      const rowBg = pausado ? 'background:#F5F5F5' : atual <= 0 ? 'background:#FFF5F5' : atual <= VERMELHO_CRITICO ? 'background:#FFFDE7' : '';
+      tableHtml += `<tr style="${rowBg}${pausado ? ';opacity:.65' : ''}">
+        <td style="text-align:center;color:#888;font-size:12px">${item.cod||'—'}</td>
+        <td>${item.nome}</td>
+        <td style="text-align:right"><strong>${atual}</strong></td>
+        <td style="text-align:right">R$ ${valorItem.toFixed(2).replace('.',',')}</td>
+        <td style="text-align:center">${status}</td>
+      </tr>`;
+    });
+  });
+
+  tableHtml += `</tbody><tfoot><tr style="background:#EDE7F6">
+    <td colspan="3" style="text-align:right;font-weight:700;padding:10px 10px">Valor total em estoque:</td>
+    <td style="text-align:right;font-weight:700;padding:10px;color:#5B2D8E">R$ ${valorTotalEstoque.toFixed(2).replace('.',',')}</td>
+    <td></td>
+  </tr></tfoot></table>`;
+
+  if (ocultarInativos && itensOcultos > 0) {
+    tableHtml += `<p class="small" style="margin-top:6px">${itensOcultos} item(ns) pausado(s)/inativo(s) oculto(s) do estoque e do valor total. <a href="#" onclick="document.getElementById('estoqueOcultarInativos').checked=false; renderEstoqueAtual(); return false;">Mostrar todos</a></p>`;
+  }
+
+  wrap.innerHTML = tableHtml;
+}
+
 async function loadEstoqueEHistorico() {
   await loadSaldoInicial();
 
@@ -2135,36 +2203,11 @@ async function loadEstoqueEHistorico() {
   } catch(e) {}
 
   const allItems = Object.values(CATALOGO).flat();
-
-  // Current stock = saldoAtual (already accounts for dispatches since we write it there)
-  const VERMELHO_CRITICO = 5;
-  let tableHtml = `<table id="tabelaEstoqueImprimivel"><thead><tr>
-    <th style="width:60px;text-align:center">CÓD</th>
-    <th>Item</th>
-    <th style="text-align:right;width:90px">Saldo</th>
-    <th style="text-align:center;width:90px">Status</th>
-  </tr></thead><tbody>`;
-
-  // Group by category
-  Object.entries(CATALOGO).forEach(([cat, items]) => {
-    tableHtml += `<tr><td colspan="4" style="background:#5B2D8E;color:#fff;font-weight:700;padding:5px 10px;font-size:12px">${cat}</td></tr>`;
-    items.forEach(item => {
-      const atual = saldoAtual[item.id] !== undefined ? saldoAtual[item.id] : item.estoqueCentral;
-      item._estoqueAtual = atual;
-      const status = atual <= 0 ? `<span class="badge badge-red">Zerado</span>`
-                   : atual <= VERMELHO_CRITICO ? `<span class="badge badge-yellow">Crítico</span>`
-                   : `<span class="badge badge-green">OK</span>`;
-      const rowBg = atual <= 0 ? 'background:#FFF5F5' : atual <= VERMELHO_CRITICO ? 'background:#FFFDE7' : '';
-      tableHtml += `<tr style="${rowBg}">
-        <td style="text-align:center;color:#888;font-size:12px">${item.cod||'—'}</td>
-        <td>${item.nome}</td>
-        <td style="text-align:right"><strong>${atual}</strong></td>
-        <td style="text-align:center">${status}</td>
-      </tr>`;
-    });
+  allItems.forEach(item => {
+    item._estoqueAtual = saldoAtual[item.id] !== undefined ? saldoAtual[item.id] : item.estoqueCentral;
   });
-  tableHtml += `</tbody></table>`;
-  document.getElementById('estoqueAtualTable').innerHTML = tableHtml;
+
+  renderEstoqueAtual();
 
   // Unified history: entradas + saídas
   const movimentos = [
