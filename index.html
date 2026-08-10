@@ -963,6 +963,16 @@ function verRomaneioLoja(idx) {
       <td style="padding:6px 8px;text-align:right">R$ ${(it.precoUnitario||0).toFixed(2).replace('.',',')}</td>
       <td style="padding:6px 8px;text-align:right;font-weight:700">R$ ${(it.total||0).toFixed(2).replace('.',',')}</td></tr>`;
   });
+  function getPrazoLoja(unidade) {
+    const u = (unidade||'').toUpperCase();
+    if (u.includes('CABO') || u.includes('PORTO')) return 5;
+    if (u.includes('PIEDADE')) return 15;
+    return 10;
+  }
+  const prazoLoja = getPrazoLoja(p.unidade);
+  const dataBaseL = p.dataDespacho ? new Date(p.dataDespacho) : null;
+  const vencLojaStr = dataBaseL ? (() => { const d = new Date(dataBaseL); d.setDate(d.getDate()+prazoLoja); return d.toLocaleDateString('pt-BR'); })() : '—';
+
   document.getElementById('romaneioLojaBody').innerHTML = `
     <div style="text-align:center;margin-bottom:16px">
       <div style="font-size:24px;font-weight:900;color:#5B2D8E;letter-spacing:2px">AÇAÍ-SE</div>
@@ -974,6 +984,7 @@ function verRomaneioLoja(idx) {
           <td><strong>Status:</strong></td><td>${p.despachado?'✅ Despachado':'⏳ Aguardando despacho'}</td></tr>
       <tr><td><strong>Tipo:</strong></td><td>${p.tipoEntrega||'—'}</td>
           <td><strong>Responsável:</strong></td><td>${p.nomeResponsavel||'—'}</td></tr>
+      ${p.despachado ? `<tr><td><strong>Vencimento:</strong></td><td colspan="3"><strong style="color:#C62828">📅 ${vencLojaStr}</strong> <span style="font-size:11px;color:#888">(${prazoLoja} dias)</span></td></tr>` : ''}
     </table>
     <hr style="border:1px solid #eee;margin:12px 0">
     <table style="width:100%;font-size:13px;border-collapse:collapse">
@@ -1168,6 +1179,23 @@ function renderRomaneioBody(jaDespachou) {
   const dataFormatada = new Date(pedido.dataEnvio).toLocaleString('pt-BR');
   const tipoIcon = pedido.tipoEntrega === 'Retirada' ? '🏪' : '🚚';
 
+  // Prazo de pagamento por unidade
+  const prazos = { 'CABO': 5, 'PORTO': 5, 'CABO/PORTO': 5, 'PIEDADE': 15 };
+  function getPrazo(unidade) {
+    const u = (unidade||'').toUpperCase();
+    if (u.includes('CABO') || u.includes('PORTO')) return 5;
+    if (u.includes('PIEDADE')) return 15;
+    return 10;
+  }
+  const prazo = getPrazo(pedido.unidade);
+  const dataBase = pedido.dataDespacho ? new Date(pedido.dataDespacho) : new Date();
+  const dataVenc = new Date(dataBase);
+  dataVenc.setDate(dataVenc.getDate() + prazo);
+  const vencStr = dataVenc.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric'});
+  const vencimentoHtml = `<tr><td style="padding:4px 0"><strong>Vencimento:</strong></td>
+    <td colspan="3"><strong style="color:#C62828;font-size:14px">📅 ${vencStr}</strong>
+    <span style="font-size:11px;color:#888;margin-left:6px">(${prazo} dias)</span></td></tr>`;
+
   let linhas = '';
   Object.entries(pedido.itens).forEach(([id, it], i) => {
     const bg = i%2===0 ? '#fff' : '#F9F6FF';
@@ -1222,6 +1250,7 @@ function renderRomaneioBody(jaDespachou) {
     <table style="width:100%;font-size:13px;margin-bottom:16px">
       <tr><td style="padding:4px 0"><strong>Unidade:</strong></td><td>${pedido.unidade}</td><td><strong>Data:</strong></td><td>${dataFormatada}</td></tr>
       <tr><td style="padding:4px 0"><strong>Tipo:</strong></td><td>${tipoIcon} ${pedido.tipoEntrega||'Entrega'}</td><td><strong>Semana:</strong></td><td>${pedido.semana||''}</td></tr>
+      ${vencimentoHtml}
     </table>
     <table style="width:100%;border-collapse:collapse;font-size:13px">
       <thead><tr style="background:#5B2D8E;color:#fff">
