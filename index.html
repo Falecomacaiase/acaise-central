@@ -705,7 +705,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.07-3";
+const APP_VERSION = "2026.08.12-1";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -3408,7 +3408,12 @@ async function loadAdminData(silencioso = false) {
   }
 
   if (!_adminPollInterval) {
-    _adminPollInterval = setInterval(() => loadAdminData(true), 300000);
+    // A cada atualização automática, o app relê a coleção inteira do Firestore
+    // (isso conta como 1 leitura por documento salvo). Um intervalo curto,
+    // multiplicado por vários dispositivos com a tela aberta o dia todo, é o que
+    // estourou a cota gratuita diária. 20 min reduz bastante esse consumo sem
+    // deixar o painel desatualizado por muito tempo.
+    _adminPollInterval = setInterval(() => loadAdminData(true), 1200000);
   }
 }
 
