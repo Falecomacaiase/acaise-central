@@ -67,9 +67,14 @@
 <body>
 
 <div class="topbar">
-  <div>
-    <h1>Açaí-Se — Central de Pedidos</h1>
-    <div class="sub" id="topbarSub">Protótipo</div>
+  <div style="display:flex;align-items:center;gap:12px">
+    <div style="background:#fff;border-radius:8px;padding:5px 12px;display:flex;align-items:center;flex-shrink:0">
+      <img src="acaise-logo.png" alt="Açaí-Se" style="height:32px;display:block">
+    </div>
+    <div>
+      <h1>Açaí-Se — Central de Pedidos</h1>
+      <div class="sub" id="topbarSub">Sistema de Pedidos</div>
+    </div>
   </div>
   <div style="display:flex;align-items:center;gap:12px">
     <span id="saveIndicator" style="display:none;font-size:12px;font-weight:600"></span>
@@ -705,7 +710,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.12-2";
+const APP_VERSION = "2026.08.12-3";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
