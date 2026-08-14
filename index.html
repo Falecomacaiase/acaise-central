@@ -710,7 +710,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.12-3";
+const APP_VERSION = "2026.08.12-4";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -875,6 +875,17 @@ async function carregarUnidadesExtrasNoLogin() {
   } catch(e) { /* login com as unidades fixas continua funcionando normalmente */ }
 }
 carregarUnidadesExtrasNoLogin();
+
+// Mesmo problema, mas para produtos cadastrados dinamicamente (ver
+// mesclarExtraProdutosNoCatalogo): precisa rodar assim que a página abre,
+// antes de qualquer tela (pedido da loja, painel admin) usar o CATALOGO.
+async function carregarProdutosExtrasNoInicio() {
+  try {
+    await loadExtraProdutos();
+    mesclarExtraProdutosNoCatalogo();
+  } catch(e) { /* catálogo fixo continua funcionando normalmente */ }
+}
+carregarProdutosExtrasNoInicio();
 
 // ─── VERIFICADOR DE VERSÃO ────────────────────────────────────────────────────
 // Compara a constante APP_VERSION deste arquivo com a do arquivo publicado no servidor.
@@ -1063,6 +1074,35 @@ async function saveExtraUnidades() {
   await safeSet('extraUnidades', JSON.stringify(extraUnidades), true);
 }
 
+// Produtos cadastrados dinamicamente pela tela "Cadastrar novo produto". O
+// CATALOGO é uma constante fixa no arquivo — sem isso, um produto novo só
+// existia na memória da aba aberta e sumia assim que a página era recarregada
+// ou aberta em outro dispositivo (era exatamente isso que estava acontecendo).
+let extraProdutos = []; // [{id, cat, cod, nome, preco, fornecedor, estoqueMin}]
+
+async function loadExtraProdutos() {
+  try {
+    const r = await safeGet('extraProdutos', true);
+    if (r && r.value) extraProdutos = parseValue(r.value);
+  } catch(e) {}
+}
+
+async function saveExtraProdutos() {
+  await safeSet('extraProdutos', JSON.stringify(extraProdutos), true);
+}
+
+function mesclarExtraProdutosNoCatalogo() {
+  extraProdutos.forEach(p => {
+    if (!CATALOGO[p.cat]) CATALOGO[p.cat] = [];
+    if (!CATALOGO[p.cat].some(i => i.id === p.id)) {
+      CATALOGO[p.cat].push({
+        id: p.id, cod: p.cod || '—', nome: p.nome, preco: p.preco,
+        estoqueCentral: 0, fornecedor: p.fornecedor || '—', estoqueMin: p.estoqueMin || 0
+      });
+    }
+  });
+}
+
 function gerarSenha(nome) {
   return nome.toLowerCase().replace(/[\s\.\-\/áàãâäéèêëíìîïóòõôöúùûüç]/g, c => {
     const map = {á:'a',à:'a',ã:'a',â:'a',ä:'a',é:'e',è:'e',ê:'e',ë:'e',í:'i',ì:'i',î:'i',ï:'i',ó:'o',ò:'o',õ:'o',ô:'o',ö:'o',ú:'u',ù:'u',û:'u',ü:'u',ç:'c',' ':'','.':'','-':'','/':''};
@@ -1104,6 +1144,8 @@ async function cadastrarUnidade() {
 
 async function iniciarCadastros() {
   await loadExtraUnidades();
+  await loadExtraProdutos();
+  mesclarExtraProdutosNoCatalogo();
   // Populate novoProdCat select
   const sel = document.getElementById('novoProdCat');
   if (sel.options.length <= 1) {
@@ -1148,6 +1190,11 @@ async function cadastrarNovoProduto() {
   CATALOGO[cat].push(novoItem);
   itemState[id] = { disponivel: visivel, custo: custo||null, venda };
   await saveItemState();
+
+  // Persiste o produto de verdade no banco — sem isso ele só existia na
+  // memória desta aba e sumia ao recarregar a página ou em outro dispositivo.
+  extraProdutos.push({ id, cat, nome, preco: venda });
+  await saveExtraProdutos();
 
   msgEl.style.color = '#2E7D32';
   msgEl.textContent = `✅ Produto "${nome}" cadastrado em ${cat}!`;
