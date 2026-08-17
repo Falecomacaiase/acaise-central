@@ -131,7 +131,11 @@
 
     <!-- ABA: FAZER PEDIDO -->
     <div id="lojaTabFazerPedido">
-    <div style="background:#EDE7F6;border-left:4px solid #5B2D8E;padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0;">
+    <div id="_editandoAvisoBox" class="hidden" style="background:#FFF3E0;border-left:4px solid #E65100;padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0;">
+      <span style="font-size:13px;color:#E65100;font-weight:600;" id="_editandoAvisoTxt"></span>
+      <a href="#" onclick="cancelarEdicaoPedido();return false;" style="font-size:12px;color:#E65100;margin-left:8px;text-decoration:underline">Cancelar ajuste</a>
+    </div>
+    <div id="avisoPrazoPedido" style="background:#EDE7F6;border-left:4px solid #5B2D8E;padding:10px 14px;border-radius:0 6px 6px 0;margin:12px 0;">
       <span style="font-size:13px;color:#5B2D8E;font-weight:600;">⏱ As entregas são realizadas em até 48h após a confirmação do pedido.</span>
     </div>
 
@@ -190,18 +194,19 @@
         <button class="btn btn-secondary btn-xs" onclick="carregarMeusPedidos()">🔄 Atualizar</button>
       </div>
       <div id="meusPedidosLista"><p class="small">Carregando...</p></div>
-
-      <!-- Romaneio da loja (overlay) -->
-      <div id="romaneioLojaOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
-        <div style="background:#fff;border-radius:12px;max-width:600px;width:100%;padding:24px" id="romaneioLojaConteudo">
-          <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
-            <button class="btn btn-secondary" onclick="imprimirRomaneioLoja()">🖨️ Imprimir</button>
-            <button class="btn btn-secondary" onclick="document.getElementById('romaneioLojaOverlay').style.display='none'">✕ Fechar</button>
-          </div>
-          <div id="romaneioLojaBody"></div>
-        </div>
-      </div>
     </div><!-- fim lojaTabMeusPedidos -->
+
+    <!-- Romaneio da loja (overlay) — fora das abas de propósito, pra poder abrir
+         tanto em "Meus Pedidos" quanto logo após enviar/ajustar um pedido em "Fazer Pedido" -->
+    <div id="romaneioLojaOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
+      <div style="background:#fff;border-radius:12px;max-width:600px;width:100%;padding:24px" id="romaneioLojaConteudo">
+        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="btn btn-secondary" onclick="imprimirRomaneioLoja()">🖨️ Imprimir</button>
+          <button class="btn btn-secondary" onclick="document.getElementById('romaneioLojaOverlay').style.display='none'">✕ Fechar</button>
+        </div>
+        <div id="romaneioLojaBody"></div>
+      </div>
+    </div>
   </div>
 
   <!-- ADMIN -->
@@ -710,9 +715,61 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.12-4";
+const APP_VERSION = "2026.08.12-5";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
+
+// ─── PRAZOS DE ENTREGA E AJUSTE DE PEDIDO ──────────────────────────────────────
+// Dias da semana em que cada unidade recebe entrega (0=domingo ... 6=sábado).
+// Regra: pedidos e ajustes de quantidade só são permitidos até às 21h da véspera
+// da próxima entrega (ex: entrega quinta ⇒ prazo quarta 21h). Depois disso, só
+// PEDIDO URGÊNCIA (retirada no mesmo dia, sem prazo fixo).
+// Unidades que não aparecem aqui (ex: CABO, que retira quando quiser, ou
+// qualquer unidade ainda sem cronograma definido) não têm prazo — pode
+// lançar/ajustar a qualquer momento.
+const DIAS_ENTREGA = {
+  'PAULISTA': [4],           // quinta
+  'C. GRANDE': [2],          // terça (pedido sai/segue na segunda)
+  'CARUARU': [4],            // quinta (pedido sai/segue na quarta)
+  'D. LINDÚ': [1, 4],        // segunda e quinta
+  'PIEDADE': [1, 4],
+  'BV 2': [1, 4],
+  'FPS': [1, 4],
+  'JAQUEIRA': [2, 5],        // terça e sexta
+  'GRAÇAS II': [2, 5],
+  'BOA VIAGEM': [1, 4],
+};
+const HORA_LIMITE_AJUSTE = 21; // 21h da véspera da entrega
+
+// Retorna { dataEntrega: Date, prazoAjuste: Date } com a PRÓXIMA entrega desta
+// unidade cujo prazo de ajuste (21h da véspera) ainda não passou — ou null se a
+// unidade não tiver cronograma fixo cadastrado em DIAS_ENTREGA.
+function calcularProximaEntrega(unidade, agora) {
+  agora = agora || new Date();
+  const dias = DIAS_ENTREGA[(unidade || '').toUpperCase().trim()];
+  if (!dias || dias.length === 0) return null;
+
+  let melhor = null;
+  dias.forEach(diaSemana => {
+    for (let add = 0; add < 14; add++) {
+      const candidata = new Date(agora);
+      candidata.setHours(0, 0, 0, 0);
+      candidata.setDate(candidata.getDate() + add);
+      if (candidata.getDay() !== diaSemana) continue;
+      const prazoAjuste = new Date(candidata);
+      prazoAjuste.setDate(prazoAjuste.getDate() - 1);
+      prazoAjuste.setHours(HORA_LIMITE_AJUSTE, 0, 0, 0);
+      if (prazoAjuste.getTime() > agora.getTime()) {
+        if (!melhor || candidata.getTime() < melhor.dataEntrega.getTime()) {
+          melhor = { dataEntrega: candidata, prazoAjuste };
+        }
+        break; // primeira ocorrência válida deste dia da semana — não precisa ir além
+      }
+      // prazo dessa ocorrência já passou, tenta a mesma semana-dia na semana seguinte
+    }
+  });
+  return melhor;
+}
 
 // Senha simples por unidade (trocar depois por sistema real)
 const SENHAS = {};
@@ -725,6 +782,9 @@ const CATALOGO = {"Produtos Acabados": [{"id": "PA86", "cod": 86, "nome": "Aça�
 
 let currentUser = null;
 let currentRole = null; // 'loja' ou 'admin'
+// Quando não-nulo, a tela "Fazer Pedido" está em modo de ajuste de um pedido já
+// enviado: { key, numeroPedido, dataEnvio, prazoAjusteAte, urgencia }
+let _editandoPedido = null;
 
 // ─── FIREBASE SDK ────────────────────────────────────────────────────────────
 const FIREBASE_CONFIG = {
@@ -963,6 +1023,16 @@ async function carregarMeusPedidos() {
         ? `<span style="background:#E8F5E9;color:#2E7D32;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700">✅ Despachado</span>`
         : `<span style="background:#FFF8E1;color:#F57F17;padding:2px 8px;border-radius:12px;font-size:11px;font-weight:700">⏳ Aguardando</span>`;
 
+      const editavel = podeEditarPedido(p);
+      let botaoAjustar = '';
+      if (!despachado) {
+        if (editavel) {
+          botaoAjustar = `<button class="btn btn-secondary btn-xs" style="margin-top:8px" onclick="editarPedidoLoja(${idx})">✏️ Ajustar pedido</button>`;
+        } else {
+          botaoAjustar = `<span class="small" style="margin-top:8px;display:inline-block;color:#C62828">🔒 Prazo de ajuste encerrado</span>`;
+        }
+      }
+
       html += `<div style="border:1px solid #eee;border-radius:8px;padding:12px 14px;margin-bottom:10px;border-left:4px solid ${despachado?'#2E7D32':'#5B2D8E'}">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
           <div>
@@ -976,7 +1046,10 @@ async function carregarMeusPedidos() {
           ${p.tipoEntrega?` • ${p.tipoEntrega==='Retirada'?'🏪 Retirada':'🚚 Entrega'}`:''}
         </div>
         ${p.observacao?`<div style="font-size:12px;color:#888;margin-top:4px;font-style:italic">💬 ${p.observacao}</div>`:''}
-        <button class="btn btn-secondary btn-xs" style="margin-top:8px" onclick="verRomaneioLoja(${idx})">🖨️ Ver romaneio</button>
+        <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center">
+          <button class="btn btn-secondary btn-xs" style="margin-top:8px" onclick="verRomaneioLoja(${idx})">🖨️ Ver romaneio</button>
+          ${botaoAjustar}
+        </div>
       </div>`;
     });
     wrap.innerHTML = html;
@@ -986,10 +1059,85 @@ async function carregarMeusPedidos() {
   }
 }
 
-function verRomaneioLoja(idx) {
+// Um pedido pode ser ajustado enquanto não tiver sido despachado e, se for um
+// pedido comum (não urgência) com prazo definido, enquanto o prazo (21h da
+// véspera da entrega) ainda não tiver vencido. Pedidos urgência e pedidos de
+// unidades sem cronograma fixo (prazoAjusteAte nulo) só travam ao despachar.
+function podeEditarPedido(p) {
+  if (p.despachado) return false;
+  if (p.urgencia) return true;
+  if (!p.prazoAjusteAte) return true;
+  return new Date() < new Date(p.prazoAjusteAte);
+}
+
+// Carrega um pedido já enviado de volta no formulário "Fazer Pedido" pra
+// ajuste de quantidade, sem duplicar o pedido — o próximo envio atualiza o
+// mesmo documento.
+function editarPedidoLoja(idx) {
   const pedidos = document.getElementById('meusPedidosLista')._pedidos;
   if (!pedidos || !pedidos[idx]) return;
   const p = pedidos[idx];
+  if (!podeEditarPedido(p)) { alert('O prazo de ajuste deste pedido já venceu.'); return; }
+
+  _editandoPedido = {
+    key: p._storageKey,
+    numeroPedido: p.numeroPedido,
+    dataEnvio: p.dataEnvio,
+    semana: p.semana,
+    prazoAjusteAte: p.prazoAjusteAte || null,
+    urgencia: !!p.urgencia
+  };
+
+  // Preenche o formulário com os dados do pedido
+  document.getElementById('nomeResponsavel').value = p.nomeResponsavel || '';
+  document.getElementById('pedidoObservacao').value = p.observacao || '';
+  const radioTipo = document.querySelector(`input[name="tipoEntrega"][value="${p.tipoEntrega}"]`);
+  if (radioTipo) radioTipo.checked = true;
+  Object.values(CATALOGO).flat().forEach(item => {
+    const el = document.getElementById('qtd_' + item.id);
+    if (el) el.value = (p.itens && p.itens[item.id]) ? p.itens[item.id].qtd : 0;
+  });
+  updateOrderTotal();
+
+  // Sinaliza visualmente o modo de ajuste
+  const avisoBox = document.getElementById('_editandoAvisoBox');
+  const avisoTxt = document.getElementById('_editandoAvisoTxt');
+  if (avisoBox && avisoTxt) {
+    avisoTxt.textContent = `✏️ Ajustando o pedido ${p.numeroPedido}. Ao salvar, isso substitui o pedido original (não cria um novo).`;
+    avisoBox.classList.remove('hidden');
+  }
+  const btnEnviarEl = document.getElementById('btnEnviarPedido');
+  if (btnEnviarEl) btnEnviarEl.textContent = '💾 Salvar ajustes';
+  document.getElementById('btnUrgencia')?.classList.add('hidden');
+
+  switchLojaTab('fazerPedido');
+  window.scrollTo({ top: 0, behavior: 'smooth' });
+}
+
+function cancelarEdicaoPedido() {
+  _editandoPedido = null;
+  document.getElementById('_editandoAvisoBox')?.classList.add('hidden');
+  document.getElementById('btnUrgencia')?.classList.remove('hidden');
+  const btnEnviarEl = document.getElementById('btnEnviarPedido');
+  if (btnEnviarEl) btnEnviarEl.textContent = '📋 Enviar pedido';
+  Object.values(CATALOGO).flat().forEach(item => {
+    const el = document.getElementById('qtd_' + item.id);
+    if (el) el.value = 0;
+  });
+  document.getElementById('nomeResponsavel').value = '';
+  document.getElementById('pedidoObservacao').value = '';
+  updateOrderTotal();
+}
+
+function verRomaneioLoja(idx) {
+  const pedidos = document.getElementById('meusPedidosLista')._pedidos;
+  if (!pedidos || !pedidos[idx]) return;
+  abrirRomaneioLojaObjeto(pedidos[idx]);
+}
+
+// Abre o overlay de romaneio a partir de um pedido já em mãos (usado tanto pelo
+// histórico "Meus Pedidos" quanto logo após enviar/ajustar um pedido).
+function abrirRomaneioLojaObjeto(p) {
   const data = new Date(p.dataEnvio).toLocaleString('pt-BR');
   const total = Object.values(p.itens||{}).reduce((s,i)=>s+(i.total||0),0);
   let itensHtml = '';
@@ -2366,6 +2514,7 @@ function doLogin() {
     document.getElementById('orderScreen').classList.remove('hidden');
     loadItemState().then(async () => {
       renderCatalog();
+      renderPrazoPedidoBanner();
       const situacao = await verificarBoletosUnidade(unit);
       const avisoEl = document.getElementById('ordemBloqueada');
       const msgEl = document.getElementById('ordemBloqueadaMsg');
@@ -2434,6 +2583,7 @@ function restaurarSessao() {
     document.getElementById('orderScreen').classList.remove('hidden');
     loadItemState().then(async () => {
       renderCatalog();
+      renderPrazoPedidoBanner();
       const situacao = await verificarBoletosUnidade(savedUser);
       // aplica avisos de boleto se necessário
     });
@@ -2478,6 +2628,25 @@ function renderCatalog() {
   totalBar.style = "margin-top:16px;padding:12px 14px;background:#F5F0FB;border-radius:8px;font-weight:600;";
   totalBar.innerHTML = `<span>Valor estimado do pedido</span><span id="orderTotalValue">R$ 0,00</span>`;
   wrap.appendChild(totalBar);
+}
+
+const DIAS_SEMANA_NOMES = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
+
+// Mostra, no topo da tela de pedido, a próxima entrega da unidade e o horário
+// limite (21h da véspera) para lançar ou ajustar o pedido dessa entrega.
+function renderPrazoPedidoBanner() {
+  const el = document.getElementById('avisoPrazoPedido');
+  if (!el) return;
+  const info = calcularProximaEntrega(currentUser);
+  if (!info) {
+    el.innerHTML = `<span style="font-size:13px;color:#5B2D8E;font-weight:600;">⏱ Pedimos pelo menos 24h de antecedência — as entregas são realizadas em até 48h após a confirmação do pedido. Para não faltar item em loja, use o PEDIDO URGÊNCIA (retirada no mesmo dia na central).</span>`;
+    return;
+  }
+  const dEntrega = info.dataEntrega.toLocaleDateString('pt-BR');
+  const nomeEntrega = DIAS_SEMANA_NOMES[info.dataEntrega.getDay()];
+  const dPrazo = info.prazoAjuste.toLocaleDateString('pt-BR');
+  const nomePrazo = DIAS_SEMANA_NOMES[info.prazoAjuste.getDay()];
+  el.innerHTML = `<span style="font-size:13px;color:#5B2D8E">⏱ Sua próxima entrega: <strong>${nomeEntrega}, ${dEntrega}</strong>. Lance ou ajuste seu pedido até <strong>21h de ${nomePrazo}, ${dPrazo}</strong> — pedimos pelo menos 24h de antecedência pra conseguirmos organizar a separação. Depois desse horário, só é possível <strong>PEDIDO URGÊNCIA</strong> (retirada no mesmo dia, apenas para não faltar item em loja).</span>`;
 }
 
 const VALOR_MINIMO_PEDIDO = 300;
@@ -3351,6 +3520,7 @@ async function submitOrder(urgencia = false) {
   const msgEl = document.getElementById('orderMsg');
   msgEl.style.color = '#555';
   msgEl.textContent = "Enviando...";
+  const editando = _editandoPedido; // guarda referência — vamos limpar o estado global só no sucesso
   const weekKey = await getCurrentWeekKey();
   const nomeResponsavel = document.getElementById('nomeResponsavel')?.value?.trim();
   if (!nomeResponsavel) {
@@ -3358,9 +3528,14 @@ async function submitOrder(urgencia = false) {
     document.getElementById('nomeResponsavel')?.focus();
     return;
   }
+  // Ao ajustar um pedido, se o prazo já tiver vencido nesse meio-tempo, barra o salvamento
+  if (editando && editando.prazoAjusteAte && !editando.urgencia && new Date() >= new Date(editando.prazoAjusteAte)) {
+    msgEl.style.color = '#C62828';
+    msgEl.textContent = "⏰ O prazo para ajustar este pedido já venceu. Cancele o ajuste e, se precisar, faça um PEDIDO URGÊNCIA.";
+    return;
+  }
   const observacao = document.getElementById('pedidoObservacao')?.value?.trim() || '';
   const tipoEntrega = urgencia ? 'Retirada' : (document.querySelector('input[name="tipoEntrega"]:checked')?.value || 'Entrega');
-  const numeroPedido = await gerarNumeroPedido();
   const itens = {};
   Object.values(CATALOGO).flat().forEach(item => {
     const el = document.getElementById('qtd_' + item.id);
@@ -3376,25 +3551,52 @@ async function submitOrder(urgencia = false) {
   }
 
   const total = Object.values(itens).reduce((s,i)=>s+(i.total||0),0);
-  const pedido = {
-    numeroPedido,
-    unidade: currentUser,
-    nomeResponsavel,
-    observacao,
-    semana: weekKey,
-    dataEnvio: new Date().toISOString(),
-    tipoEntrega,
-    urgencia,
-    total,
-    itens,
-    despachado: false,
-    dataDespacho: null
-  };
+  let pedido, key;
 
-  // Sempre usa timestamp para evitar sobrescrever pedidos anteriores
-  const key = `pedido:${weekKey}:${currentUser}:${Date.now()}`;
+  if (editando) {
+    // Ajuste de um pedido existente: mantém número, data original e chave —
+    // só atualiza os campos preenchíveis, sem duplicar o pedido.
+    key = editando.key;
+    pedido = {
+      numeroPedido: editando.numeroPedido,
+      unidade: currentUser,
+      nomeResponsavel,
+      observacao,
+      semana: editando.semana || weekKey,
+      dataEnvio: editando.dataEnvio,
+      dataUltimoAjuste: new Date().toISOString(),
+      tipoEntrega,
+      urgencia: editando.urgencia,
+      prazoAjusteAte: editando.prazoAjusteAte || null,
+      total,
+      itens,
+      despachado: false,
+      dataDespacho: null
+    };
+  } else {
+    const numeroPedidoNovo = await gerarNumeroPedido();
+    const prazo = urgencia ? null : calcularProximaEntrega(currentUser);
+    pedido = {
+      numeroPedido: numeroPedidoNovo,
+      unidade: currentUser,
+      nomeResponsavel,
+      observacao,
+      semana: weekKey,
+      dataEnvio: new Date().toISOString(),
+      tipoEntrega,
+      urgencia,
+      prazoAjusteAte: prazo ? prazo.prazoAjuste.toISOString() : null,
+      total,
+      itens,
+      despachado: false,
+      dataDespacho: null
+    };
+    // Sempre usa timestamp para evitar sobrescrever pedidos anteriores
+    key = `pedido:${weekKey}:${currentUser}:${Date.now()}`;
+  }
 
   pedido._key = key; // guarda a chave no próprio pedido para exclusão futura
+  const numeroPedido = pedido.numeroPedido;
 
   try {
     msgEl.textContent = "Enviando...";
@@ -3403,21 +3605,31 @@ async function submitOrder(urgencia = false) {
     await saveDocument(key, pedido);
 
     msgEl.style.color = urgencia ? "#C62828" : "#2E7D32";
-    msgEl.textContent = urgencia
-      ? `🚨 Pedido urgência ${numeroPedido} enviado!`
-      : `✅ Pedido ${numeroPedido} enviado! Prazo: até 48h.`;
+    msgEl.textContent = editando
+      ? `✅ Pedido ${numeroPedido} ajustado com sucesso!`
+      : (urgencia
+          ? `🚨 Pedido urgência ${numeroPedido} enviado!`
+          : `✅ Pedido ${numeroPedido} enviado! Prazo: até 48h.`);
 
     await registrarLog('Pedido',
-      `${urgencia?'🚨 URGÊNCIA — ':''}Pedido ${numeroPedido} — ${Object.keys(itens).length} itens — R$ ${total.toFixed(2).replace('.',',')}`,
+      `${editando ? '✏️ Ajustado — ' : ''}${urgencia?'🚨 URGÊNCIA — ':''}Pedido ${numeroPedido} — ${Object.keys(itens).length} itens — R$ ${total.toFixed(2).replace('.',',')}`,
       nomeResponsavel, currentUser);
 
-    // Zera os campos
+    // Sai do modo de edição e zera os campos
+    _editandoPedido = null;
+    document.getElementById('_editandoAvisoBox')?.classList.add('hidden');
+    document.getElementById('btnUrgencia')?.classList.remove('hidden');
+    const btnEnviarEl = document.getElementById('btnEnviarPedido');
+    if (btnEnviarEl) btnEnviarEl.textContent = '📋 Enviar pedido';
     Object.values(CATALOGO).flat().forEach(item => {
       const el = document.getElementById('qtd_' + item.id);
       if (el) el.value = 0;
     });
     if (document.getElementById('pedidoObservacao')) document.getElementById('pedidoObservacao').value = '';
     updateOrderTotal();
+
+    // Abre o comprovante/romaneio na hora, pra imprimir se quiser
+    abrirRomaneioLojaObjeto(pedido);
   } catch (e) {
     msgEl.style.color = '#C62828';
     msgEl.textContent = "Erro ao enviar pedido: " + e.message;
