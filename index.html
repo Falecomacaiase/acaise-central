@@ -170,12 +170,20 @@
         ⚠️ Valor mínimo de pedido: R$ 300,00. Total atual: <span id="totalAtual">R$ 0,00</span>
       </div>
 
+      <!-- ITENS FORA DO CATÁLOGO (sem preço — a franqueadora precifica ao processar) -->
+      <div style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:8px;padding:14px;margin-top:16px">
+        <div style="font-size:13px;font-weight:700;color:#1565C0;margin-bottom:8px">📦 Itens fora do catálogo</div>
+        <p class="small" style="margin:0 0 10px;color:#1565C0">Materiais de escritório, frutas ou qualquer outra demanda que não está na lista. Não precisa de preço — a franqueadora define o valor ao processar o pedido.</p>
+        <div id="itensAvulsosLista"></div>
+        <button type="button" class="btn btn-secondary btn-xs" onclick="adicionarLinhaItemAvulso()">➕ Adicionar item</button>
+      </div>
+
       <!-- CAMPO LIVRE -->
       <div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:8px;padding:14px;margin-top:16px">
-        <div style="font-size:13px;font-weight:700;color:#F57F17;margin-bottom:8px">💬 Item não listado ou observação</div>
-        <textarea id="pedidoObservacao" rows="3" placeholder="Ex: Preciso de 2 caixas de açúcar demerara (não está na lista) • Entregar na segunda pela manhã • Qualquer observação para a franqueadora..."
+        <div style="font-size:13px;font-weight:700;color:#F57F17;margin-bottom:8px">💬 Observação</div>
+        <textarea id="pedidoObservacao" rows="3" placeholder="Ex: Entregar na segunda pela manhã • Qualquer observação para a franqueadora..."
           style="width:100%;padding:8px 10px;font-size:13px;border:1px solid #FFE082;border-radius:6px;font-family:Arial;resize:vertical"></textarea>
-        <p class="small" style="margin:4px 0 0;color:#888">Use este campo para solicitar itens que não estão no catálogo ou fazer observações sobre o pedido.</p>
+        <p class="small" style="margin:4px 0 0;color:#888">Use este campo só para observações gerais — para pedir itens que não estão na lista, use a seção "Itens fora do catálogo" acima.</p>
       </div>
 
       <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
@@ -715,7 +723,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.12-5";
+const APP_VERSION = "2026.08.12-6";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -1097,6 +1105,9 @@ function editarPedidoLoja(idx) {
     const el = document.getElementById('qtd_' + item.id);
     if (el) el.value = (p.itens && p.itens[item.id]) ? p.itens[item.id].qtd : 0;
   });
+  const itensAvulsosWrap = document.getElementById('itensAvulsosLista');
+  if (itensAvulsosWrap) itensAvulsosWrap.innerHTML = '';
+  (p.itensAvulsos || []).forEach(ia => adicionarLinhaItemAvulso(ia.nome, ia.qtd));
   updateOrderTotal();
 
   // Sinaliza visualmente o modo de ajuste
@@ -1126,6 +1137,8 @@ function cancelarEdicaoPedido() {
   });
   document.getElementById('nomeResponsavel').value = '';
   document.getElementById('pedidoObservacao').value = '';
+  const itensAvulsosWrap = document.getElementById('itensAvulsosLista');
+  if (itensAvulsosWrap) itensAvulsosWrap.innerHTML = '';
   updateOrderTotal();
 }
 
@@ -1184,6 +1197,12 @@ function abrirRomaneioLojaObjeto(p) {
         <td style="padding:10px 8px;text-align:right;color:#5B2D8E">R$ ${total.toFixed(2).replace('.',',')}</td>
       </tr></tfoot>
     </table>
+    ${(p.itensAvulsos && p.itensAvulsos.length) ? `<div style="margin-top:12px;padding:10px;background:#E3F2FD;border-radius:6px;font-size:13px">
+      <strong style="color:#1565C0">📦 Itens fora do catálogo (aguardando preço da franqueadora):</strong>
+      <ul style="margin:6px 0 0 18px;padding:0">
+        ${p.itensAvulsos.map(ia => `<li>${ia.nome} — ${ia.qtd}</li>`).join('')}
+      </ul>
+    </div>` : ''}
     ${p.observacao?`<div style="margin-top:12px;padding:10px;background:#FFF8E1;border-radius:6px;font-size:13px"><strong>💬 Observação:</strong> ${p.observacao}</div>`:''}`;
   document.getElementById('romaneioLojaOverlay').style.display = 'flex';
 }
@@ -1450,6 +1469,17 @@ function renderRomaneioBody(jaDespachou) {
     ${!jaDespachou ? `<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#F57F17">
       ✏️ <strong>Antes de despachar</strong> — ajuste quantidades, remova itens (✕) ou adicione novos itens abaixo.
     </div>
+    ${(pedido.itensAvulsos && pedido.itensAvulsos.length) ? `<div style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:6px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:#1565C0;margin-bottom:8px">📦 Itens fora do catálogo pedidos por ${pedido.unidade} — defina o preço pra incluir no romaneio</div>
+      ${pedido.itensAvulsos.map((ia, i) => `
+        <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
+          <span style="flex:2;min-width:140px;font-size:13px">${ia.nome} <span style="color:#777">× ${ia.qtd}</span></span>
+          <span style="font-size:12px;color:#1565C0">Preço unit. R$</span>
+          <input type="number" id="precoAvulso_${i}" min="0" step="0.01" placeholder="0,00" style="width:90px;padding:6px;border:1px solid #90CAF9;border-radius:4px;font-size:13px;text-align:right">
+          <button onclick="precificarItemAvulso(${i})" style="background:#1565C0;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:13px;cursor:pointer;font-weight:600">✅ Incluir no romaneio</button>
+        </div>
+      `).join('')}
+    </div>` : ''}
     <div style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:6px;padding:10px 12px;margin-bottom:12px">
       <div style="font-size:12px;font-weight:700;color:#2E7D32;margin-bottom:6px">➕ Adicionar item ao pedido</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
@@ -1521,6 +1551,26 @@ function adicionarItemRomaneio() {
   document.getElementById('romaneioAddQtd').value = 1;
 }
 
+// Precifica um item fora do catálogo (pedido pela loja sem preço) e o move
+// para dentro do romaneio como um item normal — some da lista de "aguardando
+// preço" e passa a contar no total do pedido.
+function precificarItemAvulso(i) {
+  const item = pedidoAtualRomaneio.itensAvulsos?.[i];
+  if (!item) return;
+  const precoEl = document.getElementById('precoAvulso_' + i);
+  const preco = parseFloat(precoEl?.value) || 0;
+  if (preco <= 0) { alert('Informe um preço maior que zero antes de incluir.'); return; }
+
+  const novoId = 'avulso_' + Date.now() + '_' + i;
+  pedidoAtualRomaneio.itens[novoId] = {
+    nome: item.nome, qtd: item.qtd, precoUnitario: preco, preco, total: +(item.qtd * preco).toFixed(2),
+    origemAvulso: true
+  };
+  pedidoAtualRomaneio.itensAvulsos.splice(i, 1);
+
+  renderRomaneioBody(false);
+}
+
 function atualizarItemRomaneio(itemId, novaQtd) {
   const qtd = Math.max(0, parseInt(novaQtd) || 0);
   if (!pedidoAtualRomaneio.itens[itemId]) return;
@@ -1555,6 +1605,10 @@ async function confirmarDespacho() {
   if (pedidoAtualRomaneio.despachado) {
     window.print();
     return;
+  }
+  if (pedidoAtualRomaneio.itensAvulsos && pedidoAtualRomaneio.itensAvulsos.length > 0) {
+    const seguir = confirm(`Ainda há ${pedidoAtualRomaneio.itensAvulsos.length} item(ns) fora do catálogo sem preço definido. Eles NÃO vão entrar no valor do romaneio. Quer despachar mesmo assim?`);
+    if (!seguir) return;
   }
 
   const btn = document.getElementById('btnDespachar');
@@ -2676,6 +2730,34 @@ function updateOrderTotal() {
   }
 }
 
+// Adiciona uma linha em branco (ou pré-preenchida, ao editar um pedido) na
+// seção "Itens fora do catálogo". Esses itens vão sem preço — a franqueadora
+// define o valor ao processar o romaneio (ver precificarItemAvulso).
+function adicionarLinhaItemAvulso(nome, qtd) {
+  const wrap = document.getElementById('itensAvulsosLista');
+  if (!wrap) return;
+  const row = document.createElement('div');
+  row.className = 'itemAvulsoRow';
+  row.style.cssText = 'display:flex;gap:6px;margin-bottom:6px;align-items:center';
+  const nomeVal = nome ? String(nome).replace(/"/g, '&quot;') : '';
+  row.innerHTML = `
+    <input type="text" placeholder="Nome do item" class="itemAvulsoNome" value="${nomeVal}" style="flex:2;padding:6px 8px;border:1px solid #90CAF9;border-radius:4px;font-size:13px">
+    <input type="number" min="1" placeholder="Qtd" class="itemAvulsoQtd" value="${qtd || ''}" style="width:70px;padding:6px 8px;border:1px solid #90CAF9;border-radius:4px;font-size:13px;text-align:center">
+    <button type="button" onclick="this.parentElement.remove()" title="Remover" style="background:none;border:none;color:#C62828;cursor:pointer;font-size:16px">✕</button>
+  `;
+  wrap.appendChild(row);
+}
+
+function coletarItensAvulsosDoFormulario() {
+  const itensAvulsos = [];
+  document.querySelectorAll('#itensAvulsosLista .itemAvulsoRow').forEach(row => {
+    const nome = row.querySelector('.itemAvulsoNome')?.value?.trim();
+    const qtd = parseFloat(row.querySelector('.itemAvulsoQtd')?.value) || 0;
+    if (nome && qtd > 0) itensAvulsos.push({ nome, qtd });
+  });
+  return itensAvulsos;
+}
+
 // ─── PRODUÇÃO ─────────────────────────────────────────────────────────────────
 const FICHAS = {
   artesanal: {
@@ -3544,9 +3626,10 @@ async function submitOrder(urgencia = false) {
     const preco = itemState[item.id]?.venda || item.preco;
     if (val > 0) itens[item.id] = { nome: item.nome, qtd: val, preco, total: +(val * preco).toFixed(2) };
   });
+  const itensAvulsos = coletarItensAvulsosDoFormulario();
 
-  if (Object.keys(itens).length === 0) {
-    msgEl.textContent = "Marque ao menos um item antes de enviar.";
+  if (Object.keys(itens).length === 0 && itensAvulsos.length === 0) {
+    msgEl.textContent = "Marque ao menos um item (ou adicione um item fora do catálogo) antes de enviar.";
     return;
   }
 
@@ -3570,6 +3653,7 @@ async function submitOrder(urgencia = false) {
       prazoAjusteAte: editando.prazoAjusteAte || null,
       total,
       itens,
+      itensAvulsos,
       despachado: false,
       dataDespacho: null
     };
@@ -3588,6 +3672,7 @@ async function submitOrder(urgencia = false) {
       prazoAjusteAte: prazo ? prazo.prazoAjuste.toISOString() : null,
       total,
       itens,
+      itensAvulsos,
       despachado: false,
       dataDespacho: null
     };
@@ -3626,6 +3711,8 @@ async function submitOrder(urgencia = false) {
       if (el) el.value = 0;
     });
     if (document.getElementById('pedidoObservacao')) document.getElementById('pedidoObservacao').value = '';
+    const itensAvulsosWrap = document.getElementById('itensAvulsosLista');
+    if (itensAvulsosWrap) itensAvulsosWrap.innerHTML = '';
     updateOrderTotal();
 
     // Abre o comprovante/romaneio na hora, pra imprimir se quiser
@@ -3787,6 +3874,7 @@ function renderPorUnidade(pedidos) {
           <span class="small" style="margin-left:8px;color:#5B2D8E;font-weight:600">${numPedido}</span>
           ${p.urgencia ? '<span class="badge badge-red" style="margin-left:6px">🚨 URGÊNCIA</span>' : ''}
           ${p.despachado ? '<span class="badge" style="margin-left:6px;background:#eee;color:#888">✅ Despachado</span>' : ''}
+          ${(p.itensAvulsos && p.itensAvulsos.length) ? `<span class="badge" style="margin-left:6px;background:#E3F2FD;color:#1565C0">📦 ${p.itensAvulsos.length} sem preço</span>` : ''}
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
           <span class="badge ${p.tipoEntrega === 'Retirada' ? 'badge-yellow' : 'badge-green'}">${p.tipoEntrega === 'Retirada' ? '🏪 Retirada' : '🚚 Entrega'}</span>
@@ -3800,6 +3888,10 @@ function renderPorUnidade(pedidos) {
       html += `<tr><td>${it.nome}</td><td style="text-align:right">${it.qtd}</td><td style="text-align:right">R$ ${(it.total||0).toFixed(2).replace('.',',')}</td></tr>`;
     });
     html += `</tbody></table>
+      ${(p.itensAvulsos && p.itensAvulsos.length) ? `<div style="margin-top:8px;padding:8px 10px;background:#E3F2FD;border-left:3px solid #1565C0;border-radius:4px;font-size:12px">
+        <strong style="color:#1565C0">📦 Itens fora do catálogo (precificar no romaneio):</strong>
+        ${p.itensAvulsos.map(ia => `${ia.nome} — ${ia.qtd}`).join(' • ')}
+      </div>` : ''}
       ${p.observacao ? `<div style="margin-top:8px;padding:8px 10px;background:#FFF8E1;border-left:3px solid #F57F17;border-radius:4px;font-size:12px"><strong>💬 Observação:</strong> ${p.observacao}</div>` : ''}
       <div class="flex-between" style="margin-top:8px;font-weight:600;border-top:1px solid #eee;padding-top:8px">
         <span>Total</span><span>R$ ${totalUnidade.toFixed(2).replace('.',',')}</span>
