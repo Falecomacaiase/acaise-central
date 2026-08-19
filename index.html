@@ -723,7 +723,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.12-7";
+const APP_VERSION = "2026.08.19-1";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -1628,26 +1628,18 @@ async function confirmarDespacho() {
     const chave = pedidoAtualRomaneio._storageKey;
     if (!chave) throw new Error('Chave não encontrada. Feche e atualize o painel.');
 
-    // Busca saldo do Firebase diretamente
-    const saldoDoc = await _col.doc(encodeURIComponent('saldoInicial')).get();
-    let saldos = {};
-    if (saldoDoc.exists) {
-      const val = saldoDoc.data().value;
-      try { saldos = typeof val === 'string' ? JSON.parse(val) : val; } catch(e) {}
-    }
-
-    // Desconta estoque
-    Object.entries(itens).forEach(([id, it]) => {
-      saldos[id] = Math.max(0, (saldos[id] || 0) - it.qtd);
-    });
-    saldoAtual = saldos;
+    // Desconta o estoque de todos os itens do pedido numa única transação
+    // atômica — seguro mesmo se outro despacho/entrada estiver salvando ao
+    // mesmo tempo em outro dispositivo.
+    const deltas = {};
+    Object.entries(itens).forEach(([id, it]) => { deltas[id] = -it.qtd; });
+    const saldos = await ajustarSaldoAtomico(deltas);
 
     // Marca pedido como despachado
     pedidoAtualRomaneio.despachado = true;
     pedidoAtualRomaneio.dataDespacho = new Date().toISOString();
 
     // Salva diretamente no Firebase (sem batch)
-    await saveDocument('saldoInicial', saldos);
     await saveDocument(chave, pedidoAtualRomaneio);
     await saveDocument(`saida_${Date.now()}`, {
       tipo: 'Saída', unidade: pedidoAtualRomaneio.unidade,
@@ -1656,7 +1648,6 @@ async function confirmarDespacho() {
 
     // Atualiza cache local
     if (_dataCache) {
-      _dataCache['saldoInicial'] = saldos;
       _dataCache[chave] = pedidoAtualRomaneio;
     }
     Object.values(CATALOGO).flat().forEach(item => {
@@ -2009,6 +2000,41 @@ async function loadSaldoInicial() {
   } catch(e) { console.error('loadSaldoInicial error:', e); }
 }
 
+// Ajusta o saldo de um ou mais itens de forma ATÔMICA, usando uma transação do
+// Firestore. Isso substitui o padrão antigo ("ler saldoInicial inteiro, somar
+// na memória, salvar de volta"), que não é seguro quando dois lançamentos
+// acontecem quase ao mesmo tempo (ex: várias entradas registradas em sequência
+// rápida) — o Firestore detecta o conflito e refaz a transação sozinho, então
+// nenhum ajuste "some" por causa de outro que salvou por cima.
+// deltas: { itemId: quantidade a somar (negativo para subtrair) }
+// Retorna o saldoAtual COMPLETO já atualizado.
+async function ajustarSaldoAtomico(deltas) {
+  const docRef = _col.doc(toDocId('saldoInicial'));
+  const novoSaldo = await _db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(docRef);
+    let atual = {};
+    if (snap.exists) {
+      let val = snap.data().value;
+      if (typeof val === 'string') { try { val = JSON.parse(val); } catch(e) { val = {}; } }
+      atual = val || {};
+    }
+    Object.entries(deltas).forEach(([itemId, delta]) => {
+      atual[itemId] = Math.max(0, (atual[itemId] || 0) + delta);
+    });
+    transaction.set(docRef, {
+      value: JSON.stringify(atual),
+      originalKey: 'saldoInicial',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    return atual;
+  });
+
+  // Mantém a variável local e o cache em dia, sem precisar recarregar tudo
+  saldoAtual = novoSaldo;
+  if (_dataCache) _dataCache['saldoInicial'] = novoSaldo;
+  return novoSaldo;
+}
+
 // Helper: garante que o valor seja objeto mesmo se vier como string JSON
 function parseValue(val) {
   if (!val) return null;
@@ -2283,24 +2309,24 @@ async function registrarSaidaAvulsa() {
 
   msgEl.textContent = 'Registrando...';
   try {
-    await loadSaldoInicial();
-    const saldoAntes = saldoAtual[itemId] || 0;
-    saldoAtual[itemId] = Math.max(0, saldoAntes - qtd);
+    const saldoAntes = saldoAtual[itemId] || 0; // só pra exibir na mensagem; o cálculo real é atômico
+
+    // Ajuste atômico — seguro mesmo se outro lançamento estiver salvando ao mesmo tempo
+    const novoSaldo = await ajustarSaldoAtomico({ [itemId]: -qtd });
 
     const saida = {
       tipo: 'Saída Avulsa', unidade, nome: item.nome,
       itemId, qtd, obs, saldoAntes,
-      saldoDepois: saldoAtual[itemId],
+      saldoDepois: novoSaldo[itemId],
       usuario: currentUser,
       data: new Date().toISOString()
     };
 
-    await saveDocument('saldoInicial', saldoAtual);
     await saveDocument(`saida:avulsa:${Date.now()}`, saida);
 
-    item._estoqueAtual = saldoAtual[itemId];
+    item._estoqueAtual = novoSaldo[itemId];
     msgEl.style.color = '#E65100';
-    msgEl.textContent = `✅ Saída registrada: ${qtd} × ${item.nome} → ${unidade}. Saldo: ${saldoAntes} → ${saldoAtual[itemId]}`;
+    msgEl.textContent = `✅ Saída registrada: ${qtd} × ${item.nome} → ${unidade}. Saldo: ${saldoAntes} → ${novoSaldo[itemId]}`;
     await registrarLog('Saída Avulsa', `${qtd} × ${item.nome}${obs?' — '+obs:''}`, currentUser, unidade);
     document.getElementById('saidaQtd').value = 0;
     document.getElementById('saidaObs').value = '';
@@ -2349,9 +2375,8 @@ async function registrarEntrada() {
 
   msgEl.textContent = "Registrando...";
   try {
-    // Atualiza saldo primeiro
-    await loadSaldoInicial();
-    saldoAtual[itemId] = (saldoAtual[itemId] || 0) + qtd;
+    // Ajuste atômico — seguro mesmo se outra entrada estiver sendo salva ao mesmo tempo
+    await ajustarSaldoAtomico({ [itemId]: qtd });
 
     const entrada = {
       itemId, nome: item.nome, tipo, qtd, obs, fornecedor,
@@ -2363,7 +2388,6 @@ async function registrarEntrada() {
     // Salva diretamente no Firebase
     const tsEntrada = Date.now();
     await saveDocument(`entrada:${itemId}:${tsEntrada}`, entrada);
-    await saveDocument('saldoInicial', saldoAtual);
 
     // Salva novo fornecedor se necessário
     if (fornecedor) await adicionarFornecedorSeNovo(fornecedor);
@@ -2892,15 +2916,13 @@ async function salvarProducao() {
       i.nome === nomeProduto || (base === 'artesanal' ? i.id === 'PA88' : i.id === 'PA246')
     );
 
-    // Atualiza saldo central
-    await loadSaldoInicial();
+    // Atualiza saldo central — ajuste atômico, seguro mesmo com outro lançamento em paralelo
     if (itemCatalogo) {
-      saldoAtual[itemCatalogo.id] = (saldoAtual[itemCatalogo.id] || 0) + caixas;
+      await ajustarSaldoAtomico({ [itemCatalogo.id]: caixas });
     }
 
-    // Grava tudo no cache e salva IMEDIATAMENTE
+    // Grava o lote de produção
     await saveDocument(`producao:${Date.now()}`, lote);
-    await saveDocument('saldoInicial', saldoAtual);
 
     await registrarLog('Produção',
       `${ficha.nome} — ${caixas}cx de 8kg — Custo R$ ${custoPorCaixa.toFixed(2).replace('.',',')} /cx — estoque atualizado`,
@@ -3312,13 +3334,8 @@ async function excluirLogItemIdx(idx) {
   if (!confirm(confirmMsg)) return;
 
   try {
-    await loadSaldoInicial();
-    if (l.tipo === 'Entrada') {
-      saldoAtual[l._itemId] = Math.max(0, (saldoAtual[l._itemId] || 0) - l._qtd);
-    } else {
-      saldoAtual[l._itemId] = (saldoAtual[l._itemId] || 0) + l._qtd;
-    }
-    await saveDocument('saldoInicial', saldoAtual);
+    const delta = l.tipo === 'Entrada' ? -l._qtd : l._qtd;
+    await ajustarSaldoAtomico({ [l._itemId]: delta });
     await safeDelete(l._key);
     await registrarLog(l.tipo, `❌ Excluído: ${l.descricao}`, currentUser);
     renderLog();
