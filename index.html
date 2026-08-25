@@ -27,6 +27,9 @@
   label { font-size: 13px; font-weight: 600; color: #555; display: block; margin-bottom: 4px; }
   .field { margin-bottom: 14px; }
   .cat-title { background: #5B2D8E; color: #fff; padding: 8px 14px; border-radius: 6px; font-size: 14px; font-weight: 600; margin: 18px 0 8px; }
+  .cat-details { margin-bottom: 4px; }
+  .cat-details > summary { cursor: pointer; user-select: none; list-style: revert; }
+  .cat-details > summary::marker { color: #fff; }
   .item-row { display: flex; align-items: center; justify-content: space-between; padding: 8px 6px; border-bottom: 1px solid #eee; }
   .item-row:last-child { border-bottom: none; }
   .item-name { font-size: 14px; }
@@ -164,7 +167,11 @@
           </label>
         </div>
       </div>
-      <p class="small" style="margin-top:0">Marque as quantidades que sua unidade precisa. Itens indisponíveis aparecem desabilitados.</p>
+      <p class="small" style="margin-top:0">Marque as quantidades que sua unidade precisa. Toque no nome da categoria para abrir os itens. Itens indisponíveis aparecem desabilitados.</p>
+      <div style="display:flex;gap:8px;margin-bottom:10px">
+        <input type="text" id="catalogBusca" placeholder="🔍 Buscar item..." oninput="filtrarCatalogoLoja()" style="flex:1;padding:8px 10px;font-size:14px;border:1.5px solid #ddd;border-radius:6px">
+        <button type="button" class="btn btn-secondary btn-xs" onclick="alternarTodasCategorias()" id="btnAlternarCategorias" style="white-space:nowrap">Expandir tudo</button>
+      </div>
       <div id="catalog"></div>
       <div id="minimoAviso" class="hidden" style="background:#FFF8E1;border-left:3px solid #F57F17;padding:8px 12px;border-radius:4px;margin-top:12px;font-size:13px;color:#F57F17;font-weight:600">
         ⚠️ Valor mínimo de pedido: R$ 300,00. Total atual: <span id="totalAtual">R$ 0,00</span>
@@ -588,9 +595,14 @@
             <input type="text" id="prodResponsavel" placeholder="Nome de quem produziu">
           </div>
         </div>
+        <div class="field">
+          <label>Origem do açaí / observação (opcional)</label>
+          <input type="text" id="prodOrigem" placeholder="Ex: Direto do Pará, lote de 27/08">
+        </div>
 
         <div style="background:#fff;border-radius:6px;padding:12px;margin:8px 0">
           <div style="font-size:12px;font-weight:700;color:#5B2D8E;margin-bottom:10px">INSUMOS UTILIZADOS</div>
+          <p class="small" style="margin:0 0 10px">O valor de referência já vem preenchido — se pagou diferente neste lote (ex: açaí comprado direto do Pará), ajuste o campo à direita para o sistema calcular o custo real e a economia.</p>
           <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px" id="prodInsumos">
             <!-- preenchido dinamicamente -->
           </div>
@@ -723,7 +735,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.19-1";
+const APP_VERSION = "2026.08.20-2";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -837,6 +849,23 @@ async function loadAllData() {
 // Converte chave para ID seguro do Firestore (sem caracteres problemáticos)
 function toDocId(key) {
   return key.replace(/[^a-zA-Z0-9_\-]/g, '_');
+}
+
+// Preenche um <select> com as categorias do catálogo. Reaproveitado em todas as
+// telas que têm um filtro de categoria (evita repetir esse bloco em cada uma).
+// comTodas: se true, adiciona a opção "Todas as categorias" no início.
+function popularSelectCategorias(sel, comTodas = true) {
+  if (!sel || sel.options.length > 0) return;
+  if (comTodas) {
+    const allOpt = document.createElement('option');
+    allOpt.value = ''; allOpt.textContent = 'Todas as categorias';
+    sel.appendChild(allOpt);
+  }
+  Object.keys(CATALOGO).forEach(cat => {
+    const opt = document.createElement('option');
+    opt.value = cat; opt.textContent = cat;
+    sel.appendChild(opt);
+  });
 }
 
 async function saveDocument(key, value) {
@@ -1110,6 +1139,12 @@ function editarPedidoLoja(idx) {
     const el = document.getElementById('qtd_' + item.id);
     if (el) el.value = (p.itens && p.itens[item.id]) ? p.itens[item.id].qtd : 0;
   });
+  // Abre automaticamente as categorias que já têm item pedido, pra pessoa ver
+  // de cara o que está ajustando (as demais continuam recolhidas)
+  document.querySelectorAll('#catalog details.cat-details').forEach(det => {
+    const temItem = [...det.querySelectorAll('.item-qtd')].some(inp => parseFloat(inp.value) > 0);
+    if (temItem) det.open = true;
+  });
   const itensAvulsosWrap = document.getElementById('itensAvulsosLista');
   if (itensAvulsosWrap) itensAvulsosWrap.innerHTML = '';
   (p.itensAvulsos || []).forEach(ia => adicionarLinhaItemAvulso(ia.nome, ia.qtd));
@@ -1140,6 +1175,7 @@ function cancelarEdicaoPedido() {
     const el = document.getElementById('qtd_' + item.id);
     if (el) el.value = 0;
   });
+  document.querySelectorAll('#catalog details.cat-details').forEach(det => { det.open = false; });
   document.getElementById('nomeResponsavel').value = '';
   document.getElementById('pedidoObservacao').value = '';
   const itensAvulsosWrap = document.getElementById('itensAvulsosLista');
@@ -1899,45 +1935,23 @@ async function renderRelatorioFornecedor() {
 
 // ─── INVENTÁRIO ───────────────────────────────────────────────────────────────
 function iniciarInventario() {
-  const sel = document.getElementById('invFiltroCat');
-  if (sel.options.length === 0) {
-    const all = document.createElement('option'); all.value=''; all.textContent='Todas as categorias'; sel.appendChild(all);
-    Object.keys(CATALOGO).forEach(cat => {
-      const opt = document.createElement('option'); opt.value=cat; opt.textContent=cat; sel.appendChild(opt);
-    });
-  }
-  renderInventario();
+  popularSelectCategorias(document.getElementById('invFiltroCat'));
+  renderInventarioTabela();
 }
 
-function renderInventario() {
-  const filtro = document.getElementById('invFiltroCat').value;
-  const busca = document.getElementById('invBusca').value.toLowerCase().trim();
-  const cats = filtro ? { [filtro]: CATALOGO[filtro] } : CATALOGO;
-  const allItems = Object.values(CATALOGO).flat();
-
-  // Progress counter
-  const preenchidos = allItems.filter(i => {
-    const el = document.getElementById('inv_' + i.id);
-    return el ? parseFloat(el.value) > 0 : (saldoAtual[i.id] > 0);
-  }).length;
-  document.getElementById('invProgresso').innerHTML =
-    `<div style="font-size:13px;color:#5B2D8E;font-weight:600">
-      ${preenchidos} de ${allItems.length} itens preenchidos
-      <div style="height:6px;background:#eee;border-radius:4px;margin-top:4px;overflow:hidden">
-        <div style="height:100%;width:${Math.round(preenchidos/allItems.length*100)}%;background:#5B2D8E;border-radius:4px;transition:width .3s"></div>
-      </div>
-    </div>`;
-
+// Monta a tabela de contagem UMA vez, com todos os itens de todas as categorias.
+// A busca e o filtro de categoria (renderInventario, abaixo) só escondem/mostram
+// linhas depois disso — nunca recriam os campos. Assim, o que a pessoa já digitou
+// nunca é perdido ao pesquisar ou trocar o filtro.
+function renderInventarioTabela() {
   let html = '';
-  Object.entries(cats).forEach(([cat, items]) => {
-    const filtered = items.filter(i => !busca || i.nome.toLowerCase().includes(busca));
-    if (!filtered.length) return;
-    html += `<div style="background:#5B2D8E;color:#fff;padding:8px 14px;border-radius:6px;font-size:14px;font-weight:600;margin:16px 0 6px">${cat}</div>`;
-    html += `<table style="font-size:14px;width:100%"><tbody>`;
-    filtered.forEach((item, idx) => {
+  Object.entries(CATALOGO).forEach(([cat, items]) => {
+    html += `<div class="inv-cat-title" data-cat="${cat}" style="background:#5B2D8E;color:#fff;padding:8px 14px;border-radius:6px;font-size:14px;font-weight:600;margin:16px 0 6px">${cat}</div>`;
+    html += `<table data-cat-table="${cat}" style="font-size:14px;width:100%"><tbody>`;
+    items.forEach((item, idx) => {
       const bg = idx % 2 === 0 ? '#fff' : '#F9F6FF';
       const saldo = saldoAtual[item.id] !== undefined ? saldoAtual[item.id] : 0;
-      html += `<tr style="background:${bg}">
+      html += `<tr data-cat="${cat}" data-nome="${item.nome.toLowerCase()}" style="background:${bg}">
         <td style="padding:8px 10px">${item.nome}</td>
         <td style="padding:8px 10px;width:130px">
           <input type="number" min="0" step="0.1"
@@ -1952,6 +1966,26 @@ function renderInventario() {
     html += `</tbody></table>`;
   });
   document.getElementById('inventarioTabela').innerHTML = html;
+  atualizarProgresso();
+}
+
+// Filtra a tabela já montada (por categoria e/ou busca) só escondendo linhas —
+// nunca reconstrói o HTML, então nada do que foi digitado se perde.
+function renderInventario() {
+  const filtro = document.getElementById('invFiltroCat').value;
+  const busca = document.getElementById('invBusca').value.toLowerCase().trim();
+  document.querySelectorAll('#inventarioTabela tr[data-cat]').forEach(tr => {
+    const matchCat = !filtro || tr.getAttribute('data-cat') === filtro;
+    const matchBusca = !busca || tr.getAttribute('data-nome').includes(busca);
+    tr.style.display = (matchCat && matchBusca) ? '' : 'none';
+  });
+  document.querySelectorAll('#inventarioTabela table[data-cat-table]').forEach(tbl => {
+    const cat = tbl.getAttribute('data-cat-table');
+    const temVisivel = [...tbl.querySelectorAll('tr')].some(tr => tr.style.display !== 'none');
+    tbl.style.display = temVisivel ? '' : 'none';
+    const titulo = document.querySelector(`.inv-cat-title[data-cat="${CSS.escape(cat)}"]`);
+    if (titulo) titulo.style.display = temVisivel ? '' : 'none';
+  });
 }
 
 function atualizarProgresso() {
@@ -2069,34 +2103,26 @@ async function iniciarEntradas() {
   }
   const selCatSaida = document.getElementById('saidaCategoria');
   if (selCatSaida && selCatSaida.options.length === 0) {
-    Object.keys(CATALOGO).forEach(cat => {
-      const opt = document.createElement('option'); opt.value=cat; opt.textContent=cat; selCatSaida.appendChild(opt);
-    });
+    popularSelectCategorias(selCatSaida, false);
     popularItensSaida();
   }
   // Populate saldo filter
-  const sel = document.getElementById('saldoFiltroCat');
-  if (sel.options.length === 0) {
-    const allOpt = document.createElement('option'); allOpt.value=''; allOpt.textContent='Todas as categorias'; sel.appendChild(allOpt);
-    Object.keys(CATALOGO).forEach(cat => {
-      const opt = document.createElement('option'); opt.value=cat; opt.textContent=cat; sel.appendChild(opt);
-    });
-  }
-  renderSaldoInicial();
+  popularSelectCategorias(document.getElementById('saldoFiltroCat'));
+  renderSaldoInicialTabela();
   popularCategoriasEntrada();
   loadEstoqueEHistorico();
   renderRelatorioFornecedor();
 }
 
-function renderSaldoInicial() {
-  const filtro = document.getElementById('saldoFiltroCat').value;
-  const busca = (document.getElementById('saldaBusca') || document.getElementById('saldoBusca'))?.value?.toLowerCase() || '';
-  const cats = filtro ? { [filtro]: CATALOGO[filtro] } : CATALOGO;
+// Monta a tabela de saldo inicial UMA vez, com todos os itens. A busca e o
+// filtro de categoria (renderSaldoInicial, abaixo) só escondem/mostram linhas —
+// nunca recriam os campos, então valores já digitados não somem mais.
+function renderSaldoInicialTabela() {
   let html = `<div style="max-height:320px;overflow-y:auto;border:1px solid #eee;border-radius:6px"><table style="font-size:13px"><thead><tr><th>Item</th><th style="width:120px">Saldo atual (un.)</th></tr></thead><tbody>`;
-  Object.entries(cats).forEach(([cat, items]) => {
-    items.filter(i => !busca || i.nome.toLowerCase().includes(busca)).forEach(item => {
+  Object.entries(CATALOGO).forEach(([cat, items]) => {
+    items.forEach(item => {
       const saldo = saldoAtual[item.id] !== undefined ? saldoAtual[item.id] : item.estoqueCentral;
-      html += `<tr>
+      html += `<tr data-cat="${cat}" data-nome="${item.nome.toLowerCase()}">
         <td style="padding:5px 10px">${item.nome} <span class="small">(${cat})</span></td>
         <td style="padding:5px 10px"><input type="number" min="0" value="${saldo}" id="saldo_${item.id}" style="width:90px;padding:4px 6px;font-size:13px"></td>
       </tr>`;
@@ -2104,6 +2130,17 @@ function renderSaldoInicial() {
   });
   html += `</tbody></table></div>`;
   document.getElementById('saldoInicialTable').innerHTML = html;
+}
+
+// Filtra a tabela já montada, só escondendo linhas (mesma lógica do inventário).
+function renderSaldoInicial() {
+  const filtro = document.getElementById('saldoFiltroCat').value;
+  const busca = document.getElementById('saldoBusca')?.value?.toLowerCase().trim() || '';
+  document.querySelectorAll('#saldoInicialTable tr[data-cat]').forEach(tr => {
+    const matchCat = !filtro || tr.getAttribute('data-cat') === filtro;
+    const matchBusca = !busca || tr.getAttribute('data-nome').includes(busca);
+    tr.style.display = (matchCat && matchBusca) ? '' : 'none';
+  });
 }
 
 async function salvarSaldoInicial() {
@@ -2185,18 +2222,7 @@ function getItemState(id, item) {
 
 async function iniciarGestaoItens() {
   await loadItemState();
-  const sel = document.getElementById('filtroCategoria');
-  if (sel.options.length === 0) {
-    const allOpt = document.createElement('option');
-    allOpt.value = ''; allOpt.textContent = 'Todas as categorias';
-    sel.appendChild(allOpt);
-    // Só categorias visíveis às lojas (+ Produção p/ controle interno)
-    Object.keys(CATALOGO).forEach(cat => {
-      const opt = document.createElement('option');
-      opt.value = cat; opt.textContent = cat;
-      sel.appendChild(opt);
-    });
-  }
+  popularSelectCategorias(document.getElementById('filtroCategoria'));
   renderGestaoItens();
 }
 
@@ -2337,16 +2363,10 @@ async function registrarSaidaAvulsa() {
   }
 }
 
-function popularItensSaida_alias() {} // placeholder
-
 function popularCategoriasEntrada() {
   const sel = document.getElementById('entradaCategoria');
   if (sel.options.length > 0) { popularItensEntrada(); return; }
-  Object.keys(CATALOGO).forEach(cat => {
-    const opt = document.createElement('option');
-    opt.value = cat; opt.textContent = cat;
-    sel.appendChild(opt);
-  });
+  popularSelectCategorias(sel, false);
   popularItensEntrada();
 }
 
@@ -2678,39 +2698,76 @@ window.addEventListener('load', () => {
   setTimeout(() => { restaurarSessao(); }, 500);
 });
 
+// Lista de pedido agrupada por categoria em blocos recolhíveis (<details>), pra
+// não ficar uma lista enorme e única na tela do celular. A busca (filtrarCatalogoLoja)
+// e o modo de ajuste de pedido só mostram/escondem linhas ou abrem categorias —
+// nunca recriam os campos de quantidade, então nada do que foi digitado se perde.
+const CATEGORIAS_OCULTAS_LOJA_PEDIDO = ["Produção / Insumos"];
+
 function renderCatalog() {
   const wrap = document.getElementById('catalog');
   wrap.innerHTML = "";
-  const CATEGORIAS_OCULTAS_LOJA = ["Produção / Insumos"];
   Object.keys(CATALOGO).forEach(cat => {
-    if (CATEGORIAS_OCULTAS_LOJA.includes(cat)) return;
+    if (CATEGORIAS_OCULTAS_LOJA_PEDIDO.includes(cat)) return;
     const itensVisiveis = CATALOGO[cat].filter(item => {
       const st = itemState[item.id];
       // Só oculta se explicitamente marcado como false — qualquer outro caso mostra
       return !st || st.disponivel !== false;
     });
     if (itensVisiveis.length === 0) return;
-    const title = document.createElement('div');
-    title.className = "cat-title";
-    title.textContent = cat;
-    wrap.appendChild(title);
+    const details = document.createElement('details');
+    details.className = 'cat-details';
+    details.dataset.cat = cat;
+    const summary = document.createElement('summary');
+    summary.className = 'cat-title';
+    summary.textContent = `${cat} (${itensVisiveis.length})`;
+    details.appendChild(summary);
     itensVisiveis.forEach(item => {
       const preco = (itemState[item.id]?.venda || item.preco);
       const cod = item.cod ? `[${item.cod}] ` : '';
       const row = document.createElement('div');
       row.className = "item-row";
+      row.dataset.nome = item.nome.toLowerCase();
       row.innerHTML = `
         <span class="item-name"><span style="color:#888;font-size:12px">${cod}</span>${item.nome} <span class="small">(R$ ${preco.toFixed(2).replace('.',',')})</span></span>
         <input type="number" min="0" class="item-qtd" id="qtd_${item.id}" value="0" oninput="updateOrderTotal()">
       `;
-      wrap.appendChild(row);
+      details.appendChild(row);
     });
+    wrap.appendChild(details);
   });
   const totalBar = document.createElement('div');
   totalBar.className = "flex-between";
   totalBar.style = "margin-top:16px;padding:12px 14px;background:#F5F0FB;border-radius:8px;font-weight:600;";
   totalBar.innerHTML = `<span>Valor estimado do pedido</span><span id="orderTotalValue">R$ 0,00</span>`;
   wrap.appendChild(totalBar);
+  const btnAlt = document.getElementById('btnAlternarCategorias');
+  if (btnAlt) btnAlt.textContent = 'Expandir tudo';
+  const buscaEl = document.getElementById('catalogBusca');
+  if (buscaEl) buscaEl.value = '';
+}
+
+// Só esconde linhas que não batem com a busca e abre automaticamente as
+// categorias que têm resultado — os campos de quantidade nunca são recriados.
+function filtrarCatalogoLoja() {
+  const busca = document.getElementById('catalogBusca').value.toLowerCase().trim();
+  document.querySelectorAll('#catalog details.cat-details').forEach(det => {
+    let temVisivel = false;
+    det.querySelectorAll('.item-row').forEach(row => {
+      const match = !busca || row.dataset.nome.includes(busca);
+      row.style.display = match ? '' : 'none';
+      if (match) temVisivel = true;
+    });
+    det.style.display = temVisivel ? '' : 'none';
+    if (busca) det.open = temVisivel;
+  });
+}
+
+function alternarTodasCategorias() {
+  const btn = document.getElementById('btnAlternarCategorias');
+  const abrirTudo = btn.textContent.includes('Expandir');
+  document.querySelectorAll('#catalog details.cat-details').forEach(d => { d.open = abrirTudo; });
+  btn.textContent = abrirTudo ? 'Recolher tudo' : 'Expandir tudo';
 }
 
 const DIAS_SEMANA_NOMES = ['domingo','segunda-feira','terça-feira','quarta-feira','quinta-feira','sexta-feira','sábado'];
@@ -2824,11 +2881,17 @@ function renderInsumosProducao() {
   const wrap = document.getElementById('prodInsumos');
   wrap.innerHTML = ficha.insumos.map(ins => `
     <div>
-      <label style="font-size:12px">${ins.nome} (${ins.unidade}) — R$ ${ins.custoPorKg.toFixed(2)}/${ins.unidade}</label>
-      <input type="number" min="0" step="0.01" id="ins_${ins.id}"
-        value="${ins.qtdPadrao}"
-        oninput="calcularCustoProducao()"
-        style="width:100%;padding:6px 8px;font-size:13px;border:1px solid #ccc;border-radius:6px">
+      <label style="font-size:12px">${ins.nome} — referência R$ ${ins.custoPorKg.toFixed(2)}/${ins.unidade}</label>
+      <div style="display:flex;gap:6px">
+        <input type="number" min="0" step="0.01" id="ins_${ins.id}"
+          value="${ins.qtdPadrao}" title="Quantidade (${ins.unidade})" placeholder="Qtd (${ins.unidade})"
+          oninput="calcularCustoProducao()"
+          style="flex:1;min-width:0;padding:6px 8px;font-size:13px;border:1px solid #ccc;border-radius:6px">
+        <input type="number" min="0" step="0.01" id="custo_${ins.id}"
+          value="${ins.custoPorKg.toFixed(2)}" title="Custo real pago (R$/${ins.unidade}) neste lote"
+          oninput="calcularCustoProducao()"
+          style="width:90px;padding:6px 8px;font-size:13px;border:1px solid #ccc;border-radius:6px">
+      </div>
     </div>
   `).join('');
   calcularCustoProducao();
@@ -2841,15 +2904,21 @@ function calcularCustoProducao() {
   const excedente = parseFloat(document.getElementById('prodExcedente').value) || 0;
   if (caixas <= 0) { document.getElementById('prodResultado').style.display = 'none'; return; }
 
-  // Soma custo dos insumos
+  // Soma custo dos insumos usando o valor REAL pago neste lote (editável), e em
+  // paralelo o que custaria pelo preço de referência — a diferença é a economia.
   let custoInsumos = 0;
+  let custoInsumosReferencia = 0;
   ficha.insumos.forEach(ins => {
     const qtd = parseFloat(document.getElementById('ins_' + ins.id)?.value) || 0;
-    custoInsumos += qtd * ins.custoPorKg;
+    const custoRealDigitado = parseFloat(document.getElementById('custo_' + ins.id)?.value);
+    const custoUnit = isNaN(custoRealDigitado) ? ins.custoPorKg : custoRealDigitado;
+    custoInsumos += qtd * custoUnit;
+    custoInsumosReferencia += qtd * ins.custoPorKg;
   });
 
   const custoCaixas = caixas * CUSTO_CAIXA_PAPELAO;
   const custoTotal = custoInsumos + custoCaixas;
+  const custoTotalReferencia = custoInsumosReferencia + custoCaixas;
   const custoPorCaixa = custoTotal / caixas;
   const custoPorKg = custoPorCaixa / PESO_CAIXA;
   const margem = ficha.precoVenda - custoPorCaixa;
@@ -2861,6 +2930,9 @@ function calcularCustoProducao() {
   }, 0);
   const rendimento = kgEntrou > 0 ? ((kgTotal / kgEntrou) * 100).toFixed(1) : 0;
 
+  const economiaTotal = custoTotalReferencia - custoTotal;
+  const economiaPorCaixa = economiaTotal / caixas;
+
   document.getElementById('prodResultado').style.display = 'block';
   document.getElementById('prodCustoTotal').textContent = `R$ ${custoTotal.toFixed(2).replace('.',',')}`;
   document.getElementById('prodCustoCaixa').textContent = `R$ ${custoPorCaixa.toFixed(2).replace('.',',')}`;
@@ -2869,8 +2941,13 @@ function calcularCustoProducao() {
   document.getElementById('prodMargem').textContent = `R$ ${margem.toFixed(2).replace('.',',')}`;
   document.getElementById('prodMargemPct').textContent = `${margemPct.toFixed(1)}%`;
   document.getElementById('prodMargemPct').style.color = margemPct >= 30 ? '#2E7D32' : '#C62828';
-  document.getElementById('prodRendimento').textContent =
-    `Rendimento do lote: ${kgEntrou.toFixed(1)}kg de insumos → ${kgTotal.toFixed(1)}kg produzidos (${rendimento}%)${excedente > 0 ? ` • ${excedente}kg de excedente para próximo lote` : ''}`;
+  let rendimentoHtml = `Rendimento do lote: ${kgEntrou.toFixed(1)}kg de insumos → ${kgTotal.toFixed(1)}kg produzidos (${rendimento}%)${excedente > 0 ? ` • ${excedente}kg de excedente para próximo lote` : ''}`;
+  if (Math.abs(economiaTotal) >= 0.01) {
+    const cor = economiaTotal >= 0 ? '#2E7D32' : '#C62828';
+    const rotulo = economiaTotal >= 0 ? '💰 Economia' : '⚠️ Custo a mais';
+    rendimentoHtml += `<br><strong style="color:${cor}">${rotulo} neste lote: R$ ${Math.abs(economiaTotal).toFixed(2).replace('.',',')} (R$ ${Math.abs(economiaPorCaixa).toFixed(2).replace('.',',')}/caixa) comparado ao custo de referência</strong>`;
+  }
+  document.getElementById('prodRendimento').innerHTML = rendimentoHtml;
 }
 
 async function salvarProducao() {
@@ -2880,6 +2957,7 @@ async function salvarProducao() {
   const excedente = parseFloat(document.getElementById('prodExcedente').value) || 0;
   const reaproveitado = parseFloat(document.getElementById('prodReaproveitado').value) || 0;
   const responsavel = document.getElementById('prodResponsavel').value.trim();
+  const origemObs = document.getElementById('prodOrigem')?.value.trim() || '';
   const msgEl = document.getElementById('prodMsg');
 
   if (caixas <= 0) { msgEl.textContent = 'Informe o número de caixas produzidas.'; return; }
@@ -2887,25 +2965,37 @@ async function salvarProducao() {
 
   const insumos = {};
   let custoInsumos = 0;
+  let custoInsumosReferencia = 0;
   ficha.insumos.forEach(ins => {
     const qtd = parseFloat(document.getElementById('ins_' + ins.id)?.value) || 0;
-    insumos[ins.id] = { nome: ins.nome, qtd, unidade: ins.unidade, custoPorKg: ins.custoPorKg };
-    custoInsumos += qtd * ins.custoPorKg;
+    const custoRealDigitado = parseFloat(document.getElementById('custo_' + ins.id)?.value);
+    const custoUnit = isNaN(custoRealDigitado) ? ins.custoPorKg : custoRealDigitado;
+    insumos[ins.id] = { nome: ins.nome, qtd, unidade: ins.unidade, custoPorKg: custoUnit, custoReferencia: ins.custoPorKg };
+    custoInsumos += qtd * custoUnit;
+    custoInsumosReferencia += qtd * ins.custoPorKg;
   });
 
   const custoCaixas = caixas * CUSTO_CAIXA_PAPELAO;
   const custoTotal = custoInsumos + custoCaixas;
+  const custoTotalReferencia = custoInsumosReferencia + custoCaixas;
   const custoPorCaixa = custoTotal / caixas;
+
+  const kgTotal = (caixas * PESO_CAIXA) + excedente;
+  const kgEntrou = ficha.insumos.reduce((s, ins) => s + (parseFloat(document.getElementById('ins_' + ins.id)?.value) || 0), 0);
+  const rendimentoPct = kgEntrou > 0 ? +((kgTotal / kgEntrou) * 100).toFixed(1) : 0;
+  const economiaTotal = custoTotalReferencia - custoTotal;
 
   const lote = {
     base, nomeBase: ficha.nome,
     data: new Date().toISOString(),
-    responsavel, insumos,
+    responsavel, origemObs, insumos,
     caixas, excedente, reaproveitado,
+    kgEntrou, kgTotal, rendimentoPct,
     custoTotal, custoPorCaixa,
     custoKg: custoPorCaixa / PESO_CAIXA,
     margemBruta: ficha.precoVenda - custoPorCaixa,
-    margemPct: ((ficha.precoVenda - custoPorCaixa) / ficha.precoVenda * 100)
+    margemPct: ((ficha.precoVenda - custoPorCaixa) / ficha.precoVenda * 100),
+    economiaTotal, economiaPorCaixa: economiaTotal / caixas
   };
 
   msgEl.textContent = 'Salvando...';
@@ -2934,6 +3024,7 @@ async function salvarProducao() {
     document.getElementById('prodExcedente').value = 0;
     document.getElementById('prodReaproveitado').value = 0;
     document.getElementById('prodResponsavel').value = '';
+    if (document.getElementById('prodOrigem')) document.getElementById('prodOrigem').value = '';
     document.getElementById('prodResultado').style.display = 'none';
     renderInsumosProducao();
     carregarHistoricoProducao();
@@ -2968,24 +3059,43 @@ async function carregarHistoricoProducao() {
     return;
   }
 
-  let html = `<table><thead><tr>
+  // Economia acumulada (só lotes que já têm esse dado — lotes antigos não têm)
+  const economiaAcumulada = lotes.reduce((s,l) => s + (l.economiaTotal || 0), 0);
+  let resumoHtml = '';
+  if (Math.abs(economiaAcumulada) >= 0.01) {
+    const cor = economiaAcumulada >= 0 ? '#2E7D32' : '#C62828';
+    const bgResumo = economiaAcumulada >= 0 ? '#E8F5E9' : '#FFEBEE';
+    const rotulo = economiaAcumulada >= 0 ? '💰 Economia acumulada' : '⚠️ Custo acumulado a mais';
+    resumoHtml = `<div style="background:${bgResumo};border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:14px">
+      <strong style="color:${cor}">${rotulo} nos lotes com custo real registrado: R$ ${Math.abs(economiaAcumulada).toFixed(2).replace('.',',')}</strong>
+    </div>`;
+  }
+
+  let html = resumoHtml + `<table><thead><tr>
     <th>Data</th><th>Base</th><th>Caixas</th>
     <th style="text-align:right">Custo/cx</th>
     <th style="text-align:right">Margem/cx</th>
     <th style="text-align:right">Margem %</th>
+    <th style="text-align:right">Rendimento</th>
+    <th style="text-align:right">Economia</th>
     <th>Responsável</th>
   </tr></thead><tbody>`;
 
   lotes.forEach((l, idx) => {
     const bg = idx % 2 === 0 ? '#fff' : '#F9F6FF';
     const corMargem = l.margemPct >= 35 ? '#2E7D32' : l.margemPct >= 25 ? '#F57F17' : '#C62828';
+    const economiaTxt = (l.economiaTotal === undefined)
+      ? '<span class="small">—</span>'
+      : `<span style="color:${l.economiaTotal>=0?'#2E7D32':'#C62828'};font-weight:600">${l.economiaTotal>=0?'+':'-'}R$ ${Math.abs(l.economiaTotal).toFixed(2).replace('.',',')}</span>`;
     html += `<tr style="background:${bg}">
       <td>${new Date(l.data).toLocaleDateString('pt-BR')}</td>
-      <td>${l.nomeBase}</td>
+      <td>${l.nomeBase}${l.origemObs ? ` <span class="small">(${l.origemObs})</span>` : ''}</td>
       <td style="text-align:center">${l.caixas}cx${l.excedente > 0 ? ' +'+l.excedente+'kg' : ''}</td>
       <td style="text-align:right">R$ ${l.custoPorCaixa.toFixed(2).replace('.',',')}</td>
       <td style="text-align:right">R$ ${l.margemBruta.toFixed(2).replace('.',',')}</td>
       <td style="text-align:right;font-weight:700;color:${corMargem}">${l.margemPct.toFixed(1)}%</td>
+      <td style="text-align:right">${l.rendimentoPct ? l.rendimentoPct + '%' : '<span class="small">—</span>'}</td>
+      <td style="text-align:right">${economiaTxt}</td>
       <td>${l.responsavel}</td>
     </tr>`;
   });
@@ -3000,6 +3110,8 @@ async function carregarHistoricoProducao() {
     <td style="text-align:right">R$ ${mediaCustoCaixa.toFixed(2).replace('.',',')}</td>
     <td></td>
     <td style="text-align:right;color:#5B2D8E">${mediaMargemPct.toFixed(1)}%</td>
+    <td></td>
+    <td style="text-align:right;color:${economiaAcumulada>=0?'#2E7D32':'#C62828'}">${economiaAcumulada!==0 ? (economiaAcumulada>=0?'+':'-')+'R$ '+Math.abs(economiaAcumulada).toFixed(2).replace('.',',') : ''}</td>
     <td></td>
   </tr>`;
   html += `</tbody></table>`;
@@ -3542,56 +3654,6 @@ async function verificarBoletosUnidade(unidade) {
   return { bloqueioManual, atrasados, vencendoHoje };
 }
 
-async function gerarPedidoTeste() {
-  const msgEl = document.getElementById('loginError');
-  msgEl.style.color = "#5B2D8E";
-  msgEl.textContent = "Gerando pedidos de teste...";
-
-  const weekKey = await getCurrentWeekKey();
-  const CATEGORIAS_OCULTAS_LOJA = ["Produção / Insumos"];
-  const allItems = Object.entries(CATALOGO)
-    .filter(([cat]) => !CATEGORIAS_OCULTAS_LOJA.includes(cat))
-    .flatMap(([, items]) => items);
-
-  const exemplos = [
-    { unidade: "PIEDADE", pick: [0, 3, 7, 15, 22], entrega: "Entrega" },
-    { unidade: "FPS", pick: [1, 4, 8, 16, 23, 30], entrega: "Retirada" },
-    { unidade: "CARUARU", pick: [2, 5, 9, 17, 24, 31, 35], entrega: "Entrega" },
-  ];
-
-  for (const ex of exemplos) {
-    const itens = {};
-    ex.pick.forEach((idx, i) => {
-      const item = allItems[idx % allItems.length];
-      const qtd = (i + 1) * 2;
-      const preco = itemState[item.id]?.venda || item.preco;
-      itens[item.id] = { nome: item.nome, qtd, preco, total: +(qtd * preco).toFixed(2) };
-    });
-    const pedido = {
-      unidade: ex.unidade, semana: weekKey,
-      dataEnvio: new Date().toISOString(),
-      tipoEntrega: ex.entrega, itens
-    };
-    try {
-      await safeSet(`pedido:${weekKey}:${ex.unidade}`, JSON.stringify(pedido), true);
-    } catch (e) {
-      msgEl.style.color = "#C62828";
-      msgEl.textContent = "Erro ao gerar pedido de teste: " + e.message;
-      return;
-    }
-  }
-
-  msgEl.textContent = "Pedidos de teste criados! Abrindo o painel...";
-  setTimeout(() => {
-    currentUser = "Franqueadora (Admin)";
-    currentRole = "admin";
-    document.getElementById('loginScreen').classList.add('hidden');
-    document.getElementById('logoutBtn').style.display = 'inline-block';
-    document.getElementById('topbarSub').textContent = "Painel da Franqueadora";
-    document.getElementById('adminScreen').classList.remove('hidden');
-    loadAdminData();
-  }, 600);
-}
 
 async function getCurrentWeekKey() {
   const now = new Date();
@@ -3732,6 +3794,7 @@ async function submitOrder(urgencia = false) {
       const el = document.getElementById('qtd_' + item.id);
       if (el) el.value = 0;
     });
+    document.querySelectorAll('#catalog details.cat-details').forEach(det => { det.open = false; });
     if (document.getElementById('pedidoObservacao')) document.getElementById('pedidoObservacao').value = '';
     const itensAvulsosWrap = document.getElementById('itensAvulsosLista');
     if (itensAvulsosWrap) itensAvulsosWrap.innerHTML = '';
