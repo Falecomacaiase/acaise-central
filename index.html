@@ -735,7 +735,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.20-2";
+const APP_VERSION = "2026.08.20-3";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -2869,6 +2869,12 @@ const FICHAS = {
 const CUSTO_CAIXA_PAPELAO = 6.00;
 const PESO_CAIXA = 8; // kg
 
+// Identifica o insumo "açaí" da ficha (id começa com "barra") — é o único cujo
+// preço muda de fornecedor pra fornecedor (ex: compra direto do Pará).
+function insumoAcaiDe(ficha) {
+  return ficha.insumos.find(ins => ins.id.startsWith('barra'));
+}
+
 function iniciarProducao() {
   document.getElementById('prodBase').onchange = () => renderInsumosProducao();
   renderInsumosProducao();
@@ -2933,6 +2939,16 @@ function calcularCustoProducao() {
   const economiaTotal = custoTotalReferencia - custoTotal;
   const economiaPorCaixa = economiaTotal / caixas;
 
+  // Custo específico do açaí (a barra) neste lote — separado do custo por caixa
+  // (que já inclui caixa de papelão + demais insumos), pra responder direto
+  // "a quanto saiu o açaí" e comparar com o preço antigo.
+  const insAcai = insumoAcaiDe(ficha);
+  const qtdAcai = insAcai ? (parseFloat(document.getElementById('ins_' + insAcai.id)?.value) || 0) : 0;
+  const custoAcaiDigitado = insAcai ? parseFloat(document.getElementById('custo_' + insAcai.id)?.value) : NaN;
+  const custoAcaiKg = insAcai ? (isNaN(custoAcaiDigitado) ? insAcai.custoPorKg : custoAcaiDigitado) : 0;
+  const economiaAcaiPorKg = insAcai ? (insAcai.custoPorKg - custoAcaiKg) : 0;
+  const economiaAcaiTotal = economiaAcaiPorKg * qtdAcai;
+
   document.getElementById('prodResultado').style.display = 'block';
   document.getElementById('prodCustoTotal').textContent = `R$ ${custoTotal.toFixed(2).replace('.',',')}`;
   document.getElementById('prodCustoCaixa').textContent = `R$ ${custoPorCaixa.toFixed(2).replace('.',',')}`;
@@ -2942,10 +2958,18 @@ function calcularCustoProducao() {
   document.getElementById('prodMargemPct').textContent = `${margemPct.toFixed(1)}%`;
   document.getElementById('prodMargemPct').style.color = margemPct >= 30 ? '#2E7D32' : '#C62828';
   let rendimentoHtml = `Rendimento do lote: ${kgEntrou.toFixed(1)}kg de insumos → ${kgTotal.toFixed(1)}kg produzidos (${rendimento}%)${excedente > 0 ? ` • ${excedente}kg de excedente para próximo lote` : ''}`;
+  if (insAcai && qtdAcai > 0) {
+    rendimentoHtml += `<br>🫐 Açaí (${insAcai.nome}) neste lote: <strong>R$ ${custoAcaiKg.toFixed(2).replace('.',',')}/kg</strong> pago agora, contra <strong>R$ ${insAcai.custoPorKg.toFixed(2).replace('.',',')}/kg</strong> do preço anterior.`;
+    if (Math.abs(economiaAcaiTotal) >= 0.01) {
+      const corAcai = economiaAcaiTotal >= 0 ? '#2E7D32' : '#C62828';
+      const rotuloAcai = economiaAcaiTotal >= 0 ? '💰 Economia só do açaí' : '⚠️ Açaí saiu mais caro';
+      rendimentoHtml += `<br><strong style="color:${corAcai}">${rotuloAcai} neste lote: R$ ${Math.abs(economiaAcaiTotal).toFixed(2).replace('.',',')} (${qtdAcai.toFixed(1)}kg × R$ ${Math.abs(economiaAcaiPorKg).toFixed(2).replace('.',',')}/kg)</strong>`;
+    }
+  }
   if (Math.abs(economiaTotal) >= 0.01) {
     const cor = economiaTotal >= 0 ? '#2E7D32' : '#C62828';
-    const rotulo = economiaTotal >= 0 ? '💰 Economia' : '⚠️ Custo a mais';
-    rendimentoHtml += `<br><strong style="color:${cor}">${rotulo} neste lote: R$ ${Math.abs(economiaTotal).toFixed(2).replace('.',',')} (R$ ${Math.abs(economiaPorCaixa).toFixed(2).replace('.',',')}/caixa) comparado ao custo de referência</strong>`;
+    const rotulo = economiaTotal >= 0 ? '💰 Economia total do lote' : '⚠️ Custo total a mais';
+    rendimentoHtml += `<br><strong style="color:${cor}">${rotulo} (todos os insumos): R$ ${Math.abs(economiaTotal).toFixed(2).replace('.',',')} (R$ ${Math.abs(economiaPorCaixa).toFixed(2).replace('.',',')}/caixa)</strong>`;
   }
   document.getElementById('prodRendimento').innerHTML = rendimentoHtml;
 }
@@ -2985,6 +3009,14 @@ async function salvarProducao() {
   const rendimentoPct = kgEntrou > 0 ? +((kgTotal / kgEntrou) * 100).toFixed(1) : 0;
   const economiaTotal = custoTotalReferencia - custoTotal;
 
+  // Custo do açaí (a barra) isolado do resto — "a quanto saiu o açaí pra gente"
+  const insAcai = insumoAcaiDe(ficha);
+  const qtdAcai = insAcai ? (parseFloat(document.getElementById('ins_' + insAcai.id)?.value) || 0) : 0;
+  const custoAcaiKg = insAcai ? (insumos[insAcai.id]?.custoPorKg ?? insAcai.custoPorKg) : 0;
+  const custoAcaiReferenciaKg = insAcai ? insAcai.custoPorKg : 0;
+  const economiaAcaiPorKg = custoAcaiReferenciaKg - custoAcaiKg;
+  const economiaAcaiTotal = economiaAcaiPorKg * qtdAcai;
+
   const lote = {
     base, nomeBase: ficha.nome,
     data: new Date().toISOString(),
@@ -2995,7 +3027,9 @@ async function salvarProducao() {
     custoKg: custoPorCaixa / PESO_CAIXA,
     margemBruta: ficha.precoVenda - custoPorCaixa,
     margemPct: ((ficha.precoVenda - custoPorCaixa) / ficha.precoVenda * 100),
-    economiaTotal, economiaPorCaixa: economiaTotal / caixas
+    economiaTotal, economiaPorCaixa: economiaTotal / caixas,
+    qtdAcaiKg: qtdAcai, custoAcaiKg, custoAcaiReferenciaKg,
+    economiaAcaiPorKg, economiaAcaiTotal
   };
 
   msgEl.textContent = 'Salvando...';
@@ -3059,38 +3093,46 @@ async function carregarHistoricoProducao() {
     return;
   }
 
-  // Economia acumulada (só lotes que já têm esse dado — lotes antigos não têm)
-  const economiaAcumulada = lotes.reduce((s,l) => s + (l.economiaTotal || 0), 0);
+  // Economia acumulada — especificamente do açaí, comparado ao preço anterior
+  // (R$17,50/kg no artesanal, R$15,50/kg no mel). Só lotes com custo real
+  // registrado entram nessa conta; lotes antigos (antes desse ajuste) ficam de fora.
+  const economiaAcumulada = lotes.reduce((s,l) => s + (l.economiaAcaiTotal ?? l.economiaTotal ?? 0), 0);
   let resumoHtml = '';
   if (Math.abs(economiaAcumulada) >= 0.01) {
     const cor = economiaAcumulada >= 0 ? '#2E7D32' : '#C62828';
     const bgResumo = economiaAcumulada >= 0 ? '#E8F5E9' : '#FFEBEE';
-    const rotulo = economiaAcumulada >= 0 ? '💰 Economia acumulada' : '⚠️ Custo acumulado a mais';
+    const rotulo = economiaAcumulada >= 0 ? '💰 Economia acumulada com o açaí' : '⚠️ Custo acumulado a mais com o açaí';
     resumoHtml = `<div style="background:${bgResumo};border-radius:8px;padding:12px 16px;margin-bottom:14px;font-size:14px">
-      <strong style="color:${cor}">${rotulo} nos lotes com custo real registrado: R$ ${Math.abs(economiaAcumulada).toFixed(2).replace('.',',')}</strong>
+      <strong style="color:${cor}">${rotulo} (comparado ao preço anterior de R$17,50/kg): R$ ${Math.abs(economiaAcumulada).toFixed(2).replace('.',',')}</strong>
     </div>`;
   }
 
   let html = resumoHtml + `<table><thead><tr>
     <th>Data</th><th>Base</th><th>Caixas</th>
+    <th style="text-align:right">Custo açaí (R$/kg)</th>
     <th style="text-align:right">Custo/cx</th>
     <th style="text-align:right">Margem/cx</th>
     <th style="text-align:right">Margem %</th>
     <th style="text-align:right">Rendimento</th>
-    <th style="text-align:right">Economia</th>
+    <th style="text-align:right">Economia açaí</th>
     <th>Responsável</th>
   </tr></thead><tbody>`;
 
   lotes.forEach((l, idx) => {
     const bg = idx % 2 === 0 ? '#fff' : '#F9F6FF';
     const corMargem = l.margemPct >= 35 ? '#2E7D32' : l.margemPct >= 25 ? '#F57F17' : '#C62828';
-    const economiaTxt = (l.economiaTotal === undefined)
+    const economiaAcai = l.economiaAcaiTotal;
+    const economiaTxt = (economiaAcai === undefined)
       ? '<span class="small">—</span>'
-      : `<span style="color:${l.economiaTotal>=0?'#2E7D32':'#C62828'};font-weight:600">${l.economiaTotal>=0?'+':'-'}R$ ${Math.abs(l.economiaTotal).toFixed(2).replace('.',',')}</span>`;
+      : `<span style="color:${economiaAcai>=0?'#2E7D32':'#C62828'};font-weight:600">${economiaAcai>=0?'+':'-'}R$ ${Math.abs(economiaAcai).toFixed(2).replace('.',',')}</span>`;
+    const custoAcaiTxt = (l.custoAcaiKg === undefined)
+      ? '<span class="small">—</span>'
+      : `R$ ${l.custoAcaiKg.toFixed(2).replace('.',',')}`;
     html += `<tr style="background:${bg}">
       <td>${new Date(l.data).toLocaleDateString('pt-BR')}</td>
       <td>${l.nomeBase}${l.origemObs ? ` <span class="small">(${l.origemObs})</span>` : ''}</td>
       <td style="text-align:center">${l.caixas}cx${l.excedente > 0 ? ' +'+l.excedente+'kg' : ''}</td>
+      <td style="text-align:right">${custoAcaiTxt}</td>
       <td style="text-align:right">R$ ${l.custoPorCaixa.toFixed(2).replace('.',',')}</td>
       <td style="text-align:right">R$ ${l.margemBruta.toFixed(2).replace('.',',')}</td>
       <td style="text-align:right;font-weight:700;color:${corMargem}">${l.margemPct.toFixed(1)}%</td>
@@ -3105,8 +3147,8 @@ async function carregarHistoricoProducao() {
   const mediaMargemPct = lotes.reduce((s,l)=>s+l.margemPct,0) / lotes.length;
   const mediaCustoCaixa = lotes.reduce((s,l)=>s+l.custoPorCaixa,0) / lotes.length;
   html += `<tr style="background:#EDE7F6;font-weight:700">
-    <td colspan="2">Média / Total</td>
-    <td style="text-align:center">${totalCaixas} caixas</td>
+    <td colspan="3">Média / Total</td>
+    <td></td>
     <td style="text-align:right">R$ ${mediaCustoCaixa.toFixed(2).replace('.',',')}</td>
     <td></td>
     <td style="text-align:right;color:#5B2D8E">${mediaMargemPct.toFixed(1)}%</td>
