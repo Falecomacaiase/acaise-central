@@ -736,7 +736,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.20-5";
+const APP_VERSION = "2026.08.21-1";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -980,12 +980,9 @@ carregarUnidadesExtrasNoLogin();
 async function carregarProdutosExtrasNoInicio() {
   try {
     await loadExtraProdutos();
-    console.log('🔎 DIAGNÓSTICO extraProdutos — quantidade:', extraProdutos.length);
-    console.log('🔎 DIAGNÓSTICO extraProdutos — conteúdo:', JSON.stringify(extraProdutos, null, 2));
     mesclarExtraProdutosNoCatalogo();
-    console.log('🔎 DIAGNÓSTICO Embalagens após mesclar:', CATALOGO['Embalagens'].map(i => i.nome));
   } catch(e) {
-    console.error('🔎 DIAGNÓSTICO erro ao carregar extraProdutos:', e);
+    console.error('Erro ao carregar produtos extras:', e);
   }
 }
 carregarProdutosExtrasNoInicio();
@@ -1280,10 +1277,6 @@ async function loadExtraUnidades() {
   } catch(e) {}
 }
 
-async function saveExtraUnidades() {
-  await safeSet('extraUnidades', JSON.stringify(extraUnidades), true);
-}
-
 // Produtos cadastrados dinamicamente pela tela "Cadastrar novo produto". O
 // CATALOGO é uma constante fixa no arquivo — sem isso, um produto novo só
 // existia na memória da aba aberta e sumia assim que a página era recarregada
@@ -1295,10 +1288,6 @@ async function loadExtraProdutos() {
     const r = await safeGet('extraProdutos', true);
     if (r && r.value) extraProdutos = parseValue(r.value);
   } catch(e) {}
-}
-
-async function saveExtraProdutos() {
-  await safeSet('extraProdutos', JSON.stringify(extraProdutos), true);
 }
 
 function mesclarExtraProdutosNoCatalogo() {
@@ -1337,11 +1326,12 @@ async function cadastrarUnidade() {
   if (todosNomes.includes(nome)) { msgEl.textContent = 'Unidade já cadastrada.'; return; }
 
   const nova = { nome, tipo, responsavel, senha };
-  extraUnidades.push(nova);
   UNIDADES.push(nome);
   SENHAS[nome] = senha;
 
-  await saveExtraUnidades();
+  // Atômico — mesmo motivo do cadastro de produto (evita sobrescrever uma
+  // unidade cadastrada em outra aba/dispositivo quase ao mesmo tempo).
+  extraUnidades = await adicionarAListaAtomico('extraUnidades', nova, 'nome');
   populateUnitSelect();
 
   msgEl.style.color = '#2E7D32';
@@ -1401,10 +1391,12 @@ async function cadastrarNovoProduto() {
   itemState[id] = { disponivel: visivel, custo: custo||null, venda };
   await saveItemState();
 
-  // Persiste o produto de verdade no banco — sem isso ele só existia na
-  // memória desta aba e sumia ao recarregar a página ou em outro dispositivo.
-  extraProdutos.push({ id, cat, nome, preco: venda });
-  await saveExtraProdutos();
+  // Persiste o produto de verdade no banco, de forma ATÔMICA (transação) —
+  // lê a lista mais recente direto do Firestore na hora de salvar, então dois
+  // cadastros feitos quase juntos (duas abas, dois dispositivos) não se
+  // sobrescrevem mais. Sem isso, o produto podia "sumir" se outro cadastro
+  // tivesse salvado por cima da cópia da lista que estava na memória.
+  extraProdutos = await adicionarAListaAtomico('extraProdutos', { id, cat, nome, preco: venda }, 'id');
 
   msgEl.style.color = '#2E7D32';
   msgEl.textContent = `✅ Produto "${nome}" cadastrado em ${cat}!`;
@@ -2069,6 +2061,40 @@ async function ajustarSaldoAtomico(deltas) {
   saldoAtual = novoSaldo;
   if (_dataCache) _dataCache['saldoInicial'] = novoSaldo;
   return novoSaldo;
+}
+
+// Acrescenta um item a uma LISTA compartilhada (extraProdutos, extraUnidades...)
+// de forma ATÔMICA via transação do Firestore — mesmo princípio do
+// ajustarSaldoAtomico. Sem isso, "cadastrar produto" e "cadastrar unidade"
+// liam a lista inteira pra memória, adicionavam o item e salvavam tudo de
+// volta; se dois cadastros acontecessem quase juntos (duas abas, dois
+// dispositivos, ou até o mesmo admin com a tela aberta há um tempo com uma
+// cópia da lista em cache), o segundo salvamento sobrescrevia o primeiro e o
+// produto/unidade recém-cadastrado "sumia" — exatamente o sintoma relatado.
+// idField: campo usado pra checar duplicidade (não adiciona 2x o mesmo item).
+// Retorna a lista COMPLETA já atualizada.
+async function adicionarAListaAtomico(chave, novoItem, idField = 'id') {
+  const docRef = _col.doc(toDocId(chave));
+  const listaAtualizada = await _db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(docRef);
+    let atual = [];
+    if (snap.exists) {
+      let val = snap.data().value;
+      if (typeof val === 'string') { try { val = JSON.parse(val); } catch(e) { val = []; } }
+      atual = Array.isArray(val) ? val : [];
+    }
+    const jaExiste = idField && novoItem[idField] !== undefined
+      && atual.some(i => i[idField] === novoItem[idField]);
+    if (!jaExiste) atual.push(novoItem);
+    transaction.set(docRef, {
+      value: JSON.stringify(atual),
+      originalKey: chave,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    return atual;
+  });
+  if (_dataCache) _dataCache[chave] = listaAtualizada;
+  return listaAtualizada;
 }
 
 // Helper: garante que o valor seja objeto mesmo se vier como string JSON
