@@ -736,7 +736,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.20-4";
+const APP_VERSION = "2026.08.20-5";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -2781,14 +2781,14 @@ function renderPrazoPedidoBanner() {
   if (!el) return;
   const info = calcularProximaEntrega(currentUser);
   if (!info) {
-    el.innerHTML = `<span style="font-size:13px;color:#5B2D8E;font-weight:600;">⏱ Pedimos pelo menos 24h de antecedência — as entregas são realizadas em até 48h após a confirmação do pedido. Para não faltar item em loja, use o PEDIDO URGÊNCIA (retirada no mesmo dia na central).</span>`;
+    el.innerHTML = `<span style="font-size:13px;color:#5B2D8E;font-weight:600;">⏱ Pedimos pelo menos 24h de antecedência — as entregas são realizadas em até 48h após a confirmação do pedido. Hoje contamos com apenas 1 carro para todas as rotas, então quanto antes o pedido chegar, melhor conseguimos organizar. Para não faltar item em loja, use o PEDIDO URGÊNCIA (retirada no mesmo dia na central).</span>`;
     return;
   }
   const dEntrega = info.dataEntrega.toLocaleDateString('pt-BR');
   const nomeEntrega = DIAS_SEMANA_NOMES[info.dataEntrega.getDay()];
   const dPrazo = info.prazoAjuste.toLocaleDateString('pt-BR');
   const nomePrazo = DIAS_SEMANA_NOMES[info.prazoAjuste.getDay()];
-  el.innerHTML = `<span style="font-size:13px;color:#5B2D8E">⏱ Sua próxima entrega: <strong>${nomeEntrega}, ${dEntrega}</strong>. Lance ou ajuste seu pedido até <strong>21h de ${nomePrazo}, ${dPrazo}</strong> — pedimos pelo menos 24h de antecedência pra conseguirmos organizar a separação. Depois desse horário, só é possível <strong>PEDIDO URGÊNCIA</strong> (retirada no mesmo dia, apenas para não faltar item em loja).</span>`;
+  el.innerHTML = `<span style="font-size:13px;color:#5B2D8E">⏱ Sua próxima entrega: <strong>${nomeEntrega}, ${dEntrega}</strong>. Lance ou ajuste seu pedido até <strong>21h de ${nomePrazo}, ${dPrazo}</strong> — pedimos pelo menos 24h de antecedência pra conseguirmos organizar a separação. Hoje contamos com apenas <strong>1 carro</strong> para todas as rotas, então pedidos com antecedência ajudam a manter sua loja 100% abastecida. Depois do prazo, só é possível <strong>PEDIDO URGÊNCIA</strong> (retirada no mesmo dia, apenas para não faltar item em loja).</span>`;
 }
 
 const VALOR_MINIMO_PEDIDO = 300;
@@ -3773,6 +3773,22 @@ async function submitOrder(urgencia = false) {
   if (Object.keys(itens).length === 0 && itensAvulsos.length === 0) {
     msgEl.textContent = "Marque ao menos um item (ou adicione um item fora do catálogo) antes de enviar.";
     return;
+  }
+
+  // Reforço do prazo de entrega no ato da confirmação — não se aplica a
+  // urgência (que já é a exceção pra quando falta algo na hora).
+  if (!urgencia) {
+    const confirmaPrazo = confirm(
+      "⏱ Lembrete: sua entrega acontece em até 48h após o envio do pedido.\n\n" +
+      "Hoje contamos com apenas 1 carro para todas as rotas, então pedidos feitos com antecedência ajudam a manter sua loja sempre abastecida.\n\n" +
+      "Se for algo urgente que não pode esperar, cancele e use o botão PEDIDO URGÊNCIA.\n\n" +
+      "Confirma o envio deste pedido?"
+    );
+    if (!confirmaPrazo) {
+      msgEl.style.color = '#555';
+      msgEl.textContent = "Envio cancelado.";
+      return;
+    }
   }
 
   const total = Object.values(itens).reduce((s,i)=>s+(i.total||0),0);
