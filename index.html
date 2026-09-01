@@ -379,6 +379,7 @@
       <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
         <button class="btn btn-secondary" onclick="reativarTodosItens()">✅ Reativar todos os itens</button>
         <button class="btn btn-secondary" onclick="sincronizarPrecosCatalogo()" style="background:#FFF8E1;border:1px solid #FFE082">🔄 Sincronizar preços do catálogo</button>
+        <button class="btn btn-secondary" onclick="exportarCatalogoCSV()" style="background:#E8F5E9;border:1px solid #A5D6A7">📥 Exportar lista completa (Excel/CSV)</button>
       </div>
       <div id="syncMsg" class="small" style="margin-bottom:8px"></div>
 
@@ -736,7 +737,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.21-1";
+const APP_VERSION = "2026.08.21-3";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -2257,7 +2258,26 @@ async function iniciarGestaoItens() {
 function renderGestaoItens() {
   const filtro = document.getElementById('filtroCategoria').value;
   const cats = filtro ? { [filtro]: CATALOGO[filtro] } : CATALOGO;
-  let html = `<table><thead><tr>
+
+  // Aviso: item disponível pra loja com preço R$0,00 quase sempre é falta de
+  // cadastro de preço, não item realmente gratuito — some no romaneio como
+  // "zerado" e só é percebido tarde. Mostra um alerta destacado no topo.
+  const itensZerados = [];
+  Object.entries(cats).forEach(([cat, items]) => {
+    items.forEach(item => {
+      const st = getItemState(item.id, item);
+      if (st.disponivel && !(st.venda || item.preco)) itensZerados.push(item.nome);
+    });
+  });
+  let avisoHtml = '';
+  if (itensZerados.length > 0) {
+    avisoHtml = `<div style="background:#FFEBEE;border-left:4px solid #C62828;border-radius:0 6px 6px 0;padding:10px 14px;margin-bottom:14px;font-size:13px">
+      <strong style="color:#C62828">⚠️ ${itensZerados.length} item(ns) disponível(is) com preço R$0,00:</strong>
+      <span style="color:#C62828"> ${itensZerados.join(', ')}</span> — provavelmente falta cadastrar o preço. Use "✏️ Preços" pra corrigir.
+    </div>`;
+  }
+
+  let html = avisoHtml + `<table><thead><tr>
     <th>Item</th><th>Categoria</th>
     <th>Custo (R$)</th><th>Venda (R$)</th>
     <th>Disponível</th><th>Ação</th>
@@ -2267,12 +2287,14 @@ function renderGestaoItens() {
       const st = getItemState(item.id, item);
       const disp = st.disponivel;
       const custo = st.custo !== null ? st.custo.toFixed(2) : '—';
-      const venda = (st.venda || item.preco).toFixed(2);
-      html += `<tr style="${!disp ? 'opacity:.5' : ''}">
-        <td>${item.nome}</td>
+      const precoVenda = st.venda || item.preco || 0;
+      const venda = precoVenda.toFixed(2);
+      const zerado = disp && !precoVenda;
+      html += `<tr style="${!disp ? 'opacity:.5' : ''}${zerado ? 'background:#FFF3E0' : ''}">
+        <td>${item.nome}${zerado ? ' <span title="Preço não cadastrado" style="color:#C62828">⚠️</span>' : ''}</td>
         <td class="small">${cat}</td>
         <td>R$ ${custo}</td>
-        <td><strong>R$ ${venda}</strong></td>
+        <td><strong style="${zerado ? 'color:#C62828' : ''}">R$ ${venda}</strong></td>
         <td>
           <label class="toggle">
             <input type="checkbox" ${disp ? 'checked' : ''} onchange="toggleDisponivel('${item.id}', this.checked)">
@@ -2285,6 +2307,52 @@ function renderGestaoItens() {
   });
   html += `</tbody></table>`;
   document.getElementById('gestaoItensTable').innerHTML = html;
+}
+
+// Exporta a lista COMPLETA de itens (catálogo base + produtos cadastrados
+// depois, já mesclados em CATALOGO) para um arquivo CSV que abre direto no
+// Excel — sem precisar printar a tela. Ponto e vírgula como separador e BOM
+// UTF-8 pra acentuação não quebrar no Excel em português.
+function exportarCatalogoCSV() {
+  const CATEGORIAS_INTERNAS = ["Produção / Insumos"];
+  const linhas = [
+    ['Categoria', 'Código', 'Nome do item', 'Preço de venda (R$)', 'Custo (R$)', 'Disponível para franqueados', 'Fornecedor', 'Estoque mínimo']
+  ];
+  Object.entries(CATALOGO).forEach(([cat, items]) => {
+    const visivelCategoria = CATEGORIAS_INTERNAS.includes(cat) ? 'Não (uso interno)' : null;
+    items.forEach(item => {
+      const st = getItemState(item.id, item);
+      const disponivel = visivelCategoria || (st.disponivel ? 'Sim' : 'Não (pausado)');
+      linhas.push([
+        cat,
+        item.cod ?? '—',
+        item.nome,
+        (st.venda ?? item.preco).toFixed(2).replace('.', ','),
+        st.custo !== null && st.custo !== undefined ? st.custo.toFixed(2).replace('.', ',') : '',
+        disponivel,
+        item.fornecedor || '—',
+        item.estoqueMin ?? ''
+      ]);
+    });
+  });
+
+  const csv = linhas.map(linha =>
+    linha.map(campo => {
+      const texto = String(campo ?? '');
+      return /[;"\n]/.test(texto) ? '"' + texto.replace(/"/g, '""') + '"' : texto;
+    }).join(';')
+  ).join('\r\n');
+
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const hoje = new Date().toISOString().slice(0,10);
+  a.href = url;
+  a.download = `Catalogo_AcaiSe_${hoje}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 async function toggleDisponivel(itemId, valor) {
