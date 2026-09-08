@@ -517,6 +517,48 @@
       <button class="btn" onclick="gerarRelatorio()">🔍 Gerar relatório</button>
       <button class="btn btn-secondary" onclick="window.print()" style="margin-left:8px">🖨️ Imprimir</button>
       <div id="relatorioResultado" style="margin-top:20px"></div>
+
+      <hr style="margin:28px 0;border:none;border-top:2px solid #EDE7F6">
+
+      <!-- GIRO POR ITEM -->
+      <h3 style="margin-bottom:4px">📦 Giro por item</h3>
+      <p class="small">Veja quanto de um item específico foi fornecido — por loja ou no total — num período fechado. Ex: quanto de Leite Condensado a C. Dourada pediu em agosto.</p>
+
+      <div style="display:grid;grid-template-columns:1.4fr 1fr 1fr 1fr;gap:12px;margin-bottom:16px;flex-wrap:wrap">
+        <div class="field">
+          <label>Item</label>
+          <input type="text" id="relItemBusca" list="relItemLista" placeholder="Ex: Leite Condensado">
+          <datalist id="relItemLista"></datalist>
+        </div>
+        <div class="field">
+          <label>Unidade</label>
+          <select id="relItemFiltroUnidade">
+            <option value="">Todas as unidades</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Mês</label>
+          <select id="relItemFiltroMes">
+            <option value="">Todos</option>
+            <option value="01">Janeiro</option><option value="02">Fevereiro</option>
+            <option value="03">Março</option><option value="04">Abril</option>
+            <option value="05">Maio</option><option value="06">Junho</option>
+            <option value="07">Julho</option><option value="08">Agosto</option>
+            <option value="09">Setembro</option><option value="10">Outubro</option>
+            <option value="11">Novembro</option><option value="12">Dezembro</option>
+          </select>
+        </div>
+        <div class="field">
+          <label>Ano</label>
+          <select id="relItemFiltroAno">
+            <option value="2026">2026</option>
+            <option value="2027">2027</option>
+          </select>
+        </div>
+      </div>
+
+      <button class="btn" onclick="gerarRelatorioItem()">🔍 Buscar giro do item</button>
+      <div id="relatorioItemResultado" style="margin-top:20px"></div>
     </div>
 
     <!-- ABA: BOLETOS -->
@@ -737,7 +779,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.21-4";
+const APP_VERSION = "2026.08.21-5";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -1750,6 +1792,136 @@ async function iniciarRelatorios() {
   const now = new Date();
   document.getElementById('relFiltroMes').value = String(now.getMonth()+1).padStart(2,'0');
   document.getElementById('relFiltroAno').value = String(now.getFullYear());
+
+  // Giro por item — mesmo padrão, mais o datalist com todos os itens do catálogo
+  const selItem = document.getElementById('relItemFiltroUnidade');
+  if (selItem && selItem.options.length <= 1) {
+    [...UNIDADES, ...extraUnidades.map(u=>u.nome)].forEach(u => {
+      const opt = document.createElement('option'); opt.value=u; opt.textContent=u; selItem.appendChild(opt);
+    });
+  }
+  const datalist = document.getElementById('relItemLista');
+  if (datalist && datalist.options.length === 0) {
+    Object.values(CATALOGO).flat().forEach(item => {
+      const opt = document.createElement('option'); opt.value = item.nome; datalist.appendChild(opt);
+    });
+  }
+  const mesEl = document.getElementById('relItemFiltroMes');
+  const anoEl = document.getElementById('relItemFiltroAno');
+  if (mesEl) mesEl.value = String(now.getMonth()+1).padStart(2,'0');
+  if (anoEl) anoEl.value = String(now.getFullYear());
+}
+
+// Remove acentos e caixa pra comparar nomes de item sem depender de digitar
+// exatamente igual (ex: "acai" encontra "Açaí").
+function normalizarTexto(s) {
+  return (s || '').toString().toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').trim();
+}
+
+async function gerarRelatorioItem() {
+  const termo = normalizarTexto(document.getElementById('relItemBusca').value);
+  const unidade = document.getElementById('relItemFiltroUnidade').value;
+  const mes = document.getElementById('relItemFiltroMes').value;
+  const ano = document.getElementById('relItemFiltroAno').value;
+  const el = document.getElementById('relatorioItemResultado');
+
+  if (!termo) { el.innerHTML = '<p class="small">Digite o nome do item que quer consultar.</p>'; return; }
+  el.innerHTML = '<p class="small">Carregando...</p>';
+
+  let todosPedidos = [];
+  try {
+    const list = await safeList('pedido:', true);
+    if (list && list.keys) {
+      for (const k of list.keys) {
+        try {
+          const r = await safeGet(k, true);
+          if (r && r.value) todosPedidos.push(parseValue(r.value));
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  const pedidosFiltrados = todosPedidos.filter(p => {
+    const data = new Date(p.dataEnvio);
+    const mesOk = !mes || String(data.getMonth()+1).padStart(2,'0') === mes;
+    const anoOk = !ano || String(data.getFullYear()) === ano;
+    const unidOk = !unidade || p.unidade === unidade;
+    return mesOk && anoOk && unidOk;
+  });
+
+  // Pra cada pedido, junta as ocorrências do item buscado (pode até bater mais
+  // de um item do mesmo pedido, se o nome for parecido — ex: buscar "Açaí").
+  const ocorrencias = [];
+  pedidosFiltrados.forEach(p => {
+    Object.values(p.itens || {}).forEach(it => {
+      if (normalizarTexto(it.nome).includes(termo)) {
+        ocorrencias.push({
+          unidade: p.unidade, data: p.dataEnvio, numeroPedido: p.numeroPedido,
+          nome: it.nome, qtd: it.qtd || 0, total: it.total || 0
+        });
+      }
+    });
+  });
+
+  const nomeMes = document.getElementById('relItemFiltroMes').selectedOptions[0]?.textContent || 'Todos';
+
+  if (ocorrencias.length === 0) {
+    el.innerHTML = `<p class="small">Nenhum item batendo com "${document.getElementById('relItemBusca').value}" encontrado no período ${nomeMes}/${ano}${unidade ? ' — ' + unidade : ''}.</p>`;
+    return;
+  }
+
+  ocorrencias.sort((a,b) => new Date(a.data) - new Date(b.data));
+  const qtdTotal = ocorrencias.reduce((s,o)=>s+o.qtd, 0);
+  const valorTotal = ocorrencias.reduce((s,o)=>s+o.total, 0);
+
+  let html = `<div style="border-bottom:2px solid #5B2D8E;padding-bottom:10px;margin-bottom:16px">
+    <div style="font-size:18px;font-weight:700;color:#5B2D8E">Giro — "${document.getElementById('relItemBusca').value}"</div>
+    <div class="small">Período: ${nomeMes}/${ano} &nbsp;•&nbsp; ${unidade || 'Todas as unidades'} &nbsp;•&nbsp; ${ocorrencias.length} lançamento(s)</div>
+  </div>`;
+
+  html += `<div style="display:flex;gap:12px;flex-wrap:wrap;margin-bottom:18px">
+    <div style="flex:1;min-width:180px;background:#F5F0FB;border-radius:8px;padding:14px">
+      <div style="color:#888;font-size:11px">QUANTIDADE TOTAL FORNECIDA</div>
+      <div style="font-weight:700;font-size:22px;color:#5B2D8E">${qtdTotal}</div>
+    </div>
+    <div style="flex:1;min-width:180px;background:#F5F0FB;border-radius:8px;padding:14px">
+      <div style="color:#888;font-size:11px">VALOR TOTAL</div>
+      <div style="font-weight:700;font-size:22px;color:#5B2D8E">R$ ${valorTotal.toFixed(2).replace('.',',')}</div>
+    </div>
+  </div>`;
+
+  // Se "todas as unidades", mostra o comparativo por loja antes do detalhe
+  if (!unidade) {
+    const porUnidade = {};
+    ocorrencias.forEach(o => {
+      if (!porUnidade[o.unidade]) porUnidade[o.unidade] = { qtd: 0, total: 0 };
+      porUnidade[o.unidade].qtd += o.qtd;
+      porUnidade[o.unidade].total += o.total;
+    });
+    const linhasUnidade = Object.entries(porUnidade).sort((a,b) => b[1].qtd - a[1].qtd);
+    html += `<h4 style="margin-bottom:8px">Por unidade</h4>
+      <table style="margin-bottom:20px"><thead><tr><th>Unidade</th><th style="text-align:right">Quantidade</th><th style="text-align:right">Valor</th></tr></thead><tbody>`;
+    linhasUnidade.forEach(([nome, dados]) => {
+      html += `<tr><td>${nome}</td><td style="text-align:right">${dados.qtd}</td><td style="text-align:right">R$ ${dados.total.toFixed(2).replace('.',',')}</td></tr>`;
+    });
+    html += `</tbody></table>`;
+  }
+
+  html += `<h4 style="margin-bottom:8px">Detalhe por pedido</h4>
+    <table><thead><tr><th>Data</th><th>Pedido</th>${!unidade ? '<th>Unidade</th>' : ''}<th>Item</th><th style="text-align:right">Qtd</th><th style="text-align:right">Total</th></tr></thead><tbody>`;
+  ocorrencias.forEach(o => {
+    html += `<tr>
+      <td>${new Date(o.data).toLocaleDateString('pt-BR')}</td>
+      <td>${o.numeroPedido || '—'}</td>
+      ${!unidade ? `<td>${o.unidade}</td>` : ''}
+      <td>${o.nome}</td>
+      <td style="text-align:right">${o.qtd}</td>
+      <td style="text-align:right">R$ ${o.total.toFixed(2).replace('.',',')}</td>
+    </tr>`;
+  });
+  html += `</tbody></table>`;
+
+  el.innerHTML = html;
 }
 
 async function gerarRelatorio() {
