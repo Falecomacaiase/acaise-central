@@ -33,6 +33,12 @@
         <h2 id="tituloMesCalendario">—</h2>
         <button class="btn-texto" id="btnMesSeguinte">▶</button>
       </div>
+
+      <div class="legenda-marcas">
+        <span><span class="bolinha" style="background:#E3CFDE;"></span> Açaí-se</span>
+        <span><span class="bolinha" style="background:#F4C6BC;"></span> Play Pizza</span>
+      </div>
+
       <div class="calendario-dias-semana">
         <div>Dom</div><div>Seg</div><div>Ter</div><div>Qua</div><div>Qui</div><div>Sex</div><div>Sáb</div>
       </div>
@@ -56,7 +62,7 @@
       <label for="evTitulo">Título do evento</label>
       <input type="text" id="evTitulo" placeholder="Ex: Ativação de rua, treinamento de equipe...">
 
-      <label for="evLoja">Loja</label>
+      <label for="evLoja">Loja / marca</label>
       <select id="evLoja"></select>
 
       <label for="evDataInicio">Data</label>
@@ -65,10 +71,13 @@
       <label for="evDataFim">Data final (se o evento durar mais de um dia)</label>
       <input type="date" id="evDataFim">
 
+      <label for="evHorarioInicio">Horário que começa</label>
+      <input type="time" id="evHorarioInicio">
+
       <label for="evTipoAcao">Tipo de ação</label>
       <input type="text" id="evTipoAcao" placeholder="Ex: parceria com influencer, ação esportiva...">
 
-      <label for="evPessoasEsperadas">Pessoas esperadas</label>
+      <label for="evPessoasEsperadas">Pessoas esperadas (tamanho do evento)</label>
       <input type="number" id="evPessoasEsperadas" min="0" placeholder="Ex: 150">
 
       <label for="evMaterialNecessario">Material necessário (pra fábrica se programar)</label>

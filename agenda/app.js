@@ -21,6 +21,10 @@ function formatarData(d) {
   const [a, m, dia] = d.split('-');
   return `${dia}/${m}/${a}`;
 }
+function formatarHorario(h) {
+  if (!h) return '';
+  return h.substring(0, 5); // "14:30:00" -> "14:30"
+}
 function nomeDoMes(mesStr) {
   const [a, m] = mesStr.split('-').map(Number);
   const nomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
@@ -40,6 +44,9 @@ function getInicioFimMes(mesStr) {
   const ultimoDia = new Date(ano, mes, 0).getDate();
   const fim = `${mesStr}-${String(ultimoDia).padStart(2, '0')}`;
   return { inicio, fim };
+}
+function marcaDaLoja(loja) {
+  return LOJAS_MARCA_VERMELHA.includes(loja) ? 'playpizza' : 'acaise';
 }
 
 // ---------- permissão (trava simples, não é segurança forte) ----------
@@ -106,17 +113,14 @@ function mesAdjacente(mes, delta) {
   const d = new Date(ano, m - 1 + delta, 1);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
-
 function diasNoMes(mes) {
   const [ano, m] = mes.split('-').map(Number);
   return new Date(ano, m, 0).getDate();
 }
-
 function diaDaSemanaDoPrimeiro(mes) {
   const [ano, m] = mes.split('-').map(Number);
-  return new Date(ano, m - 1, 1).getDay(); // 0 = domingo
+  return new Date(ano, m - 1, 1).getDay();
 }
-
 function contadorDeDias(dataStr) {
   const hoje = hojeISO();
   if (dataStr === hoje) return { texto: 'é hoje', classe: 'hoje-marcador' };
@@ -142,16 +146,15 @@ async function renderAgenda() {
 function renderCalendario() {
   document.getElementById('tituloMesCalendario').textContent = nomeDoMes(state.mesCalendario);
 
-  const eventosPorDia = {};
+  const marcasPorDia = {};
   state.eventos.forEach(e => {
     const inicio = e.data_inicio;
     const fim = e.data_fim || e.data_inicio;
-    // marca todos os dias entre início e fim (evento de vários dias aparece em cada dia)
     let cursor = new Date(inicio + 'T00:00:00');
     const fimData = new Date(fim + 'T00:00:00');
     while (cursor <= fimData) {
       const chave = `${cursor.getFullYear()}-${String(cursor.getMonth() + 1).padStart(2, '0')}-${String(cursor.getDate()).padStart(2, '0')}`;
-      (eventosPorDia[chave] = eventosPorDia[chave] || []).push(e);
+      (marcasPorDia[chave] = marcasPorDia[chave] || new Set()).add(marcaDaLoja(e.loja));
       cursor.setDate(cursor.getDate() + 1);
     }
   });
@@ -166,14 +169,19 @@ function renderCalendario() {
   }
   for (let dia = 1; dia <= totalDias; dia++) {
     const dataStr = `${state.mesCalendario}-${String(dia).padStart(2, '0')}`;
-    const qtd = (eventosPorDia[dataStr] || []).length;
+    const marcas = marcasPorDia[dataStr];
     const classes = ['dia-celula'];
     if (dataStr === hoje) classes.push('hoje');
+    if (marcas) {
+      if (marcas.has('acaise') && marcas.has('playpizza')) classes.push('marca-mista');
+      else if (marcas.has('playpizza')) classes.push('marca-playpizza');
+      else classes.push('marca-acaise');
+    }
     if (dataStr === state.diaSelecionado) classes.push('selecionado');
-    if (qtd > 0) classes.push('tem-evento');
+    const qtdEventosNoDia = state.eventos.filter(e => dataStr >= e.data_inicio && dataStr <= (e.data_fim || e.data_inicio)).length;
     celulas += `<div class="${classes.join(' ')}" data-data="${dataStr}">
       ${dia}
-      ${qtd > 1 ? `<span class="num-eventos">${qtd}</span>` : ''}
+      ${qtdEventosNoDia > 1 ? `<span class="num-eventos">${qtdEventosNoDia}</span>` : ''}
     </div>`;
   }
 
@@ -194,7 +202,7 @@ function renderDetalheDia() {
   const eventosNoDia = state.eventos.filter(e => {
     const fim = e.data_fim || e.data_inicio;
     return state.diaSelecionado >= e.data_inicio && state.diaSelecionado <= fim;
-  });
+  }).sort((a, b) => (a.horario_inicio || '99:99').localeCompare(b.horario_inicio || '99:99'));
 
   const contador = contadorDeDias(state.diaSelecionado);
   const cabecalho = `<div class="contador-dias ${contador.classe}">${contador.texto}</div>
@@ -216,9 +224,10 @@ function renderEventoCard(e) {
     ? `${formatarData(e.data_inicio)} a ${formatarData(e.data_fim)}`
     : formatarData(e.data_inicio);
   const editavel = podeEditar(e);
-  return `<div class="evento-card">
-    <div class="titulo-evento">${escapeHtml(e.titulo)}</div>
-    <div class="detalhe">📍 ${escapeHtml(e.loja)} · ${periodo}</div>
+  const marca = marcaDaLoja(e.loja);
+  return `<div class="evento-card ${marca === 'playpizza' ? 'marca-playpizza' : ''}">
+    <div class="titulo-evento">${escapeHtml(e.titulo)} ${marca === 'playpizza' ? '<span class="tag vermelha">Play Pizza</span>' : ''}</div>
+    <div class="detalhe">📍 ${escapeHtml(e.loja)} · ${periodo}${e.horario_inicio ? ' · 🕐 ' + formatarHorario(e.horario_inicio) : ''}</div>
     ${e.tipo_acao ? `<div class="detalhe">${escapeHtml(e.tipo_acao)}</div>` : ''}
     ${e.pessoas_esperadas ? `<div class="detalhe">👥 ${e.pessoas_esperadas} pessoas esperadas</div>` : ''}
     ${e.material_necessario ? `<div class="detalhe">📦 ${escapeHtml(e.material_necessario)}</div>` : ''}
@@ -235,6 +244,7 @@ function abrirNovoEvento() {
   document.getElementById('evTitulo').value = '';
   document.getElementById('evDataInicio').value = state.diaSelecionado || hojeISO();
   document.getElementById('evDataFim').value = '';
+  document.getElementById('evHorarioInicio').value = '';
   document.getElementById('evTipoAcao').value = '';
   document.getElementById('evPessoasEsperadas').value = '';
   document.getElementById('evMaterialNecessario').value = '';
@@ -262,6 +272,7 @@ function abrirEditarEvento(evento) {
   document.getElementById('evTitulo').value = evento.titulo;
   document.getElementById('evDataInicio').value = evento.data_inicio;
   document.getElementById('evDataFim').value = evento.data_fim || '';
+  document.getElementById('evHorarioInicio').value = evento.horario_inicio ? evento.horario_inicio.substring(0, 5) : '';
   document.getElementById('evTipoAcao').value = evento.tipo_acao || '';
   document.getElementById('evPessoasEsperadas').value = evento.pessoas_esperadas || '';
   document.getElementById('evMaterialNecessario').value = evento.material_necessario || '';
@@ -281,6 +292,7 @@ async function salvarEvento() {
   const loja = document.getElementById('evLoja').value;
   const dataInicio = document.getElementById('evDataInicio').value;
   const dataFim = document.getElementById('evDataFim').value || null;
+  const horarioInicio = document.getElementById('evHorarioInicio').value || null;
   const tipoAcao = document.getElementById('evTipoAcao').value.trim();
   const pessoasEsperadas = document.getElementById('evPessoasEsperadas').value;
   const materialNecessario = document.getElementById('evMaterialNecessario').value.trim();
@@ -296,6 +308,7 @@ async function salvarEvento() {
     loja,
     data_inicio: dataInicio,
     data_fim: dataFim,
+    horario_inicio: horarioInicio,
     tipo_acao: tipoAcao || null,
     pessoas_esperadas: pessoasEsperadas ? parseInt(pessoasEsperadas, 10) : null,
     material_necessario: materialNecessario || null,
@@ -349,6 +362,11 @@ document.getElementById('btnNovoEvento').addEventListener('click', abrirNovoEven
 document.getElementById('btnVoltarAgenda').addEventListener('click', () => mudarView('agenda'));
 document.getElementById('btnSalvarEvento').addEventListener('click', salvarEvento);
 document.getElementById('btnExcluirEvento').addEventListener('click', excluirEvento);
+document.getElementById('filtroLoja').addEventListener('change', renderAgenda);
+document.getElementById('selLoja').addEventListener('change', () => {
+  localStorage.setItem('agenda_loja', document.getElementById('selLoja').value);
+  renderAgenda();
+});
 document.getElementById('btnMesAnterior').addEventListener('click', () => {
   state.mesCalendario = mesAdjacente(state.mesCalendario, -1);
   state.diaSelecionado = null;
@@ -357,11 +375,6 @@ document.getElementById('btnMesAnterior').addEventListener('click', () => {
 document.getElementById('btnMesSeguinte').addEventListener('click', () => {
   state.mesCalendario = mesAdjacente(state.mesCalendario, 1);
   state.diaSelecionado = null;
-  renderAgenda();
-});
-document.getElementById('filtroLoja').addEventListener('change', renderAgenda);
-document.getElementById('selLoja').addEventListener('change', () => {
-  localStorage.setItem('agenda_loja', document.getElementById('selLoja').value);
   renderAgenda();
 });
 

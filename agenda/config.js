@@ -9,11 +9,16 @@ const SUPABASE_CONFIG = {
 
 // Senha pra poder editar/excluir eventos de QUALQUER loja (uso da
 // franqueadora). Sem essa senha, cada um só edita os eventos da
-// própria loja selecionada. Troque antes de subir pro GitHub.
+// própria loja selecionada.
 const SENHA_FRANQUEADORA_AGENDA = "acaise2026admin";
 
 const LOJAS_ACAISE = [
   'Rede (todas as lojas)',
   'Boa Viagem', 'Bv2', 'Dona Lindu', 'Jaqueira', 'FPS', 'Caruaru', 'Piedade',
   'Graças', 'Porto de Galinhas', 'Costa Dourada', 'Paulista', 'Campina Grande', 'Setúbal',
+  'Play Pizza',
 ];
+
+// Lojas cujos eventos aparecem em vermelho no calendário (marca Play Pizza).
+// Tudo que não estiver aqui aparece roxo (Açaí-se).
+const LOJAS_MARCA_VERMELHA = ['Play Pizza'];

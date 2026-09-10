@@ -63,19 +63,6 @@ h1, h2, h3 {
 .app-header select option { color: var(--texto); }
 .app-header input::placeholder { color: #DCC0D5; }
 
-.nav-superior { display: none; gap: 8px; margin-top: 14px; }
-.nav-superior button {
-  background: rgba(255,255,255,0.12);
-  border: 1px solid rgba(255,255,255,0.3);
-  color: white;
-  padding: 8px 16px;
-  border-radius: 10px;
-  font-weight: 600;
-  font-size: 0.85rem;
-  cursor: pointer;
-}
-.nav-superior button.ativo { background: white; color: var(--roxo-acai); }
-
 main { padding: 16px; max-width: 640px; margin: 0 auto; }
 
 .view { display: none; }
@@ -103,7 +90,7 @@ label {
 }
 label:first-child { margin-top: 0; }
 
-input[type="text"], input[type="number"], input[type="date"], select, textarea {
+input[type="text"], input[type="number"], input[type="date"], input[type="time"], select, textarea {
   width: 100%;
   padding: 11px 12px;
   border-radius: 10px;
@@ -140,11 +127,6 @@ input:focus, select:focus, textarea:focus {
 .btn-pequeno { width: auto; padding: 8px 14px; font-size: 0.82rem; margin-top: 0; }
 .btn-texto { background: none; color: var(--texto-suave); font-weight: 600; padding: 6px; margin: 0; }
 
-.alerta { border-radius: 10px; padding: 12px 14px; font-size: 0.86rem; margin-top: 14px; font-weight: 500; }
-.alerta.aviso { background: var(--amarelo-bg); color: var(--amarelo); }
-.alerta.perigo { background: var(--vermelho-bg); color: var(--vermelho); }
-.alerta.ok { background: var(--verde-bg); color: var(--verde); }
-
 .tag {
   display: inline-block;
   font-size: 0.68rem;
@@ -156,6 +138,7 @@ input:focus, select:focus, textarea:focus {
   background: var(--creme);
   color: var(--roxo-acai-claro);
 }
+.tag.vermelha { background: var(--vermelho-bg); color: var(--vermelho); }
 
 .linha-filtros { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .linha-filtros select { flex: 1; min-width: 100px; padding: 9px 10px; font-size: 0.85rem; }
@@ -167,41 +150,11 @@ input:focus, select:focus, textarea:focus {
 
 .vazio { text-align: center; padding: 30px 16px; color: var(--texto-suave); font-size: 0.88rem; }
 
-.nav-inferior {
-  position: fixed;
-  bottom: 0; left: 0; right: 0;
-  background: white;
-  border-top: 1px solid var(--linha);
-  display: flex;
-  padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
-  box-shadow: 0 -2px 12px rgba(0,0,0,0.05);
-  z-index: 10;
-}
-.nav-item {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 3px;
-  padding: 8px 4px;
-  border-radius: 10px;
-  background: none;
-  border: none;
-  color: var(--texto-suave);
-  font-size: 0.68rem;
-  font-weight: 600;
-  cursor: pointer;
-}
-.nav-item.ativo { color: var(--roxo-acai); background: var(--creme); }
-.nav-item svg { width: 22px; height: 22px; }
+.legenda-marcas { display: flex; gap: 14px; margin-bottom: 12px; font-size: 0.76rem; color: var(--texto-suave); }
+.legenda-marcas span { display: inline-flex; align-items: center; gap: 5px; }
+.legenda-marcas .bolinha { width: 10px; height: 10px; border-radius: 3px; display: inline-block; }
 
-@media (min-width: 720px) {
-  .nav-inferior { display: none; }
-  body { padding-bottom: 30px; }
-  .nav-superior { display: flex !important; }
-}
-
-/* --- específico da agenda --- */
+/* --- calendário --- */
 .calendario-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 10px; }
 .calendario-header h2 { margin: 0; font-size: 1rem; text-transform: capitalize; }
 .calendario-header button {
@@ -236,26 +189,27 @@ input:focus, select:focus, textarea:focus {
   color: var(--texto);
 }
 .dia-celula.fora-do-mes { visibility: hidden; }
-.dia-celula.hoje { border: 2px solid var(--roxo-acai); font-weight: 700; }
-.dia-celula.selecionado { background: var(--roxo-acai); color: white; }
-.dia-celula.tem-evento::after {
-  content: '';
-  width: 5px; height: 5px;
-  border-radius: 50%;
-  background: var(--laranja);
-  position: absolute;
-  bottom: 6px;
+.dia-celula.hoje { box-shadow: inset 0 0 0 2px var(--roxo-acai); font-weight: 700; }
+
+/* cor do quadradinho conforme a marca do(s) evento(s) do dia */
+.dia-celula.marca-acaise { background: #E3CFDE; color: var(--roxo-acai); font-weight: 700; }
+.dia-celula.marca-playpizza { background: #F4C6BC; color: var(--vermelho); font-weight: 700; }
+.dia-celula.marca-mista {
+  background: linear-gradient(135deg, #E3CFDE 50%, #F4C6BC 50%);
+  color: var(--texto);
+  font-weight: 700;
 }
-.dia-celula.selecionado.tem-evento::after { background: white; }
+
+.dia-celula.selecionado { background: var(--roxo-acai) !important; color: white !important; }
+
 .dia-celula .num-eventos {
   font-size: 0.58rem;
   position: absolute;
   top: 3px;
   right: 5px;
-  color: var(--roxo-acai-claro);
   font-weight: 700;
+  opacity: 0.85;
 }
-.dia-celula.selecionado .num-eventos { color: #E4C9DD; }
 
 .contador-dias {
   display: inline-block;
@@ -278,6 +232,7 @@ input:focus, select:focus, textarea:focus {
   padding: 12px 14px;
   margin-bottom: 10px;
 }
+.evento-card.marca-playpizza { border-left-color: var(--vermelho); }
 .evento-card .titulo-evento { font-weight: 700; font-size: 0.95rem; color: var(--texto); }
 .evento-card .detalhe { font-size: 0.82rem; color: var(--texto-suave); margin-top: 2px; }
 .evento-card .linha-acoes { display: flex; gap: 8px; margin-top: 10px; }
@@ -293,3 +248,7 @@ input:focus, select:focus, textarea:focus {
 }
 .check-linha input[type="checkbox"] { width: 20px; height: 20px; accent-color: var(--roxo-acai); }
 .check-linha label { margin: 0; text-transform: none; font-size: 0.88rem; font-weight: 500; color: var(--texto); }
+
+@media (min-width: 720px) {
+  body { padding-bottom: 30px; }
+}
