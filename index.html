@@ -156,7 +156,7 @@
           oninput="this.setCustomValidity('');this.style.borderColor=this.value.trim()?'#2E7D32':'#C62828';this.style.background=this.value.trim()?'#F1FFF3':'#FFF5F5'">
         <p class="small" style="color:#C62828;margin:4px 0 0">⚠️ Campo obrigatório — sem nome o pedido não é enviado.</p>
       </div>
-      <div class="field">
+      <div class="field" id="campoTipoEntrega">
         <label>Tipo de entrega</label>
         <div style="display:flex;gap:20px;margin-top:6px">
           <label style="display:flex;align-items:center;gap:6px;font-weight:400;color:#333;font-size:14px;cursor:pointer;">
@@ -167,20 +167,23 @@
           </label>
         </div>
       </div>
-      <p class="small" style="margin-top:0">Marque as quantidades que sua unidade precisa. Toque no nome da categoria para abrir os itens. Itens indisponíveis aparecem desabilitados.</p>
-      <div style="display:flex;gap:8px;margin-bottom:10px">
-        <input type="text" id="catalogBusca" placeholder="🔍 Buscar item..." oninput="filtrarCatalogoLoja()" style="flex:1;padding:8px 10px;font-size:14px;border:1.5px solid #ddd;border-radius:6px">
-        <button type="button" class="btn btn-secondary btn-xs" onclick="alternarTodasCategorias()" id="btnAlternarCategorias" style="white-space:nowrap">Expandir tudo</button>
-      </div>
-      <div id="catalog"></div>
-      <div id="minimoAviso" class="hidden" style="background:#FFF8E1;border-left:3px solid #F57F17;padding:8px 12px;border-radius:4px;margin-top:12px;font-size:13px;color:#F57F17;font-weight:600">
-        ⚠️ Valor mínimo de pedido: R$ 300,00. Total atual: <span id="totalAtual">R$ 0,00</span>
+      <div id="secaoCatalogoLoja">
+        <p class="small" style="margin-top:0">Marque as quantidades que sua unidade precisa. Toque no nome da categoria para abrir os itens. Itens indisponíveis aparecem desabilitados.</p>
+        <div style="display:flex;gap:8px;margin-bottom:10px">
+          <input type="text" id="catalogBusca" placeholder="🔍 Buscar item..." oninput="filtrarCatalogoLoja()" style="flex:1;padding:8px 10px;font-size:14px;border:1.5px solid #ddd;border-radius:6px">
+          <button type="button" class="btn btn-secondary btn-xs" onclick="alternarTodasCategorias()" id="btnAlternarCategorias" style="white-space:nowrap">Expandir tudo</button>
+        </div>
+        <div id="catalog"></div>
+        <div id="minimoAviso" class="hidden" style="background:#FFF8E1;border-left:3px solid #F57F17;padding:8px 12px;border-radius:4px;margin-top:12px;font-size:13px;color:#F57F17;font-weight:600">
+          ⚠️ Valor mínimo de pedido: R$ 300,00. Total atual: <span id="totalAtual">R$ 0,00</span>
+        </div>
       </div>
 
-      <!-- ITENS FORA DO CATÁLOGO (sem preço — a franqueadora precifica ao processar) -->
+      <!-- ITENS FORA DO CATÁLOGO (sem preço — a franqueadora precifica ao processar).
+           Pra unidades internas (GALPÃO) essa vira a ÚNICA forma de pedir. -->
       <div style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:8px;padding:14px;margin-top:16px">
-        <div style="font-size:13px;font-weight:700;color:#1565C0;margin-bottom:8px">📦 Itens fora do catálogo</div>
-        <p class="small" style="margin:0 0 10px;color:#1565C0">Materiais de escritório, frutas ou qualquer outra demanda que não está na lista. Não precisa de preço — a franqueadora define o valor ao processar o pedido.</p>
+        <div style="font-size:13px;font-weight:700;color:#1565C0;margin-bottom:8px" id="itensAvulsosTitulo">📦 Itens fora do catálogo</div>
+        <p class="small" style="margin:0 0 10px;color:#1565C0" id="itensAvulsosDesc">Materiais de escritório, frutas ou qualquer outra demanda que não está na lista. Não precisa de preço — a franqueadora define o valor ao processar o pedido.</p>
         <div id="itensAvulsosLista"></div>
         <button type="button" class="btn btn-secondary btn-xs" onclick="adicionarLinhaItemAvulso()">➕ Adicionar item</button>
         <span class="small" id="itensAvulsosContador" style="margin-left:10px;color:#1565C0"></span>
@@ -235,7 +238,7 @@
       <button class="tab-btn" id="tabBtnItens" onclick="switchAdminTab('itens')">⚙️ Gestão de Itens</button>
       <button class="tab-btn" id="tabBtnCadastros" onclick="switchAdminTab('cadastros')">📝 Cadastros</button>
       <button class="tab-btn" id="tabBtnRelatorios" onclick="switchAdminTab('relatorios')">📊 Relatórios</button>
-      <button class="tab-btn" id="tabBtnBoletos" onclick="switchAdminTab('boletos')">💰 Boletos</button>
+      <button class="tab-btn" id="tabBtnBoletos" onclick="switchAdminTab('boletos')">🔒 Bloqueio de Pedidos</button>
       <button class="tab-btn" id="tabBtnProducao" onclick="switchAdminTab('producao')">🏭 Produção</button>
       <button class="tab-btn" id="tabBtnCompras" onclick="switchAdminTab('compras')">🛒 Lista de Compras</button>
       <button class="tab-btn" id="tabBtnLog" onclick="switchAdminTab('log')">📋 Log</button>
@@ -516,6 +519,7 @@
 
       <button class="btn" onclick="gerarRelatorio()">🔍 Gerar relatório</button>
       <button class="btn btn-secondary" onclick="window.print()" style="margin-left:8px">🖨️ Imprimir</button>
+      <button class="btn btn-secondary" onclick="exportarRelatorioCSV()" style="margin-left:8px;background:#E8F5E9;border:1px solid #A5D6A7">📥 Exportar CSV/Excel</button>
       <div id="relatorioResultado" style="margin-top:20px"></div>
 
       <hr style="margin:28px 0;border:none;border-top:2px solid #EDE7F6">
@@ -561,14 +565,14 @@
       <div id="relatorioItemResultado" style="margin-top:20px"></div>
     </div>
 
-    <!-- ABA: BOLETOS -->
+    <!-- ABA: BOLETOS / BLOQUEIO -->
     <div id="tabBoletos" class="hidden">
-      <p class="small">Controle de cobranças por unidade. Boletos em atraso bloqueiam automaticamente novos pedidos da unidade.</p>
+      <p class="small">A emissão e cobrança de boletos passou a ser controlada em outro sistema. Aqui fica só o bloqueio manual de pedidos, para travar uma unidade em caso de atraso no pagamento.</p>
 
       <!-- BLOQUEIO MANUAL -->
       <div style="background:#FFF3E0;border:1px solid #FFB74D;border-radius:8px;padding:14px;margin-bottom:16px">
         <h4 style="margin:0 0 8px;color:#E65100">🔒 Bloqueio manual de pedidos</h4>
-        <p class="small" style="margin:0 0 10px">Ative para bloquear completamente os pedidos de uma unidade, independente dos boletos.</p>
+        <p class="small" style="margin:0 0 10px">Ative para bloquear completamente os pedidos de uma unidade — por exemplo, quando houver atraso identificado no sistema de cobrança.</p>
         <div style="display:flex;gap:10px;flex-wrap:wrap">
           <select id="bloqueioUnidade" style="flex:1;min-width:180px"></select>
           <button class="btn" onclick="ativarBloqueio()" style="background:#E65100">🔒 Bloquear</button>
@@ -578,45 +582,50 @@
         <div id="bloqueiosAtivos" style="margin-top:8px"></div>
       </div>
 
-      <!-- NOVO BOLETO -->
-      <div style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:8px;padding:16px;margin-bottom:20px">
-        <h4 style="margin:0 0 12px;color:#2E7D32">➕ Registrar novo boleto</h4>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
-          <div class="field">
-            <label>Unidade</label>
-            <select id="boletoUnidade"></select>
+      <!-- BOLETOS: DESATIVADO — sistema de cobrança passou a rodar à parte.
+           HTML mantido oculto (não removido) só pra não perder o histórico salvo
+           no banco, caso um dia seja preciso consultar. -->
+      <div class="hidden">
+        <!-- NOVO BOLETO -->
+        <div style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:8px;padding:16px;margin-bottom:20px">
+          <h4 style="margin:0 0 12px;color:#2E7D32">➕ Registrar novo boleto</h4>
+          <div style="display:grid;grid-template-columns:1fr 1fr;gap:12px">
+            <div class="field">
+              <label>Unidade</label>
+              <select id="boletoUnidade"></select>
+            </div>
+            <div class="field">
+              <label>Valor (R$)</label>
+              <input type="number" id="boletoValor" min="0" step="0.01" placeholder="0,00">
+            </div>
+            <div class="field">
+              <label>Vencimento</label>
+              <input type="date" id="boletoVencimento">
+            </div>
+            <div class="field">
+              <label>Descrição</label>
+              <input type="text" id="boletoDesc" placeholder="Ex: Royalties Julho/2026">
+            </div>
           </div>
-          <div class="field">
-            <label>Valor (R$)</label>
-            <input type="number" id="boletoValor" min="0" step="0.01" placeholder="0,00">
-          </div>
-          <div class="field">
-            <label>Vencimento</label>
-            <input type="date" id="boletoVencimento">
-          </div>
-          <div class="field">
-            <label>Descrição</label>
-            <input type="text" id="boletoDesc" placeholder="Ex: Royalties Julho/2026">
-          </div>
+          <button class="btn" style="background:#2E7D32" onclick="criarBoleto()">Registrar boleto</button>
+          <div id="boletoMsg" class="small" style="margin-top:6px"></div>
         </div>
-        <button class="btn" style="background:#2E7D32" onclick="criarBoleto()">Registrar boleto</button>
-        <div id="boletoMsg" class="small" style="margin-top:6px"></div>
-      </div>
 
-      <!-- FILTRO -->
-      <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
-        <select id="boletoFiltroUnidade" onchange="renderBoletos()" style="flex:1;min-width:160px">
-          <option value="">Todas as unidades</option>
-        </select>
-        <select id="boletoFiltroStatus" onchange="renderBoletos()" style="flex:1;min-width:160px">
-          <option value="">Todos os status</option>
-          <option value="pendente">Pendente</option>
-          <option value="atrasado">Atrasado</option>
-          <option value="pago">Pago</option>
-        </select>
-      </div>
+        <!-- FILTRO -->
+        <div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">
+          <select id="boletoFiltroUnidade" onchange="renderBoletos()" style="flex:1;min-width:160px">
+            <option value="">Todas as unidades</option>
+          </select>
+          <select id="boletoFiltroStatus" onchange="renderBoletos()" style="flex:1;min-width:160px">
+            <option value="">Todos os status</option>
+            <option value="pendente">Pendente</option>
+            <option value="atrasado">Atrasado</option>
+            <option value="pago">Pago</option>
+          </select>
+        </div>
 
-      <div id="boletosLista"></div>
+        <div id="boletosLista"></div>
+      </div>
     </div>
 
     <!-- ABA: PRODUÇÃO -->
@@ -781,9 +790,16 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.21-7";
+const APP_VERSION = "2026.09.16-2";
 
-const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
+const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
+
+// Unidades "internas" — não são franquias, são times internos (produção/galpão)
+// pedindo matéria-prima pra si mesmos. Pedidos dessas unidades NÃO contam como
+// venda em nenhum relatório/total — servem só pra dar visibilidade e controle
+// do que a franqueadora compra pra produção interna.
+const UNIDADES_INTERNAS = ["GALPÃO"];
+function isUnidadeInterna(nome) { return UNIDADES_INTERNAS.includes(nome); }
 
 // Prazo de vencimento do boleto por unidade (dias corridos após o despacho).
 // Usado nos dois romaneios (o da loja e o do admin) — ponto único, pra não
@@ -853,6 +869,7 @@ const SENHAS = {};
 UNIDADES.forEach(u => SENHAS[u] = (u.replace(/[\s.]/g,'').toLowerCase() + "2026"));
 SENHAS["Franqueadora (Admin)"] = "acaise2026admin";
 SENHAS["INVENTÁRIO"] = "inventario2026";
+SENHAS["GALPÃO"] = "galpao2026"; // senha fixa pedida pela franqueadora (sem acento, diferente do padrão automático)
 
 // Catálogo de exemplo — estrutura de 7 categorias (substituir pelos 123 itens reais)
 const CATALOGO = {"Produtos Acabados": [{"id": "PA86", "cod": 86, "nome": "Açaí Art 07Kg", "preco": 182.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 9.1}, {"id": "PA88", "cod": 88, "nome": "Açaí Art 08Kg", "preco": 208.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 2.9}, {"id": "PA245", "cod": 245, "nome": "Açaí Art 10Kg", "preco": 230.4, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 85.8}, {"id": "PA89", "cod": 89, "nome": "Açaí Mel 07Kg", "preco": 161.28, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 3.3}, {"id": "PA246", "cod": 246, "nome": "Açaí Mel 08Kg", "preco": 184.32, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 31.6}, {"id": "PA91", "cod": 91, "nome": "Açaí Mel 10Kg", "preco": 230.4, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 0.3}, {"id": "PA92", "cod": 92, "nome": "Açaí Puro Barra", "preco": 115.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 8.1}, {"id": "PA92X", "cod": "92X", "nome": "Açaí Puro Barra X%", "preco": 115.0, "estoqueCentral": 0, "fornecedor": "—", "estoqueMin": 0}, {"id": "PA96", "cod": 96, "nome": "Açaí Pote 1,5Lt", "preco": 28.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 167.6}, {"id": "PA97", "cod": 97, "nome": "Açaí Pote 1,5Lt Nuts", "preco": 30.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 30.7}, {"id": "PA93", "cod": 93, "nome": "Polpa Açaí 10X100g", "preco": 31.0, "estoqueCentral": 0, "fornecedor": "Casa do Açaí", "estoqueMin": 15.6}, {"id": "PA94", "cod": 94, "nome": "Polpa Açaí 4X100g", "preco": 12.0, "estoqueCentral": 0, "fornecedor": "Oca do Açaí", "estoqueMin": 4.4}, {"id": "PA196", "cod": 196, "nome": "Polpa Coco Power c/10", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "CDA Alimentos", "estoqueMin": 0.3}, {"id": "PA205", "cod": 205, "nome": "Polpa de Cajá c/10", "preco": 24.0, "estoqueCentral": 0, "fornecedor": "CDA Alimentos", "estoqueMin": 1.2}, {"id": "PA206", "cod": 206, "nome": "Polpa de Acerola c/10", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "CDA Alimentos", "estoqueMin": 0.9}, {"id": "PA207", "cod": 207, "nome": "Polpa de Goiaba c/10", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "CDA Alimentos", "estoqueMin": 0.5}, {"id": "PA208", "cod": 208, "nome": "Polpa de Manga c/10", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "CDA Alimentos", "estoqueMin": 0.9}, {"id": "PA209", "cod": 209, "nome": "Polpa de Uva c/10", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "CDA Alimentos", "estoqueMin": 0.4}, {"id": "PA95", "cod": 95, "nome": "Creme de Cupuaçú 5Lt", "preco": 80.0, "estoqueCentral": 0, "fornecedor": "Oca do Açaí", "estoqueMin": 6.9}, {"id": "PA262", "cod": 262, "nome": "Creme de Morango", "preco": 80.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 2.7}, {"id": "PA263", "cod": 263, "nome": "Creme de Ninho", "preco": 80.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 3.8}, {"id": "PA264", "cod": 264, "nome": "Creme de Paçoca", "preco": 80.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 1.5}, {"id": "PA265", "cod": 265, "nome": "Creme de Tapioca", "preco": 80.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 0.9}, {"id": "PA98", "cod": 98, "nome": "Picolé c/24", "preco": 120.0, "estoqueCentral": 0, "fornecedor": "Ultra", "estoqueMin": 1.9}, {"id": "PA192", "cod": 192, "nome": "Barrinhas Vitanuts c/12", "preco": 114.0, "estoqueCentral": 0, "fornecedor": "Vitanuts", "estoqueMin": 1.6}], "Proteínas e Molhos": [{"id": "PROD213", "cod": 213, "nome": "Barbecue", "preco": 18.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.6}, {"id": "PROD259", "cod": 259, "nome": "Camarão Porção c/05", "preco": 35.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 1.9}, {"id": "PROD270", "cod": 270, "nome": "Carne Desfiada 100g c/05", "preco": 26.45, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 5.1}, {"id": "PROD285", "cod": 285, "nome": "Carne Grelhada 100g c/05", "preco": 38.8, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 1.1}, {"id": "PROD286", "cod": 286, "nome": "Carne Tapioca 50g c/05", "preco": 13.8, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 1.5}, {"id": "PROD250", "cod": 250, "nome": "Cebola em Conservas", "preco": 10.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 4.6}, {"id": "PROD230", "cod": 230, "nome": "Contra Filé 100g c/05", "preco": 38.8, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 2.7}, {"id": "PROD284", "cod": 284, "nome": "Croutons", "preco": 5.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 2.0}, {"id": "PROD233", "cod": 233, "nome": "Disco Wrap 80g c/10", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 9.1}, {"id": "PROD232", "cod": 232, "nome": "Farofa de Bacon", "preco": 21.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 4.7}, {"id": "PROD293", "cod": 293, "nome": "Filé Mingnon c/05", "preco": 51.17, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 3.1}, {"id": "PROD128", "cod": 128, "nome": "Frango Desfiado 70g c/05", "preco": 19.3, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 12.1}, {"id": "PROD235", "cod": 235, "nome": "Frango Grelhado 100g (pct c/05)", "preco": 20.8, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 11.0}, {"id": "PROD287", "cod": 287, "nome": "Frango Tapioca 50g", "preco": 13.8, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 0.9}, {"id": "PROD231", "cod": 231, "nome": "Molho Mostarda e Mel 500g", "preco": 16.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 5.5}, {"id": "PROD240", "cod": 240, "nome": "Molho Pesto 500g", "preco": 14.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 2.5}, {"id": "PROD229", "cod": 229, "nome": "Molho de Queijos 500g", "preco": 15.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 5.2}, {"id": "PROD131", "cod": 131, "nome": "Parmesão Fat", "preco": 27.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}, {"id": "PROD237", "cod": 237, "nome": "Pasta de Gorgonzola 500g", "preco": 25.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 2.8}, {"id": "PROD238", "cod": 238, "nome": "Pasta de Ricota 500g", "preco": 24.0, "estoqueCentral": 0, "fornecedor": "Produção Própria", "estoqueMin": 2.9}, {"id": "PROD239", "cod": 239, "nome": "Pão Ciabatta (pct c/10)", "preco": 38.5, "estoqueCentral": 0, "fornecedor": "Parque do Trigo", "estoqueMin": 4.9}, {"id": "PROD280", "cod": 280, "nome": "Queijo de Coalho 500g", "preco": 26.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 4.3}], "Acompanhamentos": [{"id": "AC47", "cod": 47, "nome": "Bananas Prata", "preco": 0.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 570.0}, {"id": "AC48", "cod": 48, "nome": "Morango Bdj", "preco": 12.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 16.1}, {"id": "AC50", "cod": 50, "nome": "Uva Cx", "preco": 12.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.9}, {"id": "AC51", "cod": 51, "nome": "Abacaxi", "preco": 7.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 2.9}, {"id": "AC52", "cod": 52, "nome": "Kiwi Uni", "preco": 4.2, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.6}, {"id": "AC55", "cod": 55, "nome": "Manga Tomy", "preco": 4.2, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 3.2}, {"id": "AC56", "cod": 56, "nome": "Mel 1Lt", "preco": 13.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 2.1}, {"id": "AC57", "cod": 57, "nome": "Castanha de Caju", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.0}, {"id": "AC58", "cod": 58, "nome": "Paçoca Pote", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 8.2}, {"id": "AC60", "cod": 60, "nome": "Castanha do Pará 200g", "preco": 44.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.5}, {"id": "AC61", "cod": 61, "nome": "Leite Condensado Uni", "preco": 7.3, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 30.3}, {"id": "AC62", "cod": 62, "nome": "Leite em Pó 200g", "preco": 8.3, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 49.6}, {"id": "AC64", "cod": 64, "nome": "Granola 30g (pct c/100)", "preco": 131.0, "estoqueCentral": 0, "fornecedor": "Tia Sônia", "estoqueMin": 836.5}, {"id": "AC65", "cod": 65, "nome": "Granola Pct 1,5Kg", "preco": 53.0, "estoqueCentral": 0, "fornecedor": "Tia Sônia", "estoqueMin": 15.0}, {"id": "AC67", "cod": 67, "nome": "Whey Protein c/30", "preco": 115.0, "estoqueCentral": 0, "fornecedor": "Pure Suplementos", "estoqueMin": 0.1}, {"id": "AC191", "cod": 191, "nome": "Whey Protein 1Kg", "preco": 170.0, "estoqueCentral": 0, "fornecedor": "Pure Suplementos", "estoqueMin": 2.0}, {"id": "AC68", "cod": 68, "nome": "Pasta Nuts Côco 450g", "preco": 40.0, "estoqueCentral": 0, "fornecedor": "Vitanuts", "estoqueMin": 5.3}, {"id": "AC69", "cod": 69, "nome": "Pasta Choconuts 450g", "preco": 40.0, "estoqueCentral": 0, "fornecedor": "Vitanuts", "estoqueMin": 1.0}, {"id": "AC70", "cod": 70, "nome": "Pasta Amend. Croc. 450g", "preco": 30.0, "estoqueCentral": 0, "fornecedor": "Vitanuts", "estoqueMin": 4.7}, {"id": "AC71", "cod": 71, "nome": "Coquinho Tia Sônia", "preco": 19.75, "estoqueCentral": 0, "fornecedor": "Tia Sônia", "estoqueMin": 7.8}, {"id": "AC73", "cod": 73, "nome": "Farinha de Tapioca", "preco": 8.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 6.5}, {"id": "AC74", "cod": 74, "nome": "Xerém de Amendoim", "preco": 16.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 4.3}, {"id": "AC76", "cod": 76, "nome": "Amendoim", "preco": 18.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.7}, {"id": "AC78", "cod": 78, "nome": "Adoçante Stevia", "preco": 9.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}], "Embalagens": [{"id": "EMB1", "cod": 1, "nome": "Rolo Filme Gde", "preco": 95.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.6}, {"id": "EMB2", "cod": 2, "nome": "Rolo Filme Pq", "preco": 40.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}, {"id": "EMB3", "cod": 3, "nome": "Saco Talher c/100", "preco": 21.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}, {"id": "EMB4", "cod": 4, "nome": "Copo + Tampa Molho c/50", "preco": 19.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 3.9}, {"id": "EMB5", "cod": 5, "nome": "Copo Térm. 300ml c/25", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 19.0}, {"id": "EMB6", "cod": 6, "nome": "Copo Térm. 500ml c/25", "preco": 23.9, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 34.5}, {"id": "EMB7", "cod": 7, "nome": "Copo Térm. 700ml c/15", "preco": 20.5, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 8.8}, {"id": "EMB9", "cod": 9, "nome": "Copo Pap. 240ml c/37", "preco": 26.64, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 11.3}, {"id": "EMB10", "cod": 10, "nome": "Copo Pap. 300ml c/34", "preco": 25.16, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 14.9}, {"id": "EMB11", "cod": 11, "nome": "Copo Pap. 500ml c/45", "preco": 40.5, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 4.4}, {"id": "EMB13", "cod": 13, "nome": "Copo Blendse 300ml c/30", "preco": 29.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 8.7}, {"id": "EMB14", "cod": 14, "nome": "Copo Smothie 400ml c/30", "preco": 26.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 12.6}, {"id": "EMB15", "cod": 15, "nome": "Copo Blendse 500ml c/30", "preco": 37.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 3.3}, {"id": "EMB16", "cod": 16, "nome": "Tampa 300ml c/60", "preco": 13.5, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 7.7}, {"id": "EMB17", "cod": 17, "nome": "Tampa 500ml c/60", "preco": 20.5, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 16.8}, {"id": "EMB22", "cod": 22, "nome": "Copo Acompa. c/100", "preco": 10.5, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 17.9}, {"id": "EMB23", "cod": 23, "nome": "Tampa Acompa. c/100", "preco": 11.5, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 12.9}, {"id": "EMB24", "cod": 24, "nome": "Saco Kraft Uni c/100", "preco": 59.0, "estoqueCentral": 0, "fornecedor": "Sopapel", "estoqueMin": 15.4}, {"id": "EMB25", "cod": 25, "nome": "Durex c/10", "preco": 18.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.3}, {"id": "EMB27", "cod": 27, "nome": "Sacola P c/100", "preco": 12.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.4}, {"id": "EMB33", "cod": 33, "nome": "Bobina Picotada", "preco": 30.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}, {"id": "EMB8", "cod": 8, "nome": "Pote e Tampa 80ml c/75", "preco": 0, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 2.5}, {"id": "EMB194", "cod": 194, "nome": "Tampa 80ml c/75", "preco": 28.12, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 0.5}, {"id": "EMB195", "cod": 195, "nome": "Tampa Smothie 400 c/75", "preco": 27.4, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 5.2}, {"id": "EMB202", "cod": 202, "nome": "Tampa Copo 240 c/50", "preco": 30.0, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 0.2}, {"id": "EMB223", "cod": 223, "nome": "Garrafinha Suco 300ml c/10", "preco": 15.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 3.0}, {"id": "EMB234", "cod": 234, "nome": "Bowl da Salada c/10", "preco": 23.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 2.0}, {"id": "EMB241", "cod": 241, "nome": "Papel Mant. Lam. c/100", "preco": 38.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 0.3}, {"id": "EMB288", "cod": 288, "nome": "T. Copo Pap 300", "preco": 26.0, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 0.1}, {"id": "EMB290", "cod": 290, "nome": "T. Copo Pap. 500 c/75", "preco": 28.0, "estoqueCentral": 0, "fornecedor": "Mx Copos", "estoqueMin": 0.1}], "Descartáveis": [{"id": "DESC34", "cod": 34, "nome": "Toucas Desc. c/100", "preco": 12.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.3}, {"id": "DESC35", "cod": 35, "nome": "Luvas c/100", "preco": 29.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.7}, {"id": "DESC36", "cod": 36, "nome": "Copo Desc. 180ml c/100", "preco": 5.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.2}, {"id": "DESC37", "cod": 37, "nome": "Copo 50ml c/100", "preco": 3.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.3}, {"id": "DESC38", "cod": 38, "nome": "Canudo p/ Smothie c/100", "preco": 7.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 3.9}, {"id": "DESC39", "cod": 39, "nome": "Canudo p/ Suco/Coco c/100", "preco": 8.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}, {"id": "DESC40", "cod": 40, "nome": "Colher Média c/50", "preco": 7.9, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 44.1}, {"id": "DESC41", "cod": 41, "nome": "Colher Longa c/50", "preco": 10.9, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 8.1}, {"id": "DESC43", "cod": 43, "nome": "Guardanapos c/250", "preco": 220.0, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 2.4}, {"id": "DESC43X", "cod": "43X", "nome": "Guardanapos Cx", "preco": 220.0, "estoqueCentral": 0, "fornecedor": "—", "estoqueMin": 0}, {"id": "DESC46", "cod": 46, "nome": "Papel Toalha Interf. c/3", "preco": 17.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 2.7}, {"id": "DESC197", "cod": 197, "nome": "Papel Manteiga Perso. c/100", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "Sopapel", "estoqueMin": 0.6}, {"id": "DESC200", "cod": 200, "nome": "Base Copo c/50", "preco": 40.5, "estoqueCentral": 0, "fornecedor": "Mercado Livre", "estoqueMin": 2.3}, {"id": "DESC214", "cod": 214, "nome": "Papel Mant. Metálico", "preco": 41.5, "estoqueCentral": 0, "fornecedor": "Macropac", "estoqueMin": 0.1}, {"id": "DESC215", "cod": 215, "nome": "Guardanapo Pct", "preco": 4.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.3}, {"id": "DESC248", "cod": 248, "nome": "Faca Plástico", "preco": 7.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.3}, {"id": "DESC249", "cod": 249, "nome": "Garfo Plástico", "preco": 8.3, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.3}, {"id": "DESC291", "cod": 291, "nome": "Colher Evento c/100", "preco": 4.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.2}], "Bebidas": [{"id": "BEB142", "cod": 142, "nome": "Água Mineral 500", "preco": 1.15, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 45.0}, {"id": "BEB143", "cod": 143, "nome": "Água Min. c/ Gás 500", "preco": 2.4, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 10.1}, {"id": "BEB146", "cod": 146, "nome": "Coca Lata", "preco": 4.15, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 3.7}, {"id": "BEB147", "cod": 147, "nome": "Coca Zero Lata", "preco": 4.15, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 11.4}, {"id": "BEB151", "cod": 151, "nome": "Redbull", "preco": 9.49, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 4.7}], "Diversos": [{"id": "DIV193", "cod": 193, "nome": "Camisas Fardamento", "preco": 50.0, "estoqueCentral": 0, "fornecedor": "New Malhas", "estoqueMin": 3.9}, {"id": "DIV254", "cod": 254, "nome": "Gás Maçarico", "preco": 17.0, "estoqueCentral": 0, "fornecedor": "Mercado Livre", "estoqueMin": 1.4}, {"id": "DIV275", "cod": 275, "nome": "Cardápio Açaí-Se", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "Papic", "estoqueMin": 1.0}, {"id": "DIV281", "cod": 281, "nome": "Prod Cardápio", "preco": 20.0, "estoqueCentral": 0, "fornecedor": "—", "estoqueMin": 0.5}, {"id": "DIV283", "cod": 283, "nome": "Boné", "preco": 30.0, "estoqueCentral": 0, "fornecedor": "New Malhas", "estoqueMin": 0.2}], "Produção / Insumos": [{"id": "PROD102", "cod": 102, "nome": "Açúcar Cristal 1Kg", "preco": 4.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.8}, {"id": "PROD103", "cod": 103, "nome": "Tomate Rasteiro", "preco": 12.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 2.8}, {"id": "PROD114", "cod": 114, "nome": "Milho Verde", "preco": 5.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 3.0}, {"id": "PROD115", "cod": 115, "nome": "Cenoura", "preco": 9.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.4}, {"id": "PROD117", "cod": 117, "nome": "Hortelã", "preco": 4.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.0}, {"id": "PROD135", "cod": 135, "nome": "Pepino Japa", "preco": 7.99, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.4}, {"id": "PROD217", "cod": 217, "nome": "Óleo Composto", "preco": 16.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.8}, {"id": "PROD227", "cod": 227, "nome": "Batata Chips 200g", "preco": 16.5, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.8}, {"id": "PROD236", "cod": 236, "nome": "Penne 50g c/05", "preco": 4.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.3}, {"id": "PROD273", "cod": 273, "nome": "Goma de Tapioca 500g", "preco": 6.3, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 1.7}, {"id": "PROD292", "cod": 292, "nome": "Sal", "preco": 3.0, "estoqueCentral": 0, "fornecedor": "Ceasa/Mercado", "estoqueMin": 0.1}]};
@@ -1271,7 +1288,7 @@ function abrirRomaneioLojaObjeto(p) {
           <td><strong>Status:</strong></td><td>${p.despachado?'✅ Despachado':'⏳ Aguardando despacho'}</td></tr>
       <tr><td><strong>Tipo:</strong></td><td>${p.tipoEntrega||'—'}</td>
           <td><strong>Responsável:</strong></td><td>${p.nomeResponsavel||'—'}</td></tr>
-      ${p.despachado ? `<tr><td><strong>Vencimento:</strong></td><td colspan="3"><strong style="color:#C62828">📅 ${vencLojaStr}</strong> <span style="font-size:11px;color:#888">(${prazoLoja} dias)</span></td></tr>` : ''}
+      ${(p.despachado && !isUnidadeInterna(p.unidade)) ? `<tr><td><strong>Vencimento:</strong></td><td colspan="3"><strong style="color:#C62828">📅 ${vencLojaStr}</strong> <span style="font-size:11px;color:#888">(${prazoLoja} dias)</span></td></tr>` : ''}
     </table>
     <hr style="border:1px solid #eee;margin:12px 0">
     <table style="width:100%;font-size:13px;border-collapse:collapse">
@@ -1418,7 +1435,8 @@ function renderListaUnidades() {
   });
   // Fixed
   fixas.forEach(n => {
-    html += `<tr><td>${n}</td><td><span class="badge badge-gray">Franquia</span></td><td>—</td><td><code>${SENHAS[n]||'—'}</code></td></tr>`;
+    const tipoBadge = isUnidadeInterna(n) ? '<span class="badge" style="background:#EFEBE9;color:#5D4037">🏭 Interna</span>' : '<span class="badge badge-gray">Franquia</span>';
+    html += `<tr><td>${n}</td><td>${tipoBadge}</td><td>—</td><td><code>${SENHAS[n]||'—'}</code></td></tr>`;
   });
   html += `</tbody></table>`;
   document.getElementById('listaUnidades').innerHTML = html;
@@ -1594,15 +1612,19 @@ function renderRomaneioBody(jaDespachou, modoCorrecao) {
   const dataFormatada = new Date(pedido.dataEnvio).toLocaleString('pt-BR');
   const tipoIcon = pedido.tipoEntrega === 'Retirada' ? '🏪' : '🚚';
 
-  // Prazo de pagamento por unidade
-  const prazo = getPrazoBoletoUnidade(pedido.unidade);
-  const dataBase = pedido.dataDespacho ? new Date(pedido.dataDespacho) : new Date();
-  const dataVenc = new Date(dataBase);
-  dataVenc.setDate(dataVenc.getDate() + prazo);
-  const vencStr = dataVenc.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric'});
-  const vencimentoHtml = `<tr><td style="padding:4px 0"><strong>Vencimento:</strong></td>
-    <td colspan="3"><strong style="color:#C62828;font-size:14px">📅 ${vencStr}</strong>
-    <span style="font-size:11px;color:#888;margin-left:6px">(${prazo} dias)</span></td></tr>`;
+  // Prazo de pagamento por unidade — não se aplica a unidades internas
+  // (GALPÃO), que não pagam boleto, é compra interna.
+  let vencimentoHtml = '';
+  if (!isUnidadeInterna(pedido.unidade)) {
+    const prazo = getPrazoBoletoUnidade(pedido.unidade);
+    const dataBase = pedido.dataDespacho ? new Date(pedido.dataDespacho) : new Date();
+    const dataVenc = new Date(dataBase);
+    dataVenc.setDate(dataVenc.getDate() + prazo);
+    const vencStr = dataVenc.toLocaleDateString('pt-BR', {day:'2-digit', month:'2-digit', year:'numeric'});
+    vencimentoHtml = `<tr><td style="padding:4px 0"><strong>Vencimento:</strong></td>
+      <td colspan="3"><strong style="color:#C62828;font-size:14px">📅 ${vencStr}</strong>
+      <span style="font-size:11px;color:#888;margin-left:6px">(${prazo} dias)</span></td></tr>`;
+  }
 
   let linhas = '';
   Object.entries(pedido.itens).forEach(([id, it], i) => {
@@ -1814,9 +1836,13 @@ async function confirmarDespacho() {
 
     // Salva diretamente no Firebase (sem batch)
     await saveDocument(chave, pedidoAtualRomaneio);
-    await saveDocument(`saida_${Date.now()}`, {
+    // Prefixo "saida:" (com dois-pontos) é o que o Log lê de volta — por isso
+    // o despacho precisa cair aqui pra aparecer na aba Log junto com o horário
+    // em que o pedido foi feito (dataEnvio já registrado no próprio pedido).
+    await saveDocument(`saida:despacho:${Date.now()}`, {
       tipo: 'Saída', unidade: pedidoAtualRomaneio.unidade,
-      itens, data: new Date().toISOString()
+      numeroPedido: pedidoAtualRomaneio.numeroPedido,
+      itens, usuario: currentUser, data: new Date().toISOString()
     });
 
     // Atualiza cache local
@@ -2070,7 +2096,12 @@ async function gerarRelatorio() {
   });
 
   const nomeMes = document.getElementById('relFiltroMes').selectedOptions[0]?.textContent || 'Todos';
-  const totalGeral = pedidosFiltrados.reduce((s,p)=>s+Object.values(p.itens).reduce((ss,i)=>ss+(i.total||0),0),0);
+  // Unidades internas (GALPÃO) não são venda — não entram no total geral,
+  // só aparecem no card delas mesmas pra controle do que foi comprado.
+  const totalGeral = pedidosFiltrados.filter(p => !isUnidadeInterna(p.unidade))
+    .reduce((s,p)=>s+Object.values(p.itens).reduce((ss,i)=>ss+(i.total||0),0),0);
+  const totalInterno = pedidosFiltrados.filter(p => isUnidadeInterna(p.unidade))
+    .reduce((s,p)=>s+Object.values(p.itens).reduce((ss,i)=>ss+(i.total||0),0),0);
 
   let html = `
     <div style="border-bottom:2px solid #5B2D8E;padding-bottom:10px;margin-bottom:16px">
@@ -2079,9 +2110,10 @@ async function gerarRelatorio() {
     </div>`;
 
   Object.entries(porUnidade).forEach(([nome, dados]) => {
+    const interna = isUnidadeInterna(nome);
     html += `<div style="margin-bottom:24px">
-      <div style="background:#5B2D8E;color:#fff;padding:8px 14px;border-radius:6px;display:flex;justify-content:space-between;align-items:center">
-        <strong>${nome}</strong>
+      <div style="background:${interna?'#8D6E63':'#5B2D8E'};color:#fff;padding:8px 14px;border-radius:6px;display:flex;justify-content:space-between;align-items:center">
+        <strong>${nome}${interna ? ' — 🏭 uso interno, não é venda' : ''}</strong>
         <span>${dados.pedidos.length} pedido(s) — R$ ${dados.total.toFixed(2).replace('.',',')}</span>
       </div>`;
 
@@ -2109,10 +2141,89 @@ async function gerarRelatorio() {
   });
 
   html += `<div style="background:#F5F0FB;border-radius:8px;padding:12px 16px;display:flex;justify-content:space-between;font-weight:700;font-size:16px;color:#5B2D8E;margin-top:8px">
-    <span>TOTAL GERAL DO PERÍODO</span><span>R$ ${totalGeral.toFixed(2).replace('.',',')}</span>
+    <span>TOTAL GERAL DO PERÍODO (vendas)</span><span>R$ ${totalGeral.toFixed(2).replace('.',',')}</span>
   </div>`;
+  if (totalInterno > 0) {
+    html += `<div style="background:#EFEBE9;border-radius:8px;padding:10px 16px;display:flex;justify-content:space-between;font-weight:600;font-size:13px;color:#5D4037;margin-top:6px">
+      <span>🏭 Total em compras internas (GALPÃO/Produção — não é venda)</span><span>R$ ${totalInterno.toFixed(2).replace('.',',')}</span>
+    </div>`;
+  }
 
   el.innerHTML = html;
+}
+
+// Exporta os mesmos pedidos do filtro atual (unidade/mês/ano) em CSV — uma
+// linha por ITEM de cada pedido, pra dar pra analisar consumo (ex: quantidade
+// de cada item pedida pela Boa Viagem nos últimos meses) sem precisar printar
+// tela por tela. Abre no Excel/Google Sheets normalmente.
+async function exportarRelatorioCSV() {
+  const unidade = document.getElementById('relFiltroUnidade').value;
+  const mes = document.getElementById('relFiltroMes').value;
+  const ano = document.getElementById('relFiltroAno').value;
+
+  let todosPedidos = [];
+  try {
+    const list = await safeList('pedido:', true);
+    if (list && list.keys) {
+      for (const k of list.keys) {
+        try {
+          const r = await safeGet(k, true);
+          if (r && r.value) todosPedidos.push(parseValue(r.value));
+        } catch(e) {}
+      }
+    }
+  } catch(e) {}
+
+  const pedidosFiltrados = todosPedidos.filter(p => {
+    const data = new Date(p.dataEnvio);
+    const mesOk = !mes || String(data.getMonth()+1).padStart(2,'0') === mes;
+    const anoOk = !ano || String(data.getFullYear()) === ano;
+    const unidOk = !unidade || p.unidade === unidade;
+    return mesOk && anoOk && unidOk;
+  }).sort((a,b) => new Date(a.dataEnvio) - new Date(b.dataEnvio));
+
+  if (pedidosFiltrados.length === 0) {
+    alert('Nenhum pedido encontrado para esse filtro. Ajuste unidade/mês/ano e tente de novo.');
+    return;
+  }
+
+  const linhas = [['Unidade','Pedido','Data Envio','Status','Item','Quantidade','Preco Unitario','Valor Total Item','Total do Pedido']];
+  pedidosFiltrados.forEach(p => {
+    const totalPed = Object.values(p.itens||{}).reduce((s,i)=>s+(i.total||0),0);
+    const status = p.urgencia ? 'Urgencia' : p.despachado ? 'Despachado' : 'Pendente';
+    const dataStr = p.dataEnvio ? new Date(p.dataEnvio).toLocaleString('pt-BR') : '';
+    const itensDoPedido = Object.values(p.itens||{});
+    if (itensDoPedido.length === 0) {
+      linhas.push([p.unidade||'', p.numeroPedido||'', dataStr, status, '', '', '', '', totalPed.toFixed(2).replace('.',',')]);
+    } else {
+      itensDoPedido.forEach(it => {
+        linhas.push([
+          p.unidade||'', p.numeroPedido||'', dataStr, status,
+          it.nome||'', it.qtd||0,
+          (it.precoUnitario||it.preco||0).toFixed(2).replace('.',','),
+          (it.total||0).toFixed(2).replace('.',','),
+          totalPed.toFixed(2).replace('.',',')
+        ]);
+      });
+    }
+  });
+
+  const csv = linhas.map(linha => linha.map(campo => {
+    const s = String(campo);
+    return /[;"\n]/.test(s) ? '"' + s.replace(/"/g,'""') + '"' : s;
+  }).join(';')).join('\r\n');
+
+  const blob = new Blob(['﻿' + csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  const sufixoUnid = unidade ? '_' + unidade.replace(/\s+/g,'') : '_todas';
+  const sufixoMes = mes ? '_' + mes : '';
+  a.href = url;
+  a.download = `pedidos${sufixoUnid}${sufixoMes}_${ano}.csv`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
 }
 
 // ─── FORNECEDORES ─────────────────────────────────────────────────────────────
@@ -2986,6 +3097,7 @@ function doLogin() {
     loadItemState().then(async () => {
       renderCatalog();
       renderPrazoPedidoBanner();
+      aplicarModoGalpao();
       const situacao = await verificarBoletosUnidade(unit);
       const avisoEl = document.getElementById('ordemBloqueada');
       const msgEl = document.getElementById('ordemBloqueadaMsg');
@@ -3055,6 +3167,7 @@ function restaurarSessao() {
     loadItemState().then(async () => {
       renderCatalog();
       renderPrazoPedidoBanner();
+      aplicarModoGalpao();
       const situacao = await verificarBoletosUnidade(savedUser);
       // aplica avisos de boleto se necessário
     });
@@ -3145,6 +3258,10 @@ const DIAS_SEMANA_NOMES = ['domingo','segunda-feira','terça-feira','quarta-feir
 function renderPrazoPedidoBanner() {
   const el = document.getElementById('avisoPrazoPedido');
   if (!el) return;
+  if (isUnidadeInterna(currentUser)) {
+    el.innerHTML = `<span style="font-size:13px;color:#5B2D8E;font-weight:600;">🏭 Pedido interno de matéria-prima/insumos — preencha a lista abaixo com item e quantidade a qualquer momento. A franqueadora lança o preço de compra e organiza a ida às compras.</span>`;
+    return;
+  }
   const info = calcularProximaEntrega(currentUser);
   if (!info) {
     el.innerHTML = `<span style="font-size:13px;color:#5B2D8E;font-weight:600;">⏱ Pedimos pelo menos 24h de antecedência — as entregas são realizadas em até 48h após a confirmação do pedido. Hoje contamos com apenas 1 carro para todas as rotas, então quanto antes o pedido chegar, melhor conseguimos organizar. Para não faltar item em loja, use o PEDIDO URGÊNCIA (retirada no mesmo dia na central).</span>`;
@@ -3155,6 +3272,25 @@ function renderPrazoPedidoBanner() {
   const dPrazo = info.prazoAjuste.toLocaleDateString('pt-BR');
   const nomePrazo = DIAS_SEMANA_NOMES[info.prazoAjuste.getDay()];
   el.innerHTML = `<span style="font-size:13px;color:#5B2D8E">⏱ Sua próxima entrega: <strong>${nomeEntrega}, ${dEntrega}</strong>. Lance ou ajuste seu pedido até <strong>21h de ${nomePrazo}, ${dPrazo}</strong> — pedimos pelo menos 24h de antecedência pra conseguirmos organizar a separação. Hoje contamos com apenas <strong>1 carro</strong> para todas as rotas, então pedidos com antecedência ajudam a manter sua loja 100% abastecida. Depois do prazo, só é possível <strong>PEDIDO URGÊNCIA</strong> (retirada no mesmo dia, apenas para não faltar item em loja).</span>`;
+}
+
+// Ajusta a tela "Fazer Pedido" pra unidades internas (GALPÃO): esconde o
+// catálogo completo (não faz sentido pedir "Açaí Art 07Kg" pra si mesmo) e o
+// tipo de entrega (não há entrega — é a franqueadora que sai pra comprar), e
+// deixa só a lista de itens avulsos como a forma de pedir, já que o padrão é
+// matéria-prima que não está cadastrada como produto acabado.
+function aplicarModoGalpao() {
+  const interna = isUnidadeInterna(currentUser);
+  const secaoCatalogo = document.getElementById('secaoCatalogoLoja');
+  const campoEntrega = document.getElementById('campoTipoEntrega');
+  const titulo = document.getElementById('itensAvulsosTitulo');
+  const desc = document.getElementById('itensAvulsosDesc');
+  if (secaoCatalogo) secaoCatalogo.classList.toggle('hidden', interna);
+  if (campoEntrega) campoEntrega.classList.toggle('hidden', interna);
+  if (titulo) titulo.textContent = interna ? '🏭 Itens que a produção/galpão precisa' : '📦 Itens fora do catálogo';
+  if (desc) desc.textContent = interna
+    ? 'Coloque o nome do item e a quantidade (ex: Filé Mignon peça, Açúcar, Camarão). A franqueadora lança o preço de compra ao processar o pedido — é só pra controle interno, não é venda.'
+    : 'Materiais de escritório, frutas ou qualquer outra demanda que não está na lista. Não precisa de preço — a franqueadora define o valor ao processar o pedido.';
 }
 
 const VALOR_MINIMO_PEDIDO = 300;
@@ -3737,9 +3873,12 @@ async function renderLog() {
     }
   } catch(e) {}
 
-  // Also include pedidos, entradas, saídas from existing keys
+  // Pedidos: reconstruído direto dos documentos "pedido:" (fonte única — sempre
+  // completo e correto, sem depender de um segundo registro de log que possa
+  // falhar). Mostra separadamente o horário de ENVIO original e, se o
+  // franqueado ajustou depois, o horário do AJUSTE — pra dar exatamente a
+  // visibilidade pedida: "a que horas esse pedido realmente chegou".
   try {
-    const weekKey = await getCurrentWeekKey();
     const listP = await safeList('pedido:', true);
     if (listP && listP.keys) {
       for (const k of listP.keys) {
@@ -3747,13 +3886,24 @@ async function renderLog() {
           const r = await safeGet(k, true);
           if (r && r.value) {
             const p = parseValue(r.value);
+            const nItens = Object.keys(p.itens||{}).length;
+            const totalStr = (p.total||0).toFixed(2).replace('.',',');
             logs.push({
               tipo: 'Pedido',
-              descricao: `${p.urgencia?'🚨 URGÊNCIA — ':''} Pedido ${p.numeroPedido||''} — ${Object.keys(p.itens||{}).length} itens — R$ ${(p.total||0).toFixed(2).replace('.',',')}`,
+              descricao: `${p.urgencia?'🚨 URGÊNCIA — ':''}Pedido ${p.numeroPedido||''} enviado — ${nItens} itens — R$ ${totalStr}`,
               usuario: p.nomeResponsavel || '—',
               unidade: p.unidade || '',
               data: p.dataEnvio
             });
+            if (p.dataUltimoAjuste) {
+              logs.push({
+                tipo: 'Pedido',
+                descricao: `✏️ Pedido ${p.numeroPedido||''} ajustado pelo franqueado — ${nItens} itens — R$ ${totalStr}`,
+                usuario: p.nomeResponsavel || '—',
+                unidade: p.unidade || '',
+                data: p.dataUltimoAjuste
+              });
+            }
           }
         } catch(e) {}
       }
@@ -3793,11 +3943,12 @@ async function renderLog() {
           if (r && r.value) {
             const s = parseValue(r.value);
             const isSaidaAvulsa = s.tipo === 'Saída Avulsa';
+            const totalSaida = !isSaidaAvulsa ? Object.values(s.itens||{}).reduce((a,i)=>a+(i.total||0),0) : 0;
             logs.push({
               tipo: isSaidaAvulsa ? 'Saída Avulsa' : 'Saída',
               descricao: isSaidaAvulsa
                 ? `${s.qtd} × ${s.nome}${s.obs?' — '+s.obs:''}`
-                : `Despacho de ${Object.keys(s.itens||{}).length} itens`,
+                : `Despacho${s.numeroPedido?' do pedido '+s.numeroPedido:''} — ${Object.keys(s.itens||{}).length} itens${totalSaida?' — R$ '+totalSaida.toFixed(2).replace('.',','):''}`,
               usuario: s.usuario || '—',
               unidade: s.unidade || '',
               data: s.data,
@@ -4078,11 +4229,10 @@ async function excluirBoleto(id) {
 }
 
 async function verificarBoletosUnidade(unidade) {
-  await loadBoletos();
-  const hoje = new Date(); hoje.setHours(0,0,0,0);
-  const amanha = new Date(hoje); amanha.setDate(amanha.getDate()+1);
-
-  // Verifica bloqueio manual
+  // A cobrança/boletos passou a ser controlada em outro sistema — não lemos
+  // mais os boletos salvos aqui pra avisos de atraso (ficariam parados/errados
+  // pra sempre, já que nada novo é registrado neste app). O único controle que
+  // continua valendo é o bloqueio manual, ativado direto pela franqueadora.
   let bloqueioManual = false;
   try {
     const r = await safeGet('bloqueiosUnidade', true);
@@ -4092,17 +4242,7 @@ async function verificarBoletosUnidade(unidade) {
     }
   } catch(e) {}
 
-  const atrasados = boletos.filter(b =>
-    b.unidade === unidade && b.status === 'atrasado'
-  ).length;
-
-  const vencendoHoje = boletos.filter(b => {
-    if (b.unidade !== unidade || b.status === 'pago') return false;
-    const venc = new Date(b.vencimento + 'T12:00:00');
-    return venc >= hoje && venc < amanha;
-  }).length;
-
-  return { bloqueioManual, atrasados, vencendoHoje };
+  return { bloqueioManual, atrasados: 0, vencendoHoje: 0 };
 }
 
 
@@ -4169,8 +4309,9 @@ async function submitOrder(urgencia = false) {
   }
 
   // Reforço do prazo de entrega no ato da confirmação — não se aplica a
-  // urgência (que já é a exceção pra quando falta algo na hora).
-  if (!urgencia) {
+  // urgência (que já é a exceção pra quando falta algo na hora) nem a
+  // unidades internas (GALPÃO), que não têm rota de entrega.
+  if (!urgencia && !isUnidadeInterna(currentUser)) {
     const confirmaPrazo = confirm(
       "⏱ Lembrete: sua entrega acontece em até 48h após o envio do pedido.\n\n" +
       "Hoje contamos com apenas 1 carro para todas as rotas, então pedidos feitos com antecedência ajudam a manter sua loja sempre abastecida.\n\n" +
@@ -4247,9 +4388,9 @@ async function submitOrder(urgencia = false) {
           ? `🚨 Pedido urgência ${numeroPedido} enviado!`
           : `✅ Pedido ${numeroPedido} enviado! Prazo: até 48h.`);
 
-    await registrarLog('Pedido',
-      `${editando ? '✏️ Ajustado — ' : ''}${urgencia?'🚨 URGÊNCIA — ':''}Pedido ${numeroPedido} — ${Object.keys(itens).length} itens — R$ ${total.toFixed(2).replace('.',',')}`,
-      nomeResponsavel, currentUser);
+    // Não gravamos um registro extra em log: aqui (dataEnvio/dataUltimoAjuste,
+    // já salvos no próprio pedido acima) é a única fonte, e a aba Log lê
+    // direto dali — assim não some se essa chamada falhar, e não duplica.
 
     // Sai do modo de edição e zera os campos
     _editandoPedido = null;
@@ -4415,8 +4556,9 @@ function renderPorUnidade(pedidos) {
   function cardHtml(p) {
     const idx = _pedidosCache.length;
     _pedidosCache.push(p); // salva no cache com índice
+    const interna = isUnidadeInterna(p.unidade);
     const totalUnidade = Object.values(p.itens).reduce((s,it) => s + (it.total||0), 0);
-    const borderColor = p.urgencia ? '#C62828' : p.despachado ? '#aaa' : '#5B2D8E';
+    const borderColor = interna ? '#8D6E63' : p.urgencia ? '#C62828' : p.despachado ? '#aaa' : '#5B2D8E';
     const numPedido = p.numeroPedido || '—';
     const storageKey = (p._storageKey || p._key || '').replace(/'/g,"\\'");
     let html = `<div class="card" style="margin-top:10px;border-left:4px solid ${borderColor}">
@@ -4425,6 +4567,7 @@ function renderPorUnidade(pedidos) {
           <strong>${p.unidade}</strong>
           ${p.nomeResponsavel ? `<span class="small" style="margin-left:6px;color:#555">por ${p.nomeResponsavel}</span>` : ''}
           <span class="small" style="margin-left:8px;color:#5B2D8E;font-weight:600">${numPedido}</span>
+          ${interna ? '<span class="badge" style="margin-left:6px;background:#EFEBE9;color:#5D4037">🏭 Uso interno — não é venda</span>' : ''}
           ${p.urgencia ? '<span class="badge badge-red" style="margin-left:6px">🚨 URGÊNCIA</span>' : ''}
           ${p.despachado ? '<span class="badge" style="margin-left:6px;background:#eee;color:#888">✅ Despachado</span>' : ''}
           ${(p.itensAvulsos && p.itensAvulsos.length) ? `<span class="badge" style="margin-left:6px;background:#E3F2FD;color:#1565C0">📦 ${p.itensAvulsos.length} sem preço</span>` : ''}
@@ -4447,7 +4590,7 @@ function renderPorUnidade(pedidos) {
       </div>` : ''}
       ${p.observacao ? `<div style="margin-top:8px;padding:8px 10px;background:#FFF8E1;border-left:3px solid #F57F17;border-radius:4px;font-size:12px"><strong>💬 Observação:</strong> ${p.observacao}</div>` : ''}
       <div class="flex-between" style="margin-top:8px;font-weight:600;border-top:1px solid #eee;padding-top:8px">
-        <span>Total</span><span>R$ ${totalUnidade.toFixed(2).replace('.',',')}</span>
+        <span>${interna ? 'Total gasto (compra interna)' : 'Total'}</span><span>R$ ${totalUnidade.toFixed(2).replace('.',',')}</span>
       </div>
     </div>`;
     return html;
