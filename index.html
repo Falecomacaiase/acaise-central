@@ -766,6 +766,8 @@
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" id="btnDespachar" onclick="confirmarDespacho()" style="background:#2E7D32">✅ Confirmar despacho e imprimir</button>
         <button class="btn" id="btnSalvarRomaneio" onclick="salvarEdicaoRomaneio()" style="background:#1565C0">💾 Salvar alterações</button>
+        <button class="btn" id="btnCorrigirDespachado" onclick="iniciarCorrecaoPosDespacho()" style="background:#F57F17;display:none">✏️ Corrigir pedido já despachado</button>
+        <button class="btn" id="btnSalvarCorrecao" onclick="salvarCorrecaoPosDespacho()" style="background:#C62828;display:none">💾 Salvar correção e ajustar estoque</button>
         <button class="btn btn-secondary" onclick="window.print()">🖨️ Só imprimir</button>
       </div>
       <button class="btn btn-secondary" onclick="fecharRomaneio()">✕ Fechar</button>
@@ -779,7 +781,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.21-5";
+const APP_VERSION = "2026.08.21-6";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -1251,7 +1253,7 @@ function abrirRomaneioLojaObjeto(p) {
   Object.values(p.itens||{}).forEach(it => {
     itensHtml += `<tr><td style="padding:6px 8px">${it.nome}</td>
       <td style="padding:6px 8px;text-align:center">${it.qtd}</td>
-      <td style="padding:6px 8px;text-align:right">R$ ${(it.precoUnitario||0).toFixed(2).replace('.',',')}</td>
+      <td style="padding:6px 8px;text-align:right">R$ ${(it.precoUnitario||it.preco||0).toFixed(2).replace('.',',')}</td>
       <td style="padding:6px 8px;text-align:right;font-weight:700">R$ ${(it.total||0).toFixed(2).replace('.',',')}</td></tr>`;
   });
   const prazoLoja = getPrazoBoletoUnidade(p.unidade);
@@ -1471,32 +1473,123 @@ async function excluirPedidoIdx(idx) {
   excluirPedido(p._storageKey || '', p.numeroPedido || '');
 }
 
+let _pedidoOriginalItensCorrecao = null; // snapshot dos itens antes de uma correção pós-despacho
+
 function abrirRomaneio(pedido) {
   pedidoAtualRomaneio = JSON.parse(JSON.stringify(pedido)); // deep copy para edição
+  _pedidoOriginalItensCorrecao = null;
   const jaDespachou = pedido.despachado === true;
   const btnDespachar = document.getElementById('btnDespachar');
   const statusMsg = document.getElementById('romaneioStatusMsg');
+  const btnCorrigir = document.getElementById('btnCorrigirDespachado');
+  const btnSalvarCorrecao = document.getElementById('btnSalvarCorrecao');
+  btnSalvarCorrecao.style.display = 'none';
 
   if (jaDespachou) {
-    btnDespachar.disabled = true;
-    btnDespachar.style.background = '#aaa';
-    btnDespachar.textContent = '✅ Já despachado';
+    btnDespachar.style.display = 'none';
     statusMsg.style.color = '#2E7D32';
     statusMsg.textContent = `Despachado em ${new Date(pedido.dataDespacho).toLocaleString('pt-BR')}`;
     document.getElementById('btnSalvarRomaneio').style.display = 'none';
+    btnCorrigir.style.display = 'inline-block';
   } else {
+    btnDespachar.style.display = 'inline-block';
     btnDespachar.disabled = false;
     btnDespachar.style.background = '#2E7D32';
     btnDespachar.textContent = '✅ Confirmar despacho e imprimir';
     statusMsg.textContent = '';
     document.getElementById('btnSalvarRomaneio').style.display = 'inline-block';
+    btnCorrigir.style.display = 'none';
   }
 
   renderRomaneioBody(jaDespachou);
   document.getElementById('romaneioOverlay').style.display = 'flex';
 }
 
-function renderRomaneioBody(jaDespachou) {
+// Libera a edição de um pedido JÁ DESPACHADO — uso pontual pra corrigir erro
+// operacional (ex: item removido sem querer antes do despacho, faltando no
+// romaneio e no boleto gerado em cima dele). Ao salvar, o estoque é ajustado
+// pela DIFERENÇA em relação ao que já tinha sido descontado no despacho
+// original — não desconta tudo de novo do zero.
+function iniciarCorrecaoPosDespacho() {
+  const aviso = 'Isso vai reabrir o pedido ' + (pedidoAtualRomaneio.numeroPedido || '') +
+    ' — já despachado — para edição. Ao salvar, o total do pedido e o estoque central' +
+    ' são ajustados automaticamente pela diferença. Use só pra corrigir um erro real' +
+    ' (item esquecido ou removido por engano). Confirma que quer corrigir este pedido?';
+  if (!confirm(aviso)) return;
+
+  _pedidoOriginalItensCorrecao = JSON.parse(JSON.stringify(pedidoAtualRomaneio.itens || {}));
+  document.getElementById('btnCorrigirDespachado').style.display = 'none';
+  document.getElementById('btnSalvarCorrecao').style.display = 'inline-block';
+  document.getElementById('romaneioStatusMsg').style.color = '#F57F17';
+  document.getElementById('romaneioStatusMsg').textContent = '✏️ Modo de correção — ajuste os itens e clique em "Salvar correção e ajustar estoque".';
+  renderRomaneioBody(false, true);
+}
+
+async function salvarCorrecaoPosDespacho() {
+  const btn = document.getElementById('btnSalvarCorrecao');
+  const statusMsg = document.getElementById('romaneioStatusMsg');
+  if (!pedidoAtualRomaneio || !pedidoAtualRomaneio._storageKey || !_pedidoOriginalItensCorrecao) {
+    statusMsg.style.color = '#C62828';
+    statusMsg.textContent = 'Erro: pedido original não encontrado. Feche e abra o romaneio novamente.';
+    return;
+  }
+  btn.disabled = true;
+  btn.textContent = '💾 Salvando e ajustando estoque...';
+  try {
+    const totalAntes = Object.values(_pedidoOriginalItensCorrecao).reduce((s,i)=>s+(i.total||0),0);
+    const totalDepois = Object.values(pedidoAtualRomaneio.itens).reduce((s,i)=>s+(i.total||0),0);
+
+    // Delta de estoque = (qtd que já tinha sido descontada) - (qtd nova).
+    // Item que aumentou ou foi adicionado: desconta a diferença a mais.
+    // Item que diminuiu ou foi removido: devolve a diferença pro estoque.
+    const idsEnvolvidos = new Set([...Object.keys(_pedidoOriginalItensCorrecao), ...Object.keys(pedidoAtualRomaneio.itens)]);
+    const deltas = {};
+    idsEnvolvidos.forEach(id => {
+      const qtdAntes = _pedidoOriginalItensCorrecao[id]?.qtd || 0;
+      const qtdDepois = pedidoAtualRomaneio.itens[id]?.qtd || 0;
+      const delta = qtdAntes - qtdDepois;
+      if (delta !== 0) deltas[id] = delta;
+    });
+    let saldos = null;
+    if (Object.keys(deltas).length > 0) {
+      saldos = await ajustarSaldoAtomico(deltas);
+    }
+
+    pedidoAtualRomaneio.total = totalDepois;
+    pedidoAtualRomaneio.correcoes = pedidoAtualRomaneio.correcoes || [];
+    pedidoAtualRomaneio.correcoes.push({
+      data: new Date().toISOString(), usuario: currentUser || '—',
+      totalAntes, totalDepois,
+      itensAntes: _pedidoOriginalItensCorrecao, itensDepois: JSON.parse(JSON.stringify(pedidoAtualRomaneio.itens))
+    });
+
+    await saveDocument(pedidoAtualRomaneio._storageKey, pedidoAtualRomaneio);
+    if (_dataCache) _dataCache[pedidoAtualRomaneio._storageKey] = pedidoAtualRomaneio;
+    if (saldos) {
+      Object.values(CATALOGO).flat().forEach(item => {
+        if (saldos[item.id] !== undefined) item._estoqueAtual = saldos[item.id];
+      });
+    }
+
+    await registrarLog('Pedido',
+      `✏️ Correção pós-despacho do pedido ${pedidoAtualRomaneio.numeroPedido} — total ajustado de R$ ${totalAntes.toFixed(2).replace('.',',')} para R$ ${totalDepois.toFixed(2).replace('.',',')}`,
+      currentUser, pedidoAtualRomaneio.unidade);
+
+    _pedidoOriginalItensCorrecao = null;
+    btn.style.display = 'none';
+    statusMsg.style.color = '#2E7D32';
+    statusMsg.textContent = `✅ Correção salva! Total atualizado de R$ ${totalAntes.toFixed(2).replace('.',',')} para R$ ${totalDepois.toFixed(2).replace('.',',')}. Lembre de corrigir o boleto na aba Boletos, se já tiver sido gerado.`;
+    renderRomaneioBody(true);
+    document.getElementById('btnCorrigirDespachado').style.display = 'inline-block';
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '💾 Salvar correção e ajustar estoque';
+    statusMsg.style.color = '#C62828';
+    statusMsg.textContent = 'Erro ao salvar correção: ' + e.message;
+  }
+}
+
+function renderRomaneioBody(jaDespachou, modoCorrecao) {
   const pedido = pedidoAtualRomaneio;
   const dataFormatada = new Date(pedido.dataEnvio).toLocaleString('pt-BR');
   const tipoIcon = pedido.tipoEntrega === 'Retirada' ? '🏪' : '🚚';
@@ -1541,10 +1634,19 @@ function renderRomaneioBody(jaDespachou) {
 
   const total = Object.values(pedido.itens).reduce((s,i)=>s+(i.total||0),0);
 
+  const correcoesHtml = (jaDespachou && pedido.correcoes && pedido.correcoes.length) ? `
+    <div style="background:#FFF3E0;border:1px solid #FFB74D;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#E65100">
+      ✏️ <strong>Este pedido já foi corrigido após o despacho ${pedido.correcoes.length > 1 ? `(${pedido.correcoes.length} vezes)` : ''}:</strong>
+      ${pedido.correcoes.map(c => `<div style="margin-top:4px">${new Date(c.data).toLocaleString('pt-BR')} por ${c.usuario} — total de R$ ${c.totalAntes.toFixed(2).replace('.',',')} para R$ ${c.totalDepois.toFixed(2).replace('.',',')}</div>`).join('')}
+    </div>` : '';
+
   document.getElementById('romaneioBody').innerHTML = `
-    ${!jaDespachou ? `<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#F57F17">
+    ${correcoesHtml}
+    ${!jaDespachou ? `${modoCorrecao ? `<div style="background:#FFEBEE;border:1px solid #EF9A9A;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#C62828">
+      ✏️ <strong>Modo de correção</strong> — este pedido JÁ FOI DESPACHADO. Ajuste os itens e clique em "Salvar correção e ajustar estoque"; o estoque central é corrigido pela diferença, não descontado do zero de novo.
+    </div>` : `<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#F57F17">
       ✏️ <strong>Antes de despachar</strong> — ajuste quantidades, remova itens (✕) ou adicione novos itens abaixo.
-    </div>
+    </div>`}
     ${(pedido.itensAvulsos && pedido.itensAvulsos.length) ? `<div style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:6px;padding:10px 12px;margin-bottom:12px">
       <div style="font-size:12px;font-weight:700;color:#1565C0;margin-bottom:8px">📦 Itens fora do catálogo pedidos por ${pedido.unidade} — defina o preço pra incluir no romaneio</div>
       ${pedido.itensAvulsos.map((ia, i) => `
@@ -3933,12 +4035,38 @@ function renderBoletos() {
       <td style="display:flex;gap:4px;flex-wrap:wrap">
         ${b.status !== 'pago' ? `<button class="btn btn-secondary btn-xs" onclick="marcarBoleto(${b.id},'pago')" style="background:#E8F5E9;color:#2E7D32">✅ Pago</button>` : ''}
         ${b.status === 'pago' ? `<button class="btn btn-secondary btn-xs" onclick="marcarBoleto(${b.id},'pendente')">↩️ Reabrir</button>` : ''}
+        <button class="btn btn-secondary btn-xs" onclick="editarBoleto(${b.id})">✏️ Editar</button>
         <button class="btn btn-secondary btn-xs" style="background:#FFEBEE;color:#C62828" onclick="excluirBoleto(${b.id})">🗑️</button>
       </td>
     </tr>`;
   });
   html += `</tbody></table>`;
   wrap.innerHTML = html;
+}
+
+// Edição rápida de um boleto já criado — pra corrigir valor/vencimento/descrição
+// quando o pedido que o gerou foi corrigido depois (ex: item esquecido no despacho).
+async function editarBoleto(id) {
+  const b = boletos.find(b => b.id === id);
+  if (!b) return;
+
+  const novoValorStr = prompt(`Valor do boleto (R$) — ${b.unidade}:`, b.valor.toFixed(2).replace('.',','));
+  if (novoValorStr === null) return; // cancelou
+  const novoValor = parseFloat(novoValorStr.replace(',', '.'));
+  if (isNaN(novoValor) || novoValor <= 0) { alert('Valor inválido.'); return; }
+
+  const novoVencStr = prompt('Vencimento (AAAA-MM-DD):', b.vencimento);
+  if (novoVencStr === null) return;
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(novoVencStr)) { alert('Data inválida — use o formato AAAA-MM-DD.'); return; }
+
+  const novaDesc = prompt('Descrição (opcional):', b.descricao || '');
+
+  b.valor = novoValor;
+  b.vencimento = novoVencStr;
+  b.descricao = novaDesc ?? b.descricao;
+  if (b.status !== 'pago' && new Date(b.vencimento) < new Date()) b.status = 'atrasado';
+  await saveBoletos();
+  renderBoletos();
 }
 
 async function excluirBoleto(id) {
