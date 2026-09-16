@@ -781,7 +781,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.08.21-6";
+const APP_VERSION = "2026.08.21-7";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM"];
 
@@ -3179,8 +3179,9 @@ function updateOrderTotal() {
     totalEl.textContent = "R$ " + total.toFixed(2).replace('.',',');
     const abaixoMinimo = total < VALOR_MINIMO_PEDIDO && total > 0;
     aviso.classList.toggle('hidden', total === 0 || total >= VALOR_MINIMO_PEDIDO);
-    if (btnEnviar) btnEnviar.disabled = abaixoMinimo;
-    if (btnEnviar) btnEnviar.style.opacity = abaixoMinimo ? '0.5' : '1';
+    // Aviso de valor mínimo é só informativo — não bloqueia o envio do pedido.
+    if (btnEnviar) btnEnviar.disabled = false;
+    if (btnEnviar) btnEnviar.style.opacity = '1';
   }
 }
 
