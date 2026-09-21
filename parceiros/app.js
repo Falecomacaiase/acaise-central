@@ -2,17 +2,6 @@
 // Controle de Consumo de Parceiros — Açaí-se
 // =========================================================
 
-const LOJAS_ACAISE = [
-  'Boa Viagem', 'Bv2', 'Dona Lindu', 'Jaqueira', 'FPS', 'Caruaru', 'Piedade',
-  'Graças', 'Porto de Galinhas', 'Costa Dourada', 'Paulista', 'Campina Grande', 'Setúbal',
-];
-
-function normalizarLoja(loja) {
-  if (!loja) return loja;
-  const encontrada = LOJAS_ACAISE.find(l => l.toLowerCase() === loja.trim().toLowerCase());
-  return encontrada || loja.trim();
-}
-
 const state = {
   parceiros: [],
   categorias: {},
@@ -36,19 +25,10 @@ function nomeDoMes(mesStr) {
   const nomes = ['Janeiro','Fevereiro','Março','Abril','Maio','Junho','Julho','Agosto','Setembro','Outubro','Novembro','Dezembro'];
   return `${nomes[m - 1]} ${a}`;
 }
-function diasDesde(dataStr) {
-  const then = new Date(dataStr + 'T00:00:00');
-  const hoje = new Date();
-  hoje.setHours(0, 0, 0, 0);
-  return Math.floor((hoje - then) / 86400000);
+function mesAtual() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
-function limiteDoParceiro(parceiro) {
-  if (parceiro.limite_mensal_personalizado !== null && parceiro.limite_mensal_personalizado !== undefined) {
-    return Number(parceiro.limite_mensal_personalizado);
-  }
-  return state.categorias[parceiro.categoria]?.limite_mensal || 0;
-}
-
 function hojeISO() {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -56,10 +36,6 @@ function hojeISO() {
 function mesSelecionadoLancar() {
   const val = document.getElementById('inpDataPedido').value;
   return val ? val.substring(0, 7) : mesAtual();
-}
-function mesAtual() {
-  const d = new Date();
-  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
 }
 function escapeHtml(s) {
   const d = document.createElement('div');
@@ -73,6 +49,12 @@ function getInicioFimMes(mesStr) {
   const fim = `${mesStr}-${String(ultimoDia).padStart(2, '0')}`;
   return { inicio, fim };
 }
+function diasDesde(dataStr) {
+  const then = new Date(dataStr + 'T00:00:00');
+  const hoje = new Date();
+  hoje.setHours(0, 0, 0, 0);
+  return Math.floor((hoje - then) / 86400000);
+}
 function bowlSvg(pct, cor) {
   const r = 18, c = 2 * Math.PI * r;
   const offset = c - (pct / 100) * c;
@@ -81,6 +63,30 @@ function bowlSvg(pct, cor) {
     <circle cx="22" cy="22" r="${r}" fill="none" stroke="${cor}" stroke-width="5" stroke-linecap="round"
       stroke-dasharray="${c}" stroke-dashoffset="${offset}" transform="rotate(-90 22 22)"/>
   </svg></div>`;
+}
+function normalizarLoja(loja) {
+  if (!loja) return loja;
+  const encontrada = LOJAS_ACAISE.find(l => l.toLowerCase() === loja.trim().toLowerCase());
+  return encontrada || loja.trim();
+}
+function limiteDoParceiro(parceiro) {
+  if (parceiro.limite_mensal_personalizado !== null && parceiro.limite_mensal_personalizado !== undefined) {
+    return Number(parceiro.limite_mensal_personalizado);
+  }
+  return state.categorias[parceiro.categoria]?.limite_mensal || 0;
+}
+
+// ---------- confirmação grande de pedido lançado ----------
+function mostrarConfirmacaoGrande(parceiroNome, valorTotal) {
+  const overlay = document.createElement('div');
+  overlay.className = 'overlay-confirmacao';
+  overlay.innerHTML = `
+    <div class="check">✅</div>
+    <div class="titulo">PEDIDO LANÇADO</div>
+    <div class="detalhe">${escapeHtml(parceiroNome)} · R$ ${formatarMoeda(valorTotal)}</div>
+  `;
+  document.body.appendChild(overlay);
+  setTimeout(() => overlay.remove(), 2200);
 }
 
 // ---------- dados ----------
@@ -108,25 +114,24 @@ async function getConsumoMensal(parceiroId, mesStr) {
 }
 
 function atualizarListasDeLojas() {
-  const optsLoja = LOJAS_ACAISE.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
+  const opts = LOJAS_ACAISE.map(l => `<option value="${escapeHtml(l)}">${escapeHtml(l)}</option>`).join('');
 
   const selHeader = document.getElementById('selLoja');
   const atualHeader = selHeader.value;
-  selHeader.innerHTML = '<option value="">Sua loja...</option>' + optsLoja;
+  selHeader.innerHTML = '<option value="">Sua loja...</option>' + opts;
   selHeader.value = atualHeader;
 
   const selNovoParceiro = document.getElementById('npLoja');
-  selNovoParceiro.innerHTML = '<option value="">Nenhuma / não definida</option>' + optsLoja;
+  selNovoParceiro.innerHTML = '<option value="">Nenhuma / não definida</option>' + opts;
 }
 
-// ---------- navegação ----------
+// ---------- permissão do painel (trava simples, não é segurança forte) ----------
 function painelDesbloqueado() {
   return sessionStorage.getItem('painelDesbloqueado') === '1';
 }
-
 function solicitarSenhaPainel() {
   const senha = prompt('Senha do Painel do Gestor:');
-  if (senha === null) return false; // cancelou
+  if (senha === null) return false;
   if (senha === SENHA_PAINEL_GESTOR) {
     sessionStorage.setItem('painelDesbloqueado', '1');
     return true;
@@ -135,9 +140,10 @@ function solicitarSenhaPainel() {
   return false;
 }
 
+// ---------- navegação ----------
 function mudarView(viewId) {
   if (viewId === 'painel' && !painelDesbloqueado() && !solicitarSenhaPainel()) {
-    return; // senha errada ou cancelada — não troca de tela
+    return;
   }
   document.querySelectorAll('.view').forEach(v => v.classList.remove('ativa'));
   document.getElementById('view-' + viewId).classList.add('ativa');
@@ -274,6 +280,20 @@ async function salvarPedido() {
   const total = valorPedido + taxa;
 
   const pedidosDoMes = await getConsumoMensal(parceiro.id, mesSelecionadoLancar());
+
+  // trava contra lançamento em duplicidade (o mesmo valor, no mesmo dia, pro mesmo parceiro)
+  const possivelDuplicado = pedidosDoMes.find(p =>
+    p.data === dataPedido && Number(p.valor_pedido) === valorPedido && p.tipo_entrega === tipo
+  );
+  if (possivelDuplicado) {
+    const confirmarDuplicado = confirm(
+      `Já existe um pedido de R$ ${formatarMoeda(valorPedido)} (${tipo === 'delivery' ? 'delivery' : 'presencial'}) ` +
+      `pra ${parceiro.nome} lançado em ${formatarData(dataPedido)}.\n\nTem certeza que quer lançar de novo? ` +
+      `Só confirme se for outro pedido de verdade, e não um clique duplicado.`
+    );
+    if (!confirmarDuplicado) return;
+  }
+
   const consumidoAtual = pedidosDoMes.reduce((s, p) => s + Number(p.valor_total), 0);
   const limite = limiteDoParceiro(parceiro);
   const novoTotal = consumidoAtual + total;
@@ -290,6 +310,7 @@ async function salvarPedido() {
   const btn = document.getElementById('btnSalvarPedido');
   btn.disabled = true;
   btn.textContent = 'Salvando...';
+  document.getElementById('cardFormularioLancar').classList.add('form-desabilitado');
 
   const { error } = await sb.from('parceiros_pedidos').insert({
     parceiro_id: parceiro.id,
@@ -299,18 +320,20 @@ async function salvarPedido() {
     taxa_entrega: taxa,
     valor_total: total,
     postou: false,
+    itens_pedido: itensPedido,
     loja,
     colaborador,
-    itens_pedido: itensPedido,
+    criado_por: colaborador,
   });
 
+  document.getElementById('cardFormularioLancar').classList.remove('form-desabilitado');
   btn.disabled = false;
   btn.textContent = 'Registrar pedido';
 
   if (error) { alert('Erro ao salvar: ' + error.message); return; }
 
+  mostrarConfirmacaoGrande(parceiro.nome, total);
   limparFormularioLancar();
-  alert('Pedido registrado! ✅');
 }
 
 // ---------- tela: parceiros ----------
@@ -482,34 +505,6 @@ function popularMesesPainel() {
   sel.innerHTML = html;
 }
 
-function renderPendentesPostagem(pendentes) {
-  document.getElementById('tituloPendentes').textContent = `Postagens pendentes (${pendentes.length})`;
-  const div = document.getElementById('listaPendentesPostagem');
-  if (pendentes.length === 0) {
-    div.innerHTML = '<div class="vazio">Nenhuma postagem pendente de confirmação 🎉</div>';
-    return;
-  }
-  div.innerHTML = pendentes.map(p => {
-    const dias = diasDesde(p.data);
-    const atrasado = dias >= DIAS_ALERTA_SEM_POSTAGEM;
-    return `<div class="item-parceiro" style="cursor:default;">
-      <div class="bowl-info">
-        <div class="nome">${escapeHtml(p.parceiroNome)} <span class="tag">${p.tipo_entrega === 'delivery' ? 'Delivery' : 'Presencial'}</span></div>
-        <div class="detalhe">R$ ${formatarMoeda(p.valor_total)} · ${formatarData(p.data)} · ${escapeHtml(p.loja || '')}</div>
-        ${p.itens_pedido ? `<div class="detalhe">🍨 ${escapeHtml(p.itens_pedido)}</div>` : ''}
-        <div class="detalhe" style="${atrasado ? 'color:var(--vermelho);font-weight:600;' : ''}">há ${dias} dia${dias === 1 ? '' : 's'} sem confirmação</div>
-      </div>
-      <button class="btn btn-secundario btn-pequeno btn-marcar-postado" data-id="${p.id}">Marcar postado</button>
-    </div>`;
-  }).join('');
-  div.querySelectorAll('.btn-marcar-postado').forEach(btn => {
-    btn.addEventListener('click', async () => {
-      await sb.from('parceiros_pedidos').update({ postou: true }).eq('id', btn.dataset.id);
-      renderPainel();
-    });
-  });
-}
-
 async function renderPainel() {
   const mes = document.getElementById('painelMes').value || mesAtual();
   const catFiltro = document.getElementById('painelCategoria').value;
@@ -518,7 +513,7 @@ async function renderPainel() {
   const parceirosFiltrados = state.parceiros.filter(p => !catFiltro || p.categoria === catFiltro);
 
   const dadosPorParceiro = await Promise.all(parceirosFiltrados.map(async p => {
-    const brutos = await getConsumoMensal(p.id, mes); // todos os pedidos do mês, em qualquer loja
+    const brutos = await getConsumoMensal(p.id, mes);
     const todosPedidos = brutos.map(x => ({ ...x, loja: normalizarLoja(x.loja) }));
     const limite = limiteDoParceiro(p);
     const consumidoTotal = todosPedidos.reduce((s, x) => s + Number(x.valor_total), 0);
@@ -528,8 +523,6 @@ async function renderPainel() {
     return { parceiro: p, todosPedidos, limite, consumidoTotal, pedidosNaLoja, consumidoNaLoja, semPostagem };
   }));
 
-  // resumo por loja — sempre olhando TODAS as lojas, independente do filtro de loja selecionado,
-  // pra dar a visão comparativa de onde os parceiros mais consomem
   const porLoja = {};
   dadosPorParceiro.forEach(d => {
     d.todosPedidos.forEach(p => {
@@ -540,7 +533,6 @@ async function renderPainel() {
   atualizarOpcoesLojaPainel(Object.keys(porLoja), lojaFiltro);
   renderConsumoPorLoja(porLoja);
 
-  // só entram na tabela/pendências os parceiros com pelo menos 1 pedido na loja filtrada (quando houver filtro)
   const linhas = lojaFiltro ? dadosPorParceiro.filter(d => d.pedidosNaLoja.length > 0) : dadosPorParceiro;
 
   const pendentes = linhas
@@ -574,9 +566,7 @@ async function renderPainel() {
       ? `R$ ${formatarMoeda(valorMostrado)} nesta loja <span class="detalhe" style="font-size:0.7rem;">(R$ ${formatarMoeda(d.consumidoTotal)} no total, todas as lojas)</span>`
       : `R$ ${formatarMoeda(valorMostrado)} / ${formatarMoeda(d.limite)}`;
     const lojasDoMes = [...new Set(d.todosPedidos.map(x => x.loja).filter(Boolean))];
-    const celulaLoja = lojasDoMes.length === 0
-      ? '—'
-      : lojasDoMes.map(l => escapeHtml(l)).join(', ');
+    const celulaLoja = lojasDoMes.length === 0 ? '—' : lojasDoMes.map(l => escapeHtml(l)).join(', ');
     return `<tr>
       <td><strong>${escapeHtml(d.parceiro.nome)}</strong><br><span class="detalhe" style="font-size:0.72rem;">${state.categorias[d.parceiro.categoria]?.label || ''}</span></td>
       <td>${celulaLoja}</td>
@@ -617,7 +607,45 @@ function atualizarOpcoesLojaPainel(lojasEncontradas, selecaoAtual) {
   select.value = selecaoAtual;
 }
 
-// ---------- inicialização ----------
+function renderPendentesPostagem(pendentes) {
+  document.getElementById('tituloPendentes').textContent = `Postagens pendentes (${pendentes.length})`;
+  const div = document.getElementById('listaPendentesPostagem');
+  if (pendentes.length === 0) {
+    div.innerHTML = '<div class="vazio">Nenhuma postagem pendente de confirmação 🎉</div>';
+    return;
+  }
+  div.innerHTML = pendentes.map(p => {
+    const dias = diasDesde(p.data);
+    const atrasado = dias >= DIAS_ALERTA_SEM_POSTAGEM;
+    return `<div class="item-parceiro" style="cursor:default;">
+      <div class="bowl-info">
+        <div class="nome">${escapeHtml(p.parceiroNome)} <span class="tag">${p.tipo_entrega === 'delivery' ? 'Delivery' : 'Presencial'}</span></div>
+        <div class="detalhe">R$ ${formatarMoeda(p.valor_total)} · ${formatarData(p.data)} · ${escapeHtml(p.loja || '')}</div>
+        ${p.itens_pedido ? `<div class="detalhe">🍨 ${escapeHtml(p.itens_pedido)}</div>` : ''}
+        <div class="detalhe" style="${atrasado ? 'color:var(--vermelho);font-weight:600;' : ''}">há ${dias} dia${dias === 1 ? '' : 's'} sem confirmação</div>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:6px;">
+        <button class="btn btn-secundario btn-pequeno btn-marcar-postado" data-id="${p.id}">Marcar postado</button>
+        <button class="btn btn-perigo btn-pequeno btn-cancelar-pedido" data-id="${p.id}">Cancelar pedido</button>
+      </div>
+    </div>`;
+  }).join('');
+  div.querySelectorAll('.btn-marcar-postado').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      await sb.from('parceiros_pedidos').update({ postou: true }).eq('id', btn.dataset.id);
+      renderPainel();
+    });
+  });
+  div.querySelectorAll('.btn-cancelar-pedido').forEach(btn => {
+    btn.addEventListener('click', async () => {
+      if (!confirm('Cancelar (excluir) este lançamento? Essa ação não pode ser desfeita.')) return;
+      await sb.from('parceiros_pedidos').delete().eq('id', btn.dataset.id);
+      renderPainel();
+    });
+  });
+}
+
+// ---------- inicialização geral ----------
 document.querySelectorAll('.toggle-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.toggle-btn').forEach(b => b.classList.remove('selecionado'));
