@@ -506,6 +506,7 @@ function popularMesesPainel() {
 }
 
 async function renderPainel() {
+ try {
   const mes = document.getElementById('painelMes').value || mesAtual();
   const catFiltro = document.getElementById('painelCategoria').value;
   const lojaFiltro = document.getElementById('painelLoja').value;
@@ -578,6 +579,14 @@ async function renderPainel() {
       <td>${d.semPostagem > 0 ? `<span class="badge-postou nao">${d.semPostagem} sem post</span>` : '<span class="badge-postou sim">Em dia</span>'}</td>
     </tr>`;
   }).join('');
+ } catch (err) {
+  console.error('Erro ao renderizar o painel:', err);
+  document.getElementById('painelStats').innerHTML =
+    `<div class="alerta perigo" style="grid-column: 1 / -1;">⚠️ Erro ao carregar o painel: ${escapeHtml(err.message)}. Tira um print dessa mensagem e manda pro Claude.</div>`;
+  document.getElementById('listaConsumoPorLoja').innerHTML = '';
+  document.getElementById('listaPendentesPostagem').innerHTML = '';
+  document.getElementById('corpoTabelaPainel').innerHTML = '';
+ }
 }
 
 function renderConsumoPorLoja(porLoja) {
@@ -679,10 +688,15 @@ async function init() {
   document.getElementById('inpColaborador').value = localStorage.getItem('parc_colaborador') || '';
   document.getElementById('inpDataPedido').value = hojeISO();
   document.getElementById('inpDataPedido').max = hojeISO();
-
-  await carregarCategorias();
-  await carregarParceiros();
   popularMesesPainel();
+
+  try {
+    await carregarCategorias();
+    await carregarParceiros();
+  } catch (err) {
+    console.error('Erro ao carregar dados iniciais:', err);
+    alert('Não consegui carregar os dados do servidor. Verifica sua internet e atualiza a página (Ctrl+Shift+R).');
+  }
 }
 
 init();
