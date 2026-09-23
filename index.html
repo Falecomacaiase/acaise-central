@@ -804,7 +804,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.09.21-3";
+const APP_VERSION = "2026.09.23-1";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -2747,6 +2747,38 @@ async function saveItemState() {
   await safeSet('itemState', JSON.stringify(itemState), true);
 }
 
+// Atualiza o estado de UM item (disponível, preço, categoria, restrição...) de
+// forma ATÔMICA via transação — mescla só os campos alterados dentro do doc
+// mais recente do Firestore, sem sobrescrever o resto do itemState. Antes,
+// cada edição salvava a cópia INTEIRA do itemState que estava na memória da
+// aba; se duas edições acontecessem quase ao mesmo tempo (duas abas, dois
+// dispositivos, ou uma aba aberta há um tempo com uma cópia desatualizada), a
+// segunda gravação apagava a mudança da primeira — foi isso que fez itens
+// pausados voltarem a aparecer como "disponível" pra loja sem ninguém mexer
+// neles de propósito. Mesmo princípio do ajustarSaldoAtomico.
+async function atualizarItemStateAtomico(itemId, patch) {
+  const docRef = _col.doc(toDocId('itemState'));
+  const novoEstado = await _db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(docRef);
+    let atual = {};
+    if (snap.exists) {
+      let val = snap.data().value;
+      if (typeof val === 'string') { try { val = JSON.parse(val); } catch(e) { val = {}; } }
+      atual = val || {};
+    }
+    atual[itemId] = { ...(atual[itemId] || {}), ...patch };
+    transaction.set(docRef, {
+      value: JSON.stringify(atual),
+      originalKey: 'itemState',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    return atual;
+  });
+  itemState = novoEstado;
+  if (_dataCache) _dataCache['itemState'] = novoEstado;
+  return novoEstado;
+}
+
 function getItemState(id, item) {
   if (!itemState[id]) itemState[id] = { disponivel: true, custo: null, venda: item.preco };
   return itemState[id];
@@ -2830,9 +2862,7 @@ async function editarRestricaoItem(id, nome) {
   );
   if (val === null) return; // cancelou
   const lista = val.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
-  st.restritoUnidades = lista;
-  itemState[id] = st;
-  await saveItemState();
+  await atualizarItemStateAtomico(id, { restritoUnidades: lista });
   renderGestaoItens();
 }
 
@@ -2883,9 +2913,7 @@ function exportarCatalogoCSV() {
 }
 
 async function toggleDisponivel(itemId, valor) {
-  if (!itemState[itemId]) itemState[itemId] = { disponivel: true, custo: null, venda: null };
-  itemState[itemId].disponivel = valor;
-  await saveItemState();
+  await atualizarItemStateAtomico(itemId, { disponivel: valor });
 }
 
 function abrirEditPreco(itemId, nome, custo, venda, categoriaAtual) {
@@ -2952,14 +2980,14 @@ async function salvarItem() {
     item.preco = venda;
   }
 
-  // Atualiza itemState
-  if (!itemState[itemId]) itemState[itemId] = { disponivel: true };
-  itemState[itemId].custo = isNaN(custo) ? null : custo;
-  itemState[itemId].venda = venda;
-  itemState[itemId].nomeCustom = novoNome;
-  if (novaCategoria) itemState[itemId].categoria = novaCategoria;
-
-  await saveItemState();
+  // Atualiza itemState — de forma atômica, pra não apagar mudanças feitas em
+  // outra aba/dispositivo enquanto esta ficou aberta (ver atualizarItemStateAtomico)
+  await atualizarItemStateAtomico(itemId, {
+    custo: isNaN(custo) ? null : custo,
+    venda: venda,
+    nomeCustom: novoNome,
+    ...(novaCategoria ? { categoria: novaCategoria } : {})
+  });
   msg.style.color = '#2E7D32';
   msg.textContent = '✅ Alterações salvas!';
   document.getElementById('editNomeItem').textContent = novoNome;
