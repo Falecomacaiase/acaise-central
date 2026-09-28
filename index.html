@@ -1843,7 +1843,15 @@ function adicionarItemRomaneio() {
 // nem quantidade de nenhum item (isso manteria os relatórios de giro/custo por
 // item corretos). Uso típico: divisão de custo de ativação de evento, cortesia
 // parcial, etc. Fica registrado com motivo e quem aplicou, pra auditoria.
-function aplicarDescontoRomaneio() {
+//
+// IMPORTANTE: salva no Firestore imediatamente (não só na confirmação do
+// despacho). Antes, o desconto ficava só em `pedidoAtualRomaneio` — se o
+// romaneio fosse fechado/recarregado antes de despachar (comum quando o
+// despacho acontece dias depois de o pedido chegar), o desconto se perdia
+// silenciosamente e o boleto saía com o valor cheio. Caso real que motivou
+// essa correção: PIEDADE, pedido PED-20260925-250, desconto "ATIVAÇÃO EVENTO
+// (ULTRA)" aplicado dia 25/09 mas só despachado (sem o desconto) dia 28/09.
+async function aplicarDescontoRomaneio() {
   const tipo = document.getElementById('descontoTipo').value;
   const valor = parseFloat(document.getElementById('descontoValor').value);
   const motivo = document.getElementById('descontoMotivo').value.trim();
@@ -1856,12 +1864,24 @@ function aplicarDescontoRomaneio() {
     aplicadoPor: currentUser,
     data: new Date().toISOString()
   };
+  pedidoAtualRomaneio.total = calcularTotalComDesconto(pedidoAtualRomaneio);
+  try {
+    await saveDocument(pedidoAtualRomaneio._storageKey, pedidoAtualRomaneio);
+  } catch (e) {
+    alert('⚠️ O desconto apareceu na tela mas NÃO foi salvo (erro: ' + e.message + '). Tente aplicar de novo antes de despachar — senão o boleto sai com o valor cheio.');
+  }
   renderRomaneioBody(false);
 }
 
-function removerDescontoRomaneio() {
+async function removerDescontoRomaneio() {
   if (!confirm('Remover o desconto aplicado neste pedido? O total volta a ser o valor cheio dos itens.')) return;
   delete pedidoAtualRomaneio.desconto;
+  pedidoAtualRomaneio.total = calcularTotalComDesconto(pedidoAtualRomaneio);
+  try {
+    await saveDocument(pedidoAtualRomaneio._storageKey, pedidoAtualRomaneio);
+  } catch (e) {
+    alert('⚠️ O desconto foi removido na tela mas a remoção NÃO foi salva (erro: ' + e.message + ').');
+  }
   renderRomaneioBody(false);
 }
 
