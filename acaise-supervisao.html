@@ -323,8 +323,16 @@ function fmtDate(dstr){
   return d.toLocaleDateString('pt-BR',{day:'2-digit',month:'2-digit',year:'numeric'});
 }
 function todayISO(){ return new Date().toISOString(); }
-function todayDateStr(){ return new Date().toISOString().slice(0,10); }
-function currentMonthKey(){ return new Date().toISOString().slice(0,7); }
+function todayDateStr(){
+  const d = new Date();
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0')+'-'+String(d.getDate()).padStart(2,'0');
+}
+function currentMonthKey(){ return todayDateStr().slice(0,7); }
+function checkMonthKey(entry){
+  if(entry.visit_date) return String(entry.visit_date).slice(0,7);
+  const d = new Date(entry.created_at);
+  return d.getFullYear()+'-'+String(d.getMonth()+1).padStart(2,'0');
+}
 function el(html){ const d = document.createElement('div'); d.innerHTML = html.trim(); return d.firstChild; }
 function showToast(msg){
   const t = document.getElementById('toast');
@@ -992,13 +1000,52 @@ function renderDailyChecklistCard(container){
 
   const card = el(`
     <div class="card">
-      <h2>Checklist Diário da Equipe</h2>
-      <p class="subtitle">Abertura e fechamento da loja — a equipe marca em tempo real, e fica arquivado pra você conferir depois.</p>
-      <div id="daily-today-wrap"></div>
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;gap:10px;flex-wrap:wrap;">
+        <div><h2 style="margin-bottom:2px;">Checklist Diário da Equipe</h2><p class="subtitle" style="margin-bottom:0;">Abertura e fechamento da loja — a equipe marca em tempo real, e fica arquivado pra você conferir depois.</p></div>
+        <span class="switch-link" id="daily-edit-toggle">editar tarefas desta loja</span>
+      </div>
+      <div id="daily-edit-panel" style="display:none;margin-top:14px;padding-top:14px;border-top:1px solid var(--line);"></div>
+      <div id="daily-today-wrap" style="margin-top:14px;"></div>
     </div>
   `);
   container.appendChild(card);
   const wrap = card.querySelector('#daily-today-wrap');
+
+  const editPanel = card.querySelector('#daily-edit-panel');
+  const currentGroups = getDailyGroups();
+  const currentAbertura = currentGroups.find(g=>g.key==='abertura') || {items:[]};
+  const currentFechamento = currentGroups.find(g=>g.key==='fechamento') || {items:[]};
+  editPanel.appendChild(el(`
+    <p class="subtitle" style="margin-bottom:10px;">Isso muda só o checklist desta unidade, e vale a partir do próximo dia aberto — dias já registrados não mudam.</p>
+    <div class="form-grid two">
+      <div class="field"><label>Abertura (uma tarefa por linha)</label><textarea id="fran-cust-abertura" style="min-height:200px;">${currentAbertura.items.join('\n')}</textarea></div>
+      <div class="field"><label>Fechamento (uma tarefa por linha)</label><textarea id="fran-cust-fechamento" style="min-height:200px;">${currentFechamento.items.join('\n')}</textarea></div>
+    </div>
+    <button class="btn" id="fran-cust-save" style="margin-top:6px;">Salvar checklist da loja</button>
+  `));
+  card.querySelector('#daily-edit-toggle').onclick = ()=>{
+    const opening = editPanel.style.display === 'none';
+    editPanel.style.display = opening ? 'block' : 'none';
+    card.querySelector('#daily-edit-toggle').textContent = opening ? 'fechar edição' : 'editar tarefas desta loja';
+  };
+  editPanel.querySelector('#fran-cust-save').onclick = async ()=>{
+    const groups = [
+      {key:'abertura', label:'Abertura', items: parseTaskLines(editPanel.querySelector('#fran-cust-abertura').value)},
+      {key:'fechamento', label:'Fechamento', items: parseTaskLines(editPanel.querySelector('#fran-cust-fechamento').value)},
+    ];
+    if(!groups[0].items.length && !groups[1].items.length){ showToast('Adicione ao menos uma tarefa'); return; }
+    const btn = editPanel.querySelector('#fran-cust-save');
+    btn.disabled = true; btn.textContent = 'Salvando…';
+    try{
+      await sb('supervisao_units?slug=eq.'+encodeURIComponent(STATE.currentUnitSlug), {method:'PATCH', body: JSON.stringify({daily_tasks: groups})});
+      STATE.unitRow.daily_tasks = groups;
+      showToast('Checklist da loja atualizado');
+    }catch(e){
+      showToast('Falha ao salvar checklist');
+    }
+    btn.disabled = false; btn.textContent = 'Salvar checklist da loja';
+  };
+
 
   if(!todayEntry){
     wrap.appendChild(el(`
@@ -1278,8 +1325,11 @@ async function renderNetworkView(){
     const tasks = record.tasks || [];
     const pending = tasks.filter(t=>t.status==='pending').length;
     const monthData = (record.finance||{})[thisMonth];
+    const monthChecks = (record.checklist||[]).filter(c=>checkMonthKey(c)===thisMonth);
+    const monthCheck = monthChecks.length ? monthChecks[monthChecks.length-1] : null;
     return {
       unit, score, lastDate: last ? (last.visit_date||last.created_at) : null, pending,
+      doneThisMonth: !!monthCheck, monthCheck, monthScore: monthCheck ? computeEntryScore(monthCheck) : null,
       monthTotal: monthData ? financeTotal(monthData) : 0, monthData,
       negFlag: last && last.negative_reviews ? last.negative_reviews : '',
       missingFlag: last && last.missing_products ? last.missing_products : '',
@@ -1295,6 +1345,14 @@ async function renderNetworkView(){
   const networkAvgScore = scoredRows.length ? scoredRows.reduce((s,r)=>s+r.score,0)/scoredRows.length : null;
   const totalPending = rows.reduce((s,r)=>s+r.pending,0);
   const flaggedUnits = rows.filter(r=>r.negFlag || r.missingFlag || (r.score!==null && r.score<75));
+  const doneRows = rows.filter(r=>r.doneThisMonth);
+  const pendingRows = rows.filter(r=>!r.doneThisMonth).sort((a,b)=>{
+    if(!a.lastDate && !b.lastDate) return 0;
+    if(!a.lastDate) return -1; if(!b.lastDate) return 1;
+    return new Date(a.lastDate) - new Date(b.lastDate);
+  });
+  const monthLabel = new Date(thisMonth+'-01T00:00:00').toLocaleDateString('pt-BR',{month:'long',year:'numeric'});
+  const donePct = rows.length ? Math.round(doneRows.length/rows.length*100) : 0;
 
   app.innerHTML = '';
   app.appendChild(el(`<div class="topbar">${brandBlock('Franqueadora · Visão da Rede')}<span class="switch-link" id="back-role">trocar de perfil</span></div>`));
@@ -1311,9 +1369,57 @@ async function renderNetworkView(){
         <div class="fin-metric"><div class="label">Conformidade média da rede</div><div class="value">${networkAvgScore!==null ? networkAvgScore.toFixed(0)+'%' : '–'}</div></div>
         <div class="fin-metric"><div class="label">Tarefas pendentes (rede)</div><div class="value">${totalPending}</div></div>
         <div class="fin-metric"><div class="label">Unidades pedindo atenção</div><div class="value">${flaggedUnits.length}</div></div>
+        <div class="fin-metric"><div class="label">Supervisões do mês</div><div class="value">${doneRows.length}/${rows.length}</div></div>
       </div>
     </div>
   `));
+
+  const monthCard = el(`
+    <div class="card">
+      <h2 style="text-transform:capitalize;">Supervisões de ${monthLabel}</h2>
+      <p class="subtitle">Meta: toda unidade supervisionada uma vez por mês.</p>
+      <div style="display:flex;align-items:baseline;gap:10px;flex-wrap:wrap;">
+        <span class="display" style="font-size:30px;color:var(--purple-deep);">${doneRows.length} de ${rows.length}</span>
+        <span style="color:var(--muted);font-size:13px;">unidades supervisionadas neste mês · ${pendingRows.length} pendente(s)</span>
+      </div>
+      <div style="height:10px;background:#EFE6D8;border-radius:6px;overflow:hidden;margin:12px 0 18px;"><div style="height:100%;width:${donePct}%;background:var(--green);"></div></div>
+      <div class="form-grid two" style="margin-bottom:0;">
+        <div id="month-pending"><h4 style="margin:0 0 6px;font-size:13.5px;color:var(--amber);font-family:'Inter',sans-serif;">⚠ Pendentes (${pendingRows.length})</h4></div>
+        <div id="month-done"><h4 style="margin:0 0 6px;font-size:13.5px;color:var(--green);font-family:'Inter',sans-serif;">✓ Realizadas (${doneRows.length})</h4></div>
+      </div>
+    </div>
+  `);
+  container.appendChild(monthCard);
+  const pendingBox = monthCard.querySelector('#month-pending');
+  const doneBox = monthCard.querySelector('#month-done');
+  if(!pendingRows.length){
+    pendingBox.appendChild(el(`<div class="attn-ok">Todas as unidades já foram supervisionadas neste mês 🎉</div>`));
+  } else {
+    pendingRows.forEach(r=>{
+      pendingBox.appendChild(el(`
+        <div class="unit-row" style="padding:10px 0;gap:10px;">
+          <div class="u-name" style="min-width:0;">${r.unit.name}</div>
+          <span class="badge" style="background:${r.lastDate?'var(--amber-bg)':'var(--red-bg)'};color:${r.lastDate?'var(--amber)':'var(--red)'};">${r.lastDate?'Pendente':'Nunca supervisionada'}</span>
+          ${r.lastDate ? `<div style="font-size:12px;color:var(--muted);">última: ${fmtDate(r.lastDate)}</div>` : ''}
+        </div>
+      `));
+    });
+  }
+  if(!doneRows.length){
+    doneBox.appendChild(el(`<div class="empty-state" style="padding:14px 0;text-align:left;">Nenhuma supervisão feita neste mês ainda.</div>`));
+  } else {
+    doneRows.forEach(r=>{
+      const st = classify(r.monthScore);
+      doneBox.appendChild(el(`
+        <div class="unit-row" style="padding:10px 0;gap:10px;">
+          <div class="u-name" style="min-width:0;">${r.unit.name}</div>
+          <span class="badge" style="background:${st.bg};color:${st.color};">${st.label}</span>
+          <div class="u-score" style="min-width:0;">${r.monthScore!==null ? r.monthScore.toFixed(0)+'%' : '–'}</div>
+          <div style="font-size:12px;color:var(--muted);">${fmtDate(r.monthCheck.visit_date||r.monthCheck.created_at)}</div>
+        </div>
+      `));
+    });
+  }
 
   const financeEntryCard = el(`
     <div class="card">
@@ -1386,6 +1492,10 @@ async function renderNetworkView(){
     </div>
   `);
   container.appendChild(customizeCard);
+  container.style.display = 'flex';
+  container.style.flexDirection = 'column';
+  financeEntryCard.style.order = '20';
+  customizeCard.style.order = '21';
   const custUnitSelect = customizeCard.querySelector('#cust-unit');
   custUnitSelect.innerHTML = STATE.units.map(u=>`<option value="${u.slug}">${u.name}</option>`).join('');
 
@@ -1434,6 +1544,9 @@ async function renderNetworkView(){
         <div class="unit-row" style="cursor:pointer;" data-slug="${r.unit.slug}">
           <div class="u-name">${r.unit.name}</div>
           <span class="badge" style="background:${status.bg};color:${status.color};">${status.label}</span>
+          ${r.doneThisMonth
+            ? '<span class="badge" style="background:var(--green-bg);color:var(--green);">✓ supervisionada no mês</span>'
+            : '<span class="badge" style="background:var(--amber-bg);color:var(--amber);">⚠ pendente no mês</span>'}
           <div class="u-score">${r.score!==null ? r.score.toFixed(0)+'%' : '–'}</div>
           <div class="u-rev">${fmtMoneyShort(r.monthTotal)}/mês</div>
           <div style="font-size:12px;color:var(--muted);">${r.pending} pendente(s)${r.lastDate ? ' · última visita '+fmtDate(r.lastDate) : ''}</div>
@@ -1476,8 +1589,54 @@ async function renderNetworkView(){
   container.appendChild(el(`<div class="card"><h2>Conformidade por unidade</h2><canvas id="score-chart" height="100"></canvas></div>`));
   container.appendChild(el(`<div class="card"><h2>Faturamento por unidade (mês atual)</h2><p class="subtitle">Sistema, iFood e 99Food empilhados</p><canvas id="rev-chart" height="100"></canvas></div>`));
 
+  const bands = [
+    {label:'Excelente', range:'90 a 100%', color:'#5C7A3D', units:[]},
+    {label:'Bom', range:'75 a 89%', color:'#9DBB72', units:[]},
+    {label:'Regular', range:'60 a 74%', color:'#C97A1F', units:[]},
+    {label:'Crítico', range:'abaixo de 60%', color:'#B4432F', units:[]},
+    {label:'Sem supervisão', range:'nunca supervisionada', color:'#C9BEC2', units:[]},
+  ];
+  rows.forEach(r=>{
+    const b = r.score===null ? bands[4] : (bands.find(x=>x.label===classify(r.score).label) || bands[4]);
+    b.units.push(r.unit.name);
+  });
+  const pieCard = el(`
+    <div class="card">
+      <h2>Panorama de conformidade da rede</h2>
+      <p class="subtitle">Quantas unidades estão em cada faixa, pela última supervisão de cada uma.</p>
+      <div style="display:flex;gap:28px;align-items:center;flex-wrap:wrap;">
+        <div style="width:280px;max-width:100%;"><canvas id="pie-chart"></canvas></div>
+        <div id="pie-legend" style="flex:1;min-width:220px;"></div>
+      </div>
+    </div>
+  `);
+  container.appendChild(pieCard);
+  const legendBox = pieCard.querySelector('#pie-legend');
+  bands.filter(b=>b.units.length).forEach(b=>{
+    legendBox.appendChild(el(`
+      <div style="margin-bottom:12px;">
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="width:12px;height:12px;border-radius:50%;background:${b.color};display:inline-block;"></span>
+          <b style="font-size:13.5px;">${b.label}</b>
+          <span style="font-size:12px;color:var(--muted);">${b.range} · ${b.units.length} unidade(s)</span>
+        </div>
+        <div style="font-size:12.5px;color:var(--muted);margin-left:20px;line-height:1.5;">${b.units.join(', ')}</div>
+      </div>
+    `));
+  });
+
   requestAnimationFrame(()=>{
     if(!rows.length) return;
+    new Chart(document.getElementById('pie-chart'), {
+      type:'pie',
+      data:{ labels: bands.map(b=>b.label),
+        datasets:[{ data: bands.map(b=>b.units.length), backgroundColor: bands.map(b=>b.color), borderColor:'#fff', borderWidth:2 }] },
+      options:{ plugins:{ legend:{display:false},
+        tooltip:{ callbacks:{
+          label:(ctx)=> ctx.label+': '+ctx.parsed+' unidade(s)',
+          afterLabel:(ctx)=> bands[ctx.dataIndex].units.join(', ')
+        } } } }
+    });
     new Chart(document.getElementById('score-chart'), {
       type:'bar',
       data:{ labels: rows.map(r=>r.unit.name),
