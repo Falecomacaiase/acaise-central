@@ -805,7 +805,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.09.24-2";
+const APP_VERSION = "2026.09.28-1";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -1280,7 +1280,10 @@ function verRomaneioLoja(idx) {
 // histórico "Meus Pedidos" quanto logo após enviar/ajustar um pedido).
 function abrirRomaneioLojaObjeto(p) {
   const data = new Date(p.dataEnvio).toLocaleString('pt-BR');
-  const total = Object.values(p.itens||{}).reduce((s,i)=>s+(i.total||0),0);
+  const totalItens = Object.values(p.itens||{}).reduce((s,i)=>s+(i.total||0),0);
+  const descL = p.desconto;
+  const descontoCalcL = descL ? (descL.tipo === 'percentual' ? totalItens * (descL.valor/100) : descL.valor) : 0;
+  const total = descL ? Math.max(0, totalItens - descontoCalcL) : totalItens;
   let itensHtml = '';
   Object.values(p.itens||{}).forEach(it => {
     itensHtml += `<tr><td style="padding:6px 8px">${it.nome}</td>
@@ -1314,10 +1317,17 @@ function abrirRomaneioLojaObjeto(p) {
         <th style="padding:8px;text-align:right">Total</th>
       </tr></thead>
       <tbody>${itensHtml}</tbody>
-      <tfoot><tr style="background:#EDE7F6;font-weight:700;font-size:15px">
+      ${descL ? `<tfoot>
+        <tr><td colspan="3" style="padding:6px 8px;text-align:right;color:#888">Total dos itens</td><td style="padding:6px 8px;text-align:right;color:#888"><s>R$ ${totalItens.toFixed(2).replace('.',',')}</s></td></tr>
+        <tr><td colspan="3" style="padding:6px 8px;text-align:right;color:#AD1457">Desconto (${descL.motivo})</td><td style="padding:6px 8px;text-align:right;color:#AD1457">− R$ ${descontoCalcL.toFixed(2).replace('.',',')}</td></tr>
+        <tr style="background:#EDE7F6;font-weight:700;font-size:15px">
+          <td colspan="3" style="padding:10px 8px">TOTAL A PAGAR</td>
+          <td style="padding:10px 8px;text-align:right;color:#5B2D8E">R$ ${total.toFixed(2).replace('.',',')}</td>
+        </tr>
+      </tfoot>` : `<tfoot><tr style="background:#EDE7F6;font-weight:700;font-size:15px">
         <td colspan="3" style="padding:10px 8px">TOTAL DO PEDIDO</td>
         <td style="padding:10px 8px;text-align:right;color:#5B2D8E">R$ ${total.toFixed(2).replace('.',',')}</td>
-      </tr></tfoot>
+      </tr></tfoot>`}
     </table>
     ${(p.itensAvulsos && p.itensAvulsos.length) ? `<div style="margin-top:12px;padding:10px;background:#E3F2FD;border-radius:6px;font-size:13px">
       <strong style="color:#1565C0">📦 Itens fora do catálogo (aguardando preço da franqueadora):</strong>
@@ -1612,7 +1622,9 @@ async function salvarCorrecaoPosDespacho() {
       saldos = await ajustarSaldoAtomico(deltas);
     }
 
-    pedidoAtualRomaneio.total = totalDepois;
+    // total = valor A COBRAR (com desconto aplicado, se houver) — totalDepois
+    // acima é só o valor dos itens, usado pro histórico/log da correção.
+    pedidoAtualRomaneio.total = calcularTotalComDesconto(pedidoAtualRomaneio);
     pedidoAtualRomaneio.correcoes = pedidoAtualRomaneio.correcoes || [];
     pedidoAtualRomaneio.correcoes.push({
       data: new Date().toISOString(), usuario: currentUser || '—',
@@ -1693,7 +1705,41 @@ function renderRomaneioBody(jaDespachou, modoCorrecao) {
     }
   });
 
-  const total = Object.values(pedido.itens).reduce((s,i)=>s+(i.total||0),0);
+  const totalItens = Object.values(pedido.itens).reduce((s,i)=>s+(i.total||0),0);
+
+  // Desconto/divisão de custo com a franqueadora (ex: evento, ativação) — não
+  // mexe no preço nem na quantidade de cada item (isso ficaria confuso nos
+  // relatórios de giro/custo), é um abatimento separado aplicado só no TOTAL A
+  // COBRAR do franqueado. O valor dos itens continua correto pra controle de
+  // estoque; o total final (com desconto) é o que vira pedido.total e alimenta
+  // relatórios e o valor que a franqueadora lança no sistema de boleto externo.
+  const desc = pedido.desconto;
+  const descontoCalc = desc ? (desc.tipo === 'percentual' ? totalItens * (desc.valor/100) : desc.valor) : 0;
+  const total = desc ? Math.max(0, totalItens - descontoCalc) : totalItens;
+
+  const descontoFormHtml = !jaDespachou ? `
+    <div style="background:#FCE4EC;border:1px solid #F48FB1;border-radius:6px;padding:10px 12px;margin-bottom:12px">
+      <div style="font-size:12px;font-weight:700;color:#AD1457;margin-bottom:8px">💰 Desconto / divisão de custo com a franqueadora</div>
+      ${desc ? `<div style="font-size:13px;color:#AD1457;margin-bottom:8px">
+        ✅ Desconto aplicado: ${desc.tipo === 'percentual' ? desc.valor + '%' : 'R$ ' + desc.valor.toFixed(2).replace('.',',')}
+        (− R$ ${descontoCalc.toFixed(2).replace('.',',')}) — <em>${desc.motivo}</em>
+        <button onclick="removerDescontoRomaneio()" style="margin-left:8px;background:none;border:none;color:#C62828;cursor:pointer;text-decoration:underline;font-size:12px">remover</button>
+      </div>` : ''}
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center">
+        <select id="descontoTipo" style="padding:6px;border:1px solid #F48FB1;border-radius:4px;font-size:13px">
+          <option value="valor">R$ (valor fixo)</option>
+          <option value="percentual">% (percentual)</option>
+        </select>
+        <input type="number" id="descontoValor" min="0" step="0.01" placeholder="0,00" style="width:90px;padding:6px;border:1px solid #F48FB1;border-radius:4px;font-size:13px;text-align:right">
+        <input type="text" id="descontoMotivo" placeholder="Motivo (ex: Ativação de evento — dividir custo)" style="flex:2;min-width:200px;padding:6px;border:1px solid #F48FB1;border-radius:4px;font-size:13px">
+        <button onclick="aplicarDescontoRomaneio()" style="background:#AD1457;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:13px;cursor:pointer;font-weight:600">${desc ? '🔄 Atualizar' : '✅ Aplicar'} desconto</button>
+      </div>
+    </div>` : (desc ? `
+    <div style="background:#FCE4EC;border:1px solid #F48FB1;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:#AD1457">
+      💰 <strong>Desconto aplicado neste pedido:</strong> ${desc.tipo === 'percentual' ? desc.valor + '%' : 'R$ ' + desc.valor.toFixed(2).replace('.',',')}
+      (− R$ ${descontoCalc.toFixed(2).replace('.',',')}) — <em>${desc.motivo}</em>
+      <div style="font-size:11px;color:#888;margin-top:2px">Aplicado por ${desc.aplicadoPor||'—'} em ${desc.data ? new Date(desc.data).toLocaleString('pt-BR') : '—'}</div>
+    </div>` : '');
 
   const correcoesHtml = (jaDespachou && pedido.correcoes && pedido.correcoes.length) ? `
     <div style="background:#FFF3E0;border:1px solid #FFB74D;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#E65100">
@@ -1731,7 +1777,8 @@ function renderRomaneioBody(jaDespachou, modoCorrecao) {
         <input type="number" id="romaneioAddQtd" min="1" value="1" placeholder="Qtd" style="width:64px;padding:6px;border:1px solid #A5D6A7;border-radius:4px;font-size:13px;text-align:center">
         <button onclick="adicionarItemRomaneio()" style="background:#2E7D32;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:13px;cursor:pointer;font-weight:600">➕ Adicionar</button>
       </div>
-    </div>` : ''}
+    </div>
+    ${descontoFormHtml}` : (desc ? descontoFormHtml : '')}
     <div style="text-align:center;margin-bottom:20px;border-bottom:2px solid #5B2D8E;padding-bottom:16px">
       <div style="font-size:26px;font-weight:800;color:#5B2D8E;letter-spacing:1px">AÇAÍ-SE</div>
       <div style="font-size:13px;color:#777;margin-top:4px">ROMANEIO DE PEDIDO${jaDespachou ? ' — DESPACHADO ✓' : ''}</div>
@@ -1751,8 +1798,10 @@ function renderRomaneioBody(jaDespachou, modoCorrecao) {
       </tr></thead>
       <tbody>${linhas}</tbody>
     </table>
-    <div style="display:flex;justify-content:flex-end;margin-top:12px;padding:12px 10px;background:#F5F0FB;border-radius:6px">
-      <span style="font-size:15px;font-weight:700;color:#5B2D8E" id="romaneioGrandTotal">TOTAL: R$ ${total.toFixed(2).replace('.',',')}</span>
+    <div style="margin-top:12px;padding:12px 10px;background:#F5F0FB;border-radius:6px;text-align:right">
+      ${desc ? `<div style="font-size:13px;color:#888">Total dos itens: <s>R$ ${totalItens.toFixed(2).replace('.',',')}</s></div>
+      <div style="font-size:12px;color:#AD1457;margin-top:2px">Desconto (${desc.motivo}): − R$ ${descontoCalc.toFixed(2).replace('.',',')}</div>` : ''}
+      <span style="font-size:15px;font-weight:700;color:#5B2D8E" id="romaneioGrandTotal">TOTAL${desc ? ' A COBRAR' : ''}: R$ ${total.toFixed(2).replace('.',',')}</span>
     </div>
     <div style="margin-top:40px;display:grid;grid-template-columns:1fr 1fr;gap:40px">
       <div><div style="border-top:1.5px solid #333;padding-top:6px;text-align:center;font-size:12px;color:#555">Responsável pela separação</div></div>
@@ -1788,6 +1837,45 @@ function adicionarItemRomaneio() {
   // Limpa seleção
   document.getElementById('romaneioAddItem').value = '';
   document.getElementById('romaneioAddQtd').value = 1;
+}
+
+// Aplica um desconto/abatimento no TOTAL A COBRAR do pedido — não altera preço
+// nem quantidade de nenhum item (isso manteria os relatórios de giro/custo por
+// item corretos). Uso típico: divisão de custo de ativação de evento, cortesia
+// parcial, etc. Fica registrado com motivo e quem aplicou, pra auditoria.
+function aplicarDescontoRomaneio() {
+  const tipo = document.getElementById('descontoTipo').value;
+  const valor = parseFloat(document.getElementById('descontoValor').value);
+  const motivo = document.getElementById('descontoMotivo').value.trim();
+  if (isNaN(valor) || valor <= 0) { alert('Informe um valor de desconto maior que zero.'); return; }
+  if (tipo === 'percentual' && valor > 100) { alert('Percentual não pode passar de 100%.'); return; }
+  if (!motivo) { alert('Descreva o motivo do desconto — fica registrado no pedido e visível pro franqueado.'); return; }
+
+  pedidoAtualRomaneio.desconto = {
+    tipo, valor, motivo,
+    aplicadoPor: currentUser,
+    data: new Date().toISOString()
+  };
+  renderRomaneioBody(false);
+}
+
+function removerDescontoRomaneio() {
+  if (!confirm('Remover o desconto aplicado neste pedido? O total volta a ser o valor cheio dos itens.')) return;
+  delete pedidoAtualRomaneio.desconto;
+  renderRomaneioBody(false);
+}
+
+// Total "a cobrar" do franqueado = total dos itens menos o desconto aplicado
+// (se houver). É esse valor que vira pedido.total — o que alimenta relatórios
+// de faturamento e o que a franqueadora lança no sistema de boleto externo.
+// O estoque é sempre baixado pela quantidade real dos itens, sem relação com
+// o desconto, então o controle de estoque nunca é afetado por isso.
+function calcularTotalComDesconto(pedido) {
+  const totalItens = Object.values(pedido.itens || {}).reduce((s,i)=>s+(i.total||0),0);
+  if (!pedido.desconto) return totalItens;
+  const d = pedido.desconto;
+  const descontoCalc = d.tipo === 'percentual' ? totalItens * (d.valor/100) : d.valor;
+  return Math.max(0, totalItens - descontoCalc);
 }
 
 // Precifica um item fora do catálogo (pedido pela loja sem preço) e o move
@@ -1872,6 +1960,9 @@ async function confirmarDespacho() {
     // Marca pedido como despachado
     pedidoAtualRomaneio.despachado = true;
     pedidoAtualRomaneio.dataDespacho = new Date().toISOString();
+    // total = valor A COBRAR do franqueado (já com desconto aplicado, se houver)
+    // — é esse número que os relatórios de faturamento e o boleto externo usam.
+    pedidoAtualRomaneio.total = calcularTotalComDesconto(pedidoAtualRomaneio);
 
     // Salva diretamente no Firebase (sem batch)
     await saveDocument(chave, pedidoAtualRomaneio);
@@ -1918,8 +2009,8 @@ async function salvarEdicaoRomaneio() {
   btn.textContent = '💾 Salvando...';
   statusMsg.textContent = '';
   try {
-    // Recalcula total geral do pedido
-    pedidoAtualRomaneio.total = Object.values(pedidoAtualRomaneio.itens).reduce((s,i)=>s+(i.total||0),0);
+    // Recalcula total geral do pedido (já considerando desconto, se houver)
+    pedidoAtualRomaneio.total = calcularTotalComDesconto(pedidoAtualRomaneio);
     await saveDocument(pedidoAtualRomaneio._storageKey, pedidoAtualRomaneio);
     if (_dataCache) _dataCache[pedidoAtualRomaneio._storageKey] = pedidoAtualRomaneio;
     btn.disabled = false;
