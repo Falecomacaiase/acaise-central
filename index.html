@@ -384,8 +384,11 @@
         <button class="btn btn-secondary" onclick="restringirItensPausadosParaUnidade()" style="background:#EFEBE9;border:1px solid #BCAAA4">🏪 Restringir pausados a uma unidade</button>
         <button class="btn btn-secondary" onclick="sincronizarPrecosCatalogo()" style="background:#FFEBEE;border:1px solid #EF9A9A">⚠️ Resetar preços pro catálogo original</button>
         <button class="btn btn-secondary" onclick="exportarCatalogoCSV()" style="background:#E8F5E9;border:1px solid #A5D6A7">📥 Exportar lista completa (Excel/CSV)</button>
+        <button class="btn btn-secondary" onclick="document.getElementById('importCatalogoInput').click()" style="background:#E3F2FD;border:1px solid #90CAF9">📤 Importar atualização de preços (CSV)</button>
+        <input type="file" id="importCatalogoInput" accept=".csv" style="display:none" onchange="importarAtualizacaoCatalogo(this.files[0])">
       </div>
       <div id="syncMsg" class="small" style="margin-bottom:8px"></div>
+      <div id="importMsg" class="small" style="margin-bottom:8px"></div>
 
       <div id="gestaoItensTable"></div>
 
@@ -805,7 +808,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.09.29-1";
+const APP_VERSION = "2026.09.30-2";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -1539,6 +1542,43 @@ async function atualizarPrecosAntesDoRomaneio() {
     });
     if (_dataCache) _dataCache['itemState'] = itemState;
   } catch(e) { console.error('Erro ao atualizar preços antes do romaneio:', e); }
+}
+
+// Mesma ideia acima, só que pra tela "Fazer Pedido" da LOJA — essa tela carrega
+// o itemState só uma vez, no login, e se a aba ficar aberta o dia todo (muito
+// comum: tablet/computador do balcão logado o tempo todo) qualquer preço,
+// pausa ou restrição que a franqueadora mude depois não aparece pra loja até
+// ela deslogar e logar de novo. Foi assim que Campina Grande conseguiu pedir
+// Açaí Art 10Kg pausado e Caruaru viu o Whey com um preço antigo que já nem
+// existe mais no cadastro. Chamada periodicamente (ver _lojaPollInterval) —
+// NUNCA chama renderCatalog() de novo (isso recriaria os campos de quantidade
+// e apagaria o que o franqueado já digitou); em vez disso, atualiza o preço
+// exibido em cada linha já na tela e remove só os itens que ficaram
+// indisponíveis/restritos, avisando se algum deles já tinha quantidade digitada.
+async function atualizarCatalogoLojaSemPerderDigitado() {
+  if (currentRole !== 'loja' || !currentUser) return;
+  await atualizarPrecosAntesDoRomaneio();
+  let removidos = [];
+  Object.values(CATALOGO).flat().forEach(item => {
+    const qtdEl = document.getElementById('qtd_' + item.id);
+    if (!qtdEl) return; // item nem está renderizado nessa tela (ex: Produção/Insumos)
+    const row = qtdEl.closest('.item-row');
+    const st = itemState[item.id];
+    const indisponivel = (st && st.disponivel === false) ||
+      (st && st.restritoUnidades && st.restritoUnidades.length && !st.restritoUnidades.includes(currentUser));
+    if (indisponivel) {
+      if (parseFloat(qtdEl.value) > 0) removidos.push(item.nome);
+      if (row) row.remove();
+      return;
+    }
+    const preco = (st?.venda || item.preco);
+    const precoSpan = row?.querySelector('.item-name .small');
+    if (precoSpan) precoSpan.textContent = `(R$ ${preco.toFixed(2).replace('.',',')})`;
+  });
+  if (removidos.length) {
+    alert(`⚠️ Estes itens não estão mais disponíveis e foram removidos do seu pedido:\n\n${removidos.join('\n')}`);
+  }
+  if (typeof updateOrderTotal === 'function') updateOrderTotal();
 }
 
 async function abrirRomaneio(pedido) {
@@ -3075,7 +3115,7 @@ async function editarRestricaoItem(id, nome) {
 function exportarCatalogoCSV() {
   const CATEGORIAS_INTERNAS = ["Produção / Insumos"];
   const linhas = [
-    ['Categoria', 'Nome do item', 'Preço de venda (R$)', 'Custo (R$)', 'Disponível para franqueados', 'Restrito a unidade(s)', 'Fornecedor', 'Estoque mínimo']
+    ['ID', 'Categoria', 'Nome do item', 'Preço de venda (R$)', 'Custo (R$)', 'Disponível para franqueados', 'Restrito a unidade(s)', 'Fornecedor', 'Estoque mínimo']
   ];
   Object.entries(CATALOGO).forEach(([cat, items]) => {
     const visivelCategoria = CATEGORIAS_INTERNAS.includes(cat) ? 'Não (uso interno)' : null;
@@ -3083,6 +3123,7 @@ function exportarCatalogoCSV() {
       const st = getItemState(item.id, item);
       const disponivel = visivelCategoria || (st.disponivel ? 'Sim' : 'Não (pausado)');
       linhas.push([
+        item.id,
         cat,
         item.nome,
         (st.venda ?? item.preco).toFixed(2).replace('.', ','),
@@ -3112,6 +3153,167 @@ function exportarCatalogoCSV() {
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+// Parser simples de CSV ponto-e-vírgula, compatível com o que exportarCatalogoCSV
+// gera (campos entre aspas quando têm ; " ou quebra de linha, aspas duplicadas
+// dentro do campo viram uma aspa literal).
+function parseCsvLinha(linha) {
+  const campos = [];
+  let atual = '';
+  let dentroAspas = false;
+  for (let i = 0; i < linha.length; i++) {
+    const c = linha[i];
+    if (dentroAspas) {
+      if (c === '"' && linha[i+1] === '"') { atual += '"'; i++; }
+      else if (c === '"') { dentroAspas = false; }
+      else { atual += c; }
+    } else {
+      if (c === '"') dentroAspas = true;
+      else if (c === ';') { campos.push(atual); atual = ''; }
+      else atual += c;
+    }
+  }
+  campos.push(atual);
+  return campos;
+}
+
+// Importa uma atualização em massa de preço/custo/disponibilidade/restrição a
+// partir do CSV exportado por exportarCatalogoCSV (editado no Excel). Casa por
+// ID (primeira coluna) — por isso é importante exportar, editar em cima do
+// mesmo arquivo, e não digitar um CSV do zero. Mostra um resumo do que vai
+// mudar e pede confirmação explícita antes de gravar qualquer coisa; grava
+// tudo numa única transação atômica, e loga a operação pra auditoria.
+async function importarAtualizacaoCatalogo(file) {
+  const msg = document.getElementById('importMsg');
+  if (!file) return;
+  msg.style.color = '#F57F17';
+  msg.textContent = 'Lendo arquivo...';
+
+  try {
+    let texto = await file.text();
+    texto = texto.replace(/^﻿/, ''); // remove BOM
+    const linhas = texto.split(/\r\n|\n|\r/).filter(l => l.trim() !== '');
+    if (linhas.length < 2) { msg.style.color = '#C62828'; msg.textContent = 'Arquivo vazio ou sem dados.'; return; }
+
+    const header = parseCsvLinha(linhas[0]).map(h => h.trim().toLowerCase());
+    const idxId = header.indexOf('id');
+    const idxVenda = header.findIndex(h => h.startsWith('preço de venda') || h.startsWith('preco de venda'));
+    const idxCusto = header.findIndex(h => h.startsWith('custo'));
+    const idxDisp = header.findIndex(h => h.startsWith('disponível') || h.startsWith('disponivel'));
+    const idxRestrito = header.findIndex(h => h.startsWith('restrito'));
+
+    if (idxId === -1) {
+      msg.style.color = '#C62828';
+      msg.textContent = '❌ Coluna "ID" não encontrada. Use o arquivo gerado por "Exportar lista completa" e edite em cima dele — não crie um CSV do zero.';
+      return;
+    }
+
+    const todosItens = Object.values(CATALOGO).flat();
+    const mudancas = []; // { id, nome, campo, antes, depois }
+    const patches = {}; // id -> { venda?, custo?, disponivel?, restritoUnidades? }
+    const naoEncontrados = [];
+
+    for (let i = 1; i < linhas.length; i++) {
+      const campos = parseCsvLinha(linhas[i]);
+      const id = (campos[idxId] || '').trim();
+      if (!id) continue;
+      const item = todosItens.find(it => it.id === id);
+      if (!item) { naoEncontrados.push(id); continue; }
+      const st = getItemState(item.id, item);
+      const patch = {};
+
+      if (idxVenda !== -1) {
+        const bruto = (campos[idxVenda] || '').trim();
+        const venda = parseFloat(bruto.replace(/\./g, '').replace(',', '.'));
+        if (!isNaN(venda) && venda > 0) {
+          const atual = st.venda ?? item.preco;
+          if (Math.abs(venda - atual) > 0.001) {
+            mudancas.push({ id, nome: item.nome, campo: 'Venda', antes: atual, depois: venda });
+            patch.venda = venda;
+          }
+        }
+      }
+      if (idxCusto !== -1) {
+        const bruto = (campos[idxCusto] || '').trim();
+        if (bruto === '') {
+          if (st.custo !== null && st.custo !== undefined) {
+            mudancas.push({ id, nome: item.nome, campo: 'Custo', antes: st.custo, depois: null });
+            patch.custo = null;
+          }
+        } else {
+          const custo = parseFloat(bruto.replace(/\./g, '').replace(',', '.'));
+          if (!isNaN(custo)) {
+            const atual = st.custo ?? null;
+            if (atual === null || Math.abs(custo - atual) > 0.001) {
+              mudancas.push({ id, nome: item.nome, campo: 'Custo', antes: atual, depois: custo });
+              patch.custo = custo;
+            }
+          }
+        }
+      }
+      if (idxDisp !== -1) {
+        const bruto = (campos[idxDisp] || '').trim().toLowerCase();
+        const disponivel = bruto.startsWith('sim');
+        const atual = st.disponivel !== false;
+        if (disponivel !== atual) {
+          mudancas.push({ id, nome: item.nome, campo: 'Disponível', antes: atual ? 'Sim' : 'Não', depois: disponivel ? 'Sim' : 'Não' });
+          patch.disponivel = disponivel;
+        }
+      }
+      if (idxRestrito !== -1) {
+        const bruto = (campos[idxRestrito] || '').trim();
+        const lista = (!bruto || bruto.toLowerCase() === 'todas') ? [] : bruto.split('/').map(s => s.trim().toUpperCase()).filter(Boolean);
+        const atual = st.restritoUnidades || [];
+        if (JSON.stringify(lista.slice().sort()) !== JSON.stringify(atual.slice().sort())) {
+          mudancas.push({ id, nome: item.nome, campo: 'Restrito a', antes: atual.length ? atual.join(', ') : 'Todas', depois: lista.length ? lista.join(', ') : 'Todas' });
+          patch.restritoUnidades = lista;
+        }
+      }
+
+      if (Object.keys(patch).length > 0) patches[id] = patch;
+    }
+
+    if (Object.keys(patches).length === 0) {
+      msg.style.color = '#2E7D32';
+      msg.textContent = `✅ Nada pra atualizar — todos os valores do arquivo já batem com o que está salvo.${naoEncontrados.length ? ` (${naoEncontrados.length} ID(s) do arquivo não encontrados no catálogo.)` : ''}`;
+      return;
+    }
+
+    const resumo = mudancas.slice(0, 25).map(m =>
+      `${m.nome} — ${m.campo}: ${typeof m.antes === 'number' ? 'R$ ' + m.antes.toFixed(2).replace('.',',') : m.antes} → ${typeof m.depois === 'number' ? 'R$ ' + m.depois.toFixed(2).replace('.',',') : m.depois}`
+    ).join('\n');
+    const aMais = mudancas.length > 25 ? `\n... e mais ${mudancas.length - 25} alteração(ões).` : '';
+    const avisoNaoEncontrados = naoEncontrados.length ? `\n\n⚠️ ${naoEncontrados.length} ID(s) do arquivo não foram encontrados no catálogo e serão ignorados.` : '';
+
+    const confirmou = confirm(
+      `Isso vai atualizar ${Object.keys(patches).length} item(ns) (${mudancas.length} campo(s) alterado(s)):\n\n${resumo}${aMais}${avisoNaoEncontrados}\n\nConfirma a importação?`
+    );
+    if (!confirmou) { msg.textContent = 'Importação cancelada.'; return; }
+
+    msg.style.color = '#F57F17';
+    msg.textContent = 'Salvando...';
+
+    await atualizarItemStateEmMassa(atual => {
+      Object.entries(patches).forEach(([id, patch]) => {
+        if (!atual[id]) atual[id] = { disponivel: true, custo: null, venda: null };
+        Object.assign(atual[id], patch);
+      });
+    });
+
+    await registrarLog('Cadastro',
+      `📤 Importação em massa de preços/catálogo via CSV — ${Object.keys(patches).length} item(ns) atualizado(s), ${naoEncontrados.length} não encontrado(s)`,
+      currentUser, '');
+
+    msg.style.color = '#2E7D32';
+    msg.textContent = `✅ ${Object.keys(patches).length} item(ns) atualizado(s) com sucesso!`;
+    document.getElementById('importCatalogoInput').value = '';
+    renderGestaoItens();
+  } catch (e) {
+    msg.style.color = '#C62828';
+    msg.textContent = '❌ Erro ao importar: ' + e.message;
+    console.error('Erro na importação de catálogo:', e);
+  }
 }
 
 async function toggleDisponivel(itemId, valor) {
@@ -3523,6 +3725,8 @@ function doLogin() {
       renderCatalog();
       renderPrazoPedidoBanner();
       aplicarModoGalpao();
+      if (_lojaPollInterval) clearInterval(_lojaPollInterval);
+      _lojaPollInterval = setInterval(atualizarCatalogoLojaSemPerderDigitado, 120000); // a cada 2min
       const situacao = await verificarBoletosUnidade(unit);
       const avisoEl = document.getElementById('ordemBloqueada');
       const msgEl = document.getElementById('ordemBloqueadaMsg');
@@ -3565,6 +3769,7 @@ function logout() {
   document.getElementById('topbarSub').textContent = "Central de Pedidos";
   document.getElementById('loginPass').value = "";
   if (_adminPollInterval) { clearInterval(_adminPollInterval); _adminPollInterval = null; }
+  if (_lojaPollInterval) { clearInterval(_lojaPollInterval); _lojaPollInterval = null; }
 }
 
 // Restaura sessão ao recarregar a página
@@ -3593,6 +3798,8 @@ function restaurarSessao() {
       renderCatalog();
       renderPrazoPedidoBanner();
       aplicarModoGalpao();
+      if (_lojaPollInterval) clearInterval(_lojaPollInterval);
+      _lojaPollInterval = setInterval(atualizarCatalogoLojaSemPerderDigitado, 120000); // a cada 2min
       const situacao = await verificarBoletosUnidade(savedUser);
       // aplica avisos de boleto se necessário
     });
@@ -4852,6 +5059,7 @@ async function submitOrder(urgencia = false) {
 }
 
 let _adminPollInterval = null;
+let _lojaPollInterval = null;
 let _ultimosPedidosVisto = new Set();
 
 async function loadAdminData(silencioso = false) {
