@@ -808,7 +808,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.09.30-2";
+const APP_VERSION = "2026.09.30-3";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -1736,7 +1736,11 @@ function renderRomaneioBody(jaDespachou, modoCorrecao) {
           <input type="number" min="0" value="${it.qtd}" style="width:56px;text-align:center;padding:3px;border:1px solid #C5B3E6;border-radius:4px;font-size:13px"
             oninput="atualizarItemRomaneio('${id}', this.value)">
         </td>
-        <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right">R$ ${(it.precoUnitario||it.preco||0).toFixed(2).replace('.',',')}</td>
+        <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right">
+          <span style="font-size:11px;color:#888;margin-right:2px">R$</span>
+          <input type="number" min="0" step="0.01" value="${(it.precoUnitario||it.preco||0).toFixed(2)}" style="width:76px;text-align:right;padding:3px;border:1px solid #C5B3E6;border-radius:4px;font-size:13px"
+            oninput="atualizarPrecoItemRomaneio('${id}', this.value)" title="Ajustar preço deste item só neste pedido">
+        </td>
         <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right" id="romaneioTotal_${id}"><strong>R$ ${(it.total||0).toFixed(2).replace('.',',')}</strong></td>
         <td style="padding:4px 6px;border-bottom:1px solid #eee">
           <button onclick="removerItemRomaneio('${id}')" title="Remover item" style="background:none;border:none;cursor:pointer;color:#C62828;font-size:16px">✕</button>
@@ -1970,6 +1974,23 @@ function atualizarItemRomaneio(itemId, novaQtd) {
   atualizarTotalRomaneio();
 }
 
+// Ajusta o preço unitário de UM item só dentro deste pedido — não mexe no
+// preço do catálogo nem no que outras lojas pagam, é só pra corrigir um valor
+// desatualizado ANTES de despachar, pra que o total (e o que o franqueado vê
+// no comprovante dele) já saia certo. Se o preço do catálogo mudou de vez,
+// corrija também em Gestão de Itens pra não repetir isso no próximo pedido.
+function atualizarPrecoItemRomaneio(itemId, novoPrecoStr) {
+  const preco = Math.max(0, parseFloat(novoPrecoStr) || 0);
+  if (!pedidoAtualRomaneio.itens[itemId]) return;
+  const qtd = pedidoAtualRomaneio.itens[itemId].qtd || 0;
+  pedidoAtualRomaneio.itens[itemId].precoUnitario = preco;
+  pedidoAtualRomaneio.itens[itemId].preco = preco;
+  pedidoAtualRomaneio.itens[itemId].total = qtd * preco;
+  const totalEl = document.getElementById(`romaneioTotal_${itemId}`);
+  if (totalEl) totalEl.innerHTML = `<strong>R$ ${(qtd * preco).toFixed(2).replace('.',',')}</strong>`;
+  atualizarTotalRomaneio();
+}
+
 function removerItemRomaneio(itemId) {
   if (!pedidoAtualRomaneio.itens[itemId]) return;
   delete pedidoAtualRomaneio.itens[itemId];
@@ -1978,10 +1999,14 @@ function removerItemRomaneio(itemId) {
   atualizarTotalRomaneio();
 }
 
+// Recalcula o total exibido no rodapé do romaneio já considerando um eventual
+// desconto aplicado (ver aplicarDescontoRomaneio) — sem isso, ajustar preço ou
+// quantidade depois de aplicar um desconto mostraria o valor cheio errado até
+// reabrir o romaneio.
 function atualizarTotalRomaneio() {
-  const total = Object.values(pedidoAtualRomaneio.itens).reduce((s,i)=>s+(i.total||0),0);
+  const total = calcularTotalComDesconto(pedidoAtualRomaneio);
   const el = document.getElementById('romaneioGrandTotal');
-  if (el) el.textContent = `TOTAL: R$ ${total.toFixed(2).replace('.',',')}`;
+  if (el) el.textContent = `${pedidoAtualRomaneio.desconto ? 'TOTAL A COBRAR' : 'TOTAL'}: R$ ${total.toFixed(2).replace('.',',')}`;
 }
 
 async function confirmarDespacho() {
