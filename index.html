@@ -808,7 +808,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.09.30-3";
+const APP_VERSION = "2026.09.30-4";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -3050,6 +3050,12 @@ async function iniciarGestaoItens() {
   renderGestaoItens();
 }
 
+// Controla se a tela de Gestão de Itens mostra os itens pausados junto dos
+// ativos ou some com eles — pausado normalmente significa "não uso isso agora",
+// então por padrão fica oculto pra não poluir a tela; um checkbox permite ver
+// de novo quando precisar reativar algo.
+let _gestaoItensMostrarPausados = false;
+
 function renderGestaoItens() {
   const filtro = document.getElementById('filtroCategoria').value;
   const cats = filtro ? { [filtro]: CATALOGO[filtro] } : CATALOGO;
@@ -3058,37 +3064,37 @@ function renderGestaoItens() {
   // cadastro de preço, não item realmente gratuito — some no romaneio como
   // "zerado" e só é percebido tarde. Mostra um alerta destacado no topo.
   const itensZerados = [];
+  let totalPausados = 0;
   Object.entries(cats).forEach(([cat, items]) => {
     items.forEach(item => {
       const st = getItemState(item.id, item);
       if (st.disponivel && !(st.venda || item.preco)) itensZerados.push(item.nome);
+      if (!st.disponivel) totalPausados++;
     });
   });
   let avisoHtml = '';
   if (itensZerados.length > 0) {
     avisoHtml = `<div style="background:#FFEBEE;border-left:4px solid #C62828;border-radius:0 6px 6px 0;padding:10px 14px;margin-bottom:14px;font-size:13px">
       <strong style="color:#C62828">⚠️ ${itensZerados.length} item(ns) disponível(is) com preço R$0,00:</strong>
-      <span style="color:#C62828"> ${itensZerados.join(', ')}</span> — provavelmente falta cadastrar o preço. Use "✏️ Preços" pra corrigir.
+      <span style="color:#C62828"> ${itensZerados.join(', ')}</span> — provavelmente falta cadastrar o preço. Use "✏️ Editar" pra corrigir.
     </div>`;
   }
 
-  let html = avisoHtml + `<table><thead><tr>
-    <th>Item</th><th>Categoria</th>
-    <th>Custo (R$)</th><th>Venda (R$)</th>
-    <th>Disponível</th><th>Restrito a</th><th>Ação</th>
-  </tr></thead><tbody>`;
-  Object.entries(cats).forEach(([cat, items]) => {
-    items.forEach(item => {
-      const st = getItemState(item.id, item);
-      const disp = st.disponivel;
-      const custo = st.custo !== null ? st.custo.toFixed(2) : '—';
-      const precoVenda = st.venda || item.preco || 0;
-      const venda = precoVenda.toFixed(2);
-      const zerado = disp && !precoVenda;
-      const restrito = st.restritoUnidades && st.restritoUnidades.length;
-      html += `<tr style="${!disp ? 'opacity:.5' : ''}${zerado ? 'background:#FFF3E0' : ''}">
+  const toggleHtml = `<label class="small" style="display:flex;align-items:center;gap:6px;margin-bottom:12px;cursor:pointer">
+    <input type="checkbox" id="chkMostrarPausados" ${_gestaoItensMostrarPausados ? 'checked' : ''} onchange="_gestaoItensMostrarPausados=this.checked; renderGestaoItens();">
+    Mostrar itens pausados (${totalPausados} oculto${totalPausados===1?'':'s'} agora)
+  </label>`;
+
+  const linhaItem = (item, cat) => {
+    const st = getItemState(item.id, item);
+    const disp = st.disponivel;
+    const custo = st.custo !== null ? st.custo.toFixed(2) : '—';
+    const precoVenda = st.venda || item.preco || 0;
+    const venda = precoVenda.toFixed(2);
+    const zerado = disp && !precoVenda;
+    const restrito = st.restritoUnidades && st.restritoUnidades.length;
+    return `<tr style="${!disp ? 'opacity:.5' : ''}${zerado ? 'background:#FFF3E0' : ''}">
         <td>${item.nome}${zerado ? ' <span title="Preço não cadastrado" style="color:#C62828">⚠️</span>' : ''}</td>
-        <td class="small">${cat}</td>
         <td>R$ ${custo}</td>
         <td><strong style="${zerado ? 'color:#C62828' : ''}">R$ ${venda}</strong></td>
         <td>
@@ -3103,9 +3109,25 @@ function renderGestaoItens() {
         </td>
         <td><button class="btn btn-secondary btn-xs" onclick="abrirEditPreco('${item.id}','${item.nome.replace(/'/g,"\\'")}',${st.custo||item.preco},${st.venda||item.preco},'${cat.replace(/'/g,"\\'")}')">✏️ Editar</button></td>
       </tr>`;
-    });
+  };
+
+  // Agrupado por categoria em blocos recolhíveis — mais fácil de escanear do
+  // que uma tabela única gigante com a categoria só repetida numa coluna.
+  let html = avisoHtml + toggleHtml;
+  Object.entries(cats).forEach(([cat, items]) => {
+    const visiveis = items.filter(item => _gestaoItensMostrarPausados || getItemState(item.id, item).disponivel);
+    if (visiveis.length === 0) return;
+    html += `<details class="cat-details" open>
+      <summary class="cat-title">${cat} (${visiveis.length})</summary>
+      <table><thead><tr>
+        <th>Item</th><th>Custo (R$)</th><th>Venda (R$)</th>
+        <th>Disponível</th><th>Restrito a</th><th>Ação</th>
+      </tr></thead><tbody>${visiveis.map(item => linhaItem(item, cat)).join('')}</tbody></table>
+    </details>`;
   });
-  html += `</tbody></table>`;
+  if (!html.replace(avisoHtml + toggleHtml, '').trim()) {
+    html += `<p class="small" style="color:#888">Nenhum item ativo nessa categoria. ${!_gestaoItensMostrarPausados ? 'Marque "Mostrar itens pausados" acima pra ver.' : ''}</p>`;
+  }
   document.getElementById('gestaoItensTable').innerHTML = html;
 }
 
