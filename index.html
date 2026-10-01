@@ -386,6 +386,7 @@
         <button class="btn btn-secondary" onclick="exportarCatalogoCSV()" style="background:#E8F5E9;border:1px solid #A5D6A7">📥 Exportar lista completa (Excel/CSV)</button>
         <button class="btn btn-secondary" onclick="document.getElementById('importCatalogoInput').click()" style="background:#E3F2FD;border:1px solid #90CAF9">📤 Importar atualização de preços (CSV)</button>
         <input type="file" id="importCatalogoInput" accept=".csv" style="display:none" onchange="importarAtualizacaoCatalogo(this.files[0])">
+        <button class="btn btn-secondary" onclick="aplicarAtualizacaoPrecos20260930()" style="background:#D1C4E9;border:1px solid #9575CD">📋 Aplicar atualização de preços (30/09)</button>
       </div>
       <div id="syncMsg" class="small" style="margin-bottom:8px"></div>
       <div id="importMsg" class="small" style="margin-bottom:8px"></div>
@@ -808,7 +809,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.09.30-4";
+const APP_VERSION = "2026.09.30-5";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -3225,6 +3226,77 @@ function parseCsvLinha(linha) {
   return campos;
 }
 
+// Atualização de preço/custo/disponibilidade/restrição combinada com a
+// franqueadora em 30/09/2026, a partir da planilha revisada por ela — aplicada
+// direto aqui no código (em vez de exigir upload de CSV) porque o navegador
+// dela não estava permitindo salvar/selecionar o arquivo corretamente. Itens
+// da categoria "Produção / Insumos" não entram no campo "disponível" aqui de
+// propósito (ver comentário em importarAtualizacaoCatalogo). Depois de
+// aplicado uma vez, este botão pode ser removido — fica só a importação por
+// CSV normal pra próximas atualizações.
+const ATUALIZACAO_PRECOS_20260930 = {"PA86":{"disponivel":false,"venda":182},"PA88":{"disponivel":true,"venda":184.32,"custo":184.32},"PA245":{"disponivel":false,"venda":230.4},"PA89":{"disponivel":false,"venda":161.28},"PA246":{"disponivel":true,"venda":184.32},"PA91":{"disponivel":false,"venda":230.4},"PA92":{"disponivel":true,"venda":115},"PA96":{"disponivel":true,"venda":28},"PA97":{"disponivel":true,"venda":30},"PA93":{"disponivel":true,"venda":31},"PA94":{"disponivel":true,"venda":12},"PA196":{"disponivel":true,"venda":20},"PA205":{"disponivel":true,"venda":24},"PA206":{"disponivel":true,"venda":20},"PA207":{"disponivel":true,"venda":20},"PA208":{"disponivel":true,"venda":20},"PA209":{"disponivel":true,"venda":20},"PA95":{"disponivel":true,"venda":80},"PA262":{"disponivel":true,"venda":80},"PA263":{"disponivel":true,"venda":80},"PA264":{"disponivel":true,"venda":80},"PA265":{"disponivel":true,"venda":80},"PA98":{"disponivel":true,"venda":120},"PA192":{"disponivel":true,"venda":115},"PROD213":{"disponivel":false,"venda":18},"PROD259":{"disponivel":true,"venda":35},"PROD270":{"disponivel":true,"venda":26.45},"PROD285":{"disponivel":false,"venda":38.8},"PROD286":{"disponivel":false,"venda":13.8},"PROD250":{"disponivel":true,"venda":10},"PROD230":{"disponivel":false,"venda":38.8},"PROD284":{"disponivel":true,"venda":5},"PROD233":{"disponivel":true,"venda":20},"PROD232":{"disponivel":true,"venda":21},"PROD293":{"disponivel":true,"venda":51.17},"PROD128":{"disponivel":true,"venda":19.3},"PROD235":{"disponivel":true,"venda":20.8},"PROD287":{"disponivel":false,"venda":13.8},"PROD231":{"disponivel":true,"venda":16},"PROD240":{"disponivel":true,"venda":14},"PROD229":{"disponivel":true,"venda":15},"PROD131":{"disponivel":false,"venda":27},"PROD237":{"disponivel":true,"venda":25},"PROD238":{"disponivel":true,"venda":24},"PROD239":{"disponivel":true,"venda":49,"custo":38.5},"PROD280":{"disponivel":true,"venda":26.5},"AC47":{"disponivel":false,"venda":0.5},"AC48":{"disponivel":false,"venda":12},"AC50":{"disponivel":false,"venda":12},"AC51":{"disponivel":false,"venda":7.5},"AC52":{"disponivel":false,"venda":4.2},"AC55":{"disponivel":false,"venda":5.09},"AC56":{"disponivel":true,"venda":13},"AC57":{"disponivel":false,"venda":20},"AC58":{"disponivel":true,"venda":20},"AC60":{"disponivel":false,"venda":44},"AC61":{"disponivel":false,"venda":7.3},"AC62":{"disponivel":false,"venda":8.3},"AC64":{"disponivel":true,"venda":131},"AC65":{"disponivel":true,"venda":53},"AC67":{"disponivel":false,"venda":115},"AC191":{"disponivel":true,"venda":140,"custo":140},"AC68":{"disponivel":true,"venda":42},"AC69":{"disponivel":true,"venda":42},"AC70":{"disponivel":true,"venda":32,"custo":30},"AC71":{"disponivel":true,"venda":19.75},"AC73":{"disponivel":true,"venda":8},"AC74":{"disponivel":true,"venda":16.5},"AC76":{"disponivel":true,"venda":18},"AC78":{"disponivel":false,"venda":9},"PROD227":{"disponivel":true,"venda":16.5},"EMB1":{"disponivel":false,"venda":110},"EMB2":{"disponivel":false,"venda":40},"EMB3":{"disponivel":true,"venda":22},"EMB4":{"disponivel":true,"venda":19},"EMB5":{"disponivel":true,"venda":21.5,"custo":20},"EMB6":{"disponivel":true,"venda":28,"custo":23.9},"EMB7":{"disponivel":true,"venda":24},"EMB9":{"disponivel":true,"venda":27},"EMB10":{"disponivel":true,"venda":26,"custo":25.16},"EMB11":{"disponivel":true,"venda":41},"EMB303":{"disponivel":true,"venda":41},"EMB13":{"disponivel":true,"venda":29},"EMB14":{"disponivel":true,"venda":29.5,"custo":26},"EMB15":{"disponivel":true,"venda":37},"EMB16":{"disponivel":true,"venda":20,"custo":13.5},"EMB17":{"disponivel":true,"venda":25,"custo":20.5},"EMB22":{"disponivel":true,"venda":10.5},"EMB23":{"disponivel":true,"venda":12},"EMB24":{"disponivel":true,"venda":59},"EMB25":{"disponivel":true,"venda":18.5},"EMB27":{"disponivel":true,"venda":14},"EMB33":{"disponivel":true,"venda":30},"EMB8":{"disponivel":true,"venda":18},"EMB194":{"disponivel":true,"venda":19.6},"EMB195":{"disponivel":true,"venda":27.4},"EMB202":{"disponivel":true,"venda":30},"EMB223":{"disponivel":true,"venda":15},"EMB234":{"disponivel":true,"venda":28.6},"EMB241":{"disponivel":true,"venda":38},"EMB288":{"disponivel":true,"venda":26,"custo":26},"EMB290":{"disponivel":true,"venda":28,"custo":28},"DESC34":{"disponivel":false,"venda":12},"DESC35":{"disponivel":false,"venda":29.5},"DESC36":{"disponivel":false,"venda":5.5},"DESC37":{"disponivel":false,"venda":3.5},"DESC38":{"disponivel":true,"venda":7},"DESC39":{"disponivel":false,"venda":8.5},"DESC40":{"disponivel":true,"venda":9.2,"custo":7.9},"DESC41":{"disponivel":true,"venda":10.9},"DESC43X":{"disponivel":true,"venda":220},"DESC46":{"disponivel":false,"venda":17.5},"DESC197":{"disponivel":true,"venda":20},"DESC200":{"disponivel":true,"venda":40.5},"DESC214":{"disponivel":true,"venda":41.5},"DESC215":{"disponivel":false,"venda":4},"DESC248":{"disponivel":false,"venda":7},"DESC249":{"disponivel":false,"venda":8.3},"DESC291":{"disponivel":true,"venda":4.5},"BEB142":{"disponivel":false,"venda":1.15},"BEB143":{"disponivel":false,"venda":2.4},"BEB146":{"disponivel":false,"venda":4.15},"BEB147":{"disponivel":false,"venda":4.15},"BEB151":{"disponivel":false,"venda":11},"DIV193":{"disponivel":false,"venda":50},"DIV254":{"disponivel":false,"venda":17},"DIV275":{"disponivel":true,"venda":50,"custo":20},"DIV281":{"disponivel":false,"venda":20},"DIV283":{"disponivel":false,"venda":30},"PROD102":{"venda":4.5},"PROD103":{"venda":12},"PROD114":{"venda":5.5},"PROD115":{"venda":9.5},"PROD117":{"venda":4.5},"PROD135":{"venda":7.99},"PROD217":{"venda":16},"PROD236":{"venda":4},"PROD273":{"venda":6.3},"PROD292":{"venda":3},"PROD300":{"venda":85},"PROD301":{"venda":22},"PROD302":{"venda":60}};
+
+async function aplicarAtualizacaoPrecos20260930() {
+  const msg = document.getElementById('importMsg');
+  const patches = ATUALIZACAO_PRECOS_20260930;
+  const todosItens = Object.values(CATALOGO).flat();
+  const mudancas = [];
+
+  Object.entries(patches).forEach(([id, patch]) => {
+    const item = todosItens.find(i => i.id === id);
+    if (!item) return;
+    const st = getItemState(id, item);
+    if (patch.venda !== undefined) {
+      const atual = st.venda ?? item.preco;
+      if (Math.abs(patch.venda - atual) > 0.001) {
+        mudancas.push(`${item.nome} — Venda: R$ ${atual.toFixed(2).replace('.',',')} → R$ ${patch.venda.toFixed(2).replace('.',',')}`);
+      }
+    }
+    if (patch.custo !== undefined) {
+      const atual = st.custo ?? null;
+      if (atual === null || Math.abs(patch.custo - atual) > 0.001) {
+        mudancas.push(`${item.nome} — Custo: ${atual===null?'—':'R$ '+atual.toFixed(2).replace('.',',')} → R$ ${patch.custo.toFixed(2).replace('.',',')}`);
+      }
+    }
+    if (patch.disponivel !== undefined) {
+      const atual = st.disponivel !== false;
+      if (patch.disponivel !== atual) {
+        mudancas.push(`${item.nome} — Disponível: ${atual?'Sim':'Não'} → ${patch.disponivel?'Sim':'Não'}`);
+      }
+    }
+    if (patch.restritoUnidades) {
+      const atual = st.restritoUnidades || [];
+      if (JSON.stringify(atual.slice().sort()) !== JSON.stringify(patch.restritoUnidades.slice().sort())) {
+        mudancas.push(`${item.nome} — Restrito a: ${atual.length?atual.join(', '):'Todas'} → ${patch.restritoUnidades.join(', ')}`);
+      }
+    }
+  });
+
+  if (mudancas.length === 0) {
+    alert('✅ Nada pra atualizar — os valores já batem com o que está salvo (essa atualização já deve ter sido aplicada antes).');
+    return;
+  }
+
+  const resumo = mudancas.slice(0, 30).join('\n');
+  const aMais = mudancas.length > 30 ? `\n... e mais ${mudancas.length - 30} alteração(ões).` : '';
+  if (!confirm(`Isso vai aplicar a atualização de preços combinada (${Object.keys(patches).length} item(ns) revisados, ${mudancas.length} mudança(s) de verdade):\n\n${resumo}${aMais}\n\nConfirma?`)) return;
+
+  try {
+    await atualizarItemStateEmMassa(atual => {
+      Object.entries(patches).forEach(([id, patch]) => {
+        if (!atual[id]) atual[id] = { disponivel: true, custo: null, venda: null };
+        Object.assign(atual[id], patch);
+      });
+    });
+    await registrarLog('Cadastro', `📋 Atualização combinada de preços (30/09) aplicada — ${mudancas.length} mudança(s) em ${Object.keys(patches).length} item(ns)`, currentUser, '');
+    if (msg) { msg.style.color = '#2E7D32'; msg.textContent = `✅ Atualização aplicada! ${mudancas.length} mudança(s) salva(s).`; }
+    alert(`✅ Atualização aplicada com sucesso! ${mudancas.length} mudança(s) salva(s) no banco.`);
+    renderGestaoItens();
+  } catch (e) {
+    alert('❌ Erro ao aplicar: ' + e.message);
+  }
+}
+
 // Importa uma atualização em massa de preço/custo/disponibilidade/restrição a
 // partir do CSV exportado por exportarCatalogoCSV (editado no Excel). Casa por
 // ID (primeira coluna) — por isso é importante exportar, editar em cima do
@@ -3299,7 +3371,13 @@ async function importarAtualizacaoCatalogo(file) {
           }
         }
       }
-      if (idxDisp !== -1) {
+      // Categoria "Produção / Insumos" sempre exporta "Não (uso interno)" nessa
+      // coluna só como ANOTAÇÃO (não aparece pro franqueado por causa da
+      // categoria, não por estar pausada) — aplicar isso literalmente pausaria
+      // o insumo de verdade e quebraria o pedido do GALPÃO. Por isso ignora
+      // essa coluna pra itens dessa categoria.
+      const ehInsumoInterno = CATALOGO['Produção / Insumos']?.some(i => i.id === item.id);
+      if (idxDisp !== -1 && !ehInsumoInterno) {
         const bruto = (campos[idxDisp] || '').trim().toLowerCase();
         const disponivel = bruto.startsWith('sim');
         const atual = st.disponivel !== false;
