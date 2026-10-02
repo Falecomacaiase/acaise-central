@@ -809,7 +809,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.09.30-5";
+const APP_VERSION = "2026.10.02-1";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -5027,13 +5027,29 @@ async function getSemanaAnterior() {
   return `${now.getFullYear()}-S${week}`;
 }
 
+// O contador é incrementado numa transação do Firestore: duas unidades enviando
+// pedido ao mesmo tempo recebem números diferentes. Antes era ler-somar-gravar
+// fora de transação, e unidades que enviavam com minutos de diferença pegavam o
+// mesmo número (ex: PED-20260913-200 existiu na FPS e na Boa Viagem), o que
+// quebra a chave da cobrança no acaise-financeiro.
 async function gerarNumeroPedido() {
-  let counter = 1;
-  try {
-    const r = await safeGet('orderCounter', true);
-    if (r && r.value) counter = parseInt(r.value) + 1;
-  } catch(e) {}
-  await safeSet('orderCounter', String(counter), true);
+  const docRef = _col.doc(toDocId('orderCounter'));
+  const counter = await _db.runTransaction(async (transaction) => {
+    const snap = await transaction.get(docRef);
+    let atual = 0;
+    if (snap.exists) {
+      const n = parseInt(snap.data().value);
+      if (!isNaN(n)) atual = n;
+    }
+    const proximo = atual + 1;
+    transaction.set(docRef, {
+      value: String(proximo),
+      originalKey: 'orderCounter',
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+    return proximo;
+  });
+  if (_dataCache) _dataCache['orderCounter'] = String(counter);
   const hoje = new Date();
   const data = `${hoje.getFullYear()}${String(hoje.getMonth()+1).padStart(2,'0')}${String(hoje.getDate()).padStart(2,'0')}`;
   return `PED-${data}-${String(counter).padStart(3,'0')}`;
