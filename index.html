@@ -809,9 +809,35 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.09.30-5";
+const APP_VERSION = "2026.10.05-2";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
+
+// Operações encerradas/pausadas: somem do login e das listas de uso diário
+// (pedido, restrição de itens, bloqueio...), mas continuam nos filtros de
+// relatório/log pra dar pra consultar o histórico delas. Pra reativar uma, é
+// só tirar o nome daqui.
+// (C. DOURADA = Costa Dourada, no Cabo de Santo Agostinho — está ativa.)
+const UNIDADES_INATIVAS = ["BV 2","PORTO"];
+
+// Lista única de nomes de unidades. As unidades cadastradas pela tela
+// "Cadastros" entram em UNIDADES (push) E em extraUnidades — somar as duas
+// listas duplicava cada uma (foi o caso de PAULISTA aparecendo 2x). Aqui junta
+// tudo sem repetir (ignorando maiúscula/espaços nas pontas).
+function nomesTodasUnidades() {
+  let extras = [];
+  try { extras = extraUnidades.map(u => u.nome); } catch(e) { /* ainda não inicializado */ }
+  const vistos = new Set();
+  return [...UNIDADES, ...extras].filter(n => {
+    const k = String(n).trim().toUpperCase();
+    if (!k || vistos.has(k)) return false;
+    vistos.add(k);
+    return true;
+  });
+}
+function nomesUnidadesAtivas() {
+  return nomesTodasUnidades().filter(n => !UNIDADES_INATIVAS.includes(n));
+}
 
 // Unidades "internas" — não são franquias, são times internos (produção/galpão)
 // pedindo matéria-prima pra si mesmos. Pedidos dessas unidades NÃO contam como
@@ -1033,7 +1059,7 @@ function populateUnitSelect() {
   const sel = document.getElementById('loginUnit');
   const valorAtual = sel.value;
   sel.innerHTML = "";
-  UNIDADES.forEach(u => {
+  nomesUnidadesAtivas().forEach(u => {
     const opt = document.createElement('option');
     opt.value = u; opt.textContent = u;
     sel.appendChild(opt);
@@ -1418,7 +1444,7 @@ async function cadastrarUnidade() {
   const msgEl = document.getElementById('novaUnidMsg');
 
   if (!nome) { msgEl.textContent = 'Informe o nome da unidade.'; return; }
-  const todosNomes = [...UNIDADES, ...extraUnidades.map(u=>u.nome)];
+  const todosNomes = nomesTodasUnidades();
   if (todosNomes.includes(nome)) { msgEl.textContent = 'Unidade já cadastrada.'; return; }
 
   const nova = { nome, tipo, responsavel, senha };
@@ -1459,13 +1485,18 @@ function renderListaUnidades() {
   const fixas = UNIDADES.filter(n => !extraUnidades.find(e=>e.nome===n));
   let html = `<table><thead><tr><th>Unidade</th><th>Tipo</th><th>Responsável</th><th>Senha</th></tr></thead><tbody>`;
   // Extra (dynamic)
+  const extrasVistas = new Set();
   extraUnidades.forEach(u => {
+    const k = String(u.nome).trim().toUpperCase();
+    if (extrasVistas.has(k)) return; // cadastro repetido não aparece 2x
+    extrasVistas.add(k);
     html += `<tr><td><strong>${u.nome}</strong> <span class="badge badge-green" style="font-size:10px">nova</span></td><td><span class="badge ${tipos[u.tipo]||'badge-gray'}">${u.tipo}</span></td><td>${u.responsavel||'—'}</td><td><code>${u.senha}</code></td></tr>`;
   });
   // Fixed
   fixas.forEach(n => {
     const tipoBadge = isUnidadeInterna(n) ? '<span class="badge" style="background:#EFEBE9;color:#5D4037">🏭 Interna</span>' : '<span class="badge badge-gray">Franquia</span>';
-    html += `<tr><td>${n}</td><td>${tipoBadge}</td><td>—</td><td><code>${SENHAS[n]||'—'}</code></td></tr>`;
+    const inativaBadge = UNIDADES_INATIVAS.includes(n) ? ' <span class="badge" style="background:#ECEFF1;color:#607D8B;font-size:10px">inativa</span>' : '';
+    html += `<tr style="${UNIDADES_INATIVAS.includes(n) ? 'opacity:.55' : ''}"><td>${n}${inativaBadge}</td><td>${tipoBadge}</td><td>—</td><td><code>${SENHAS[n]||'—'}</code></td></tr>`;
   });
   html += `</tbody></table>`;
   document.getElementById('listaUnidades').innerHTML = html;
@@ -1556,31 +1587,78 @@ async function atualizarPrecosAntesDoRomaneio() {
 // e apagaria o que o franqueado já digitou); em vez disso, atualiza o preço
 // exibido em cada linha já na tela e remove só os itens que ficaram
 // indisponíveis/restritos, avisando se algum deles já tinha quantidade digitada.
+//
+// ATUALIZAÇÃO: também detecta itens NOVOS liberados pra esta loja (ex: a
+// franqueadora despausou e liberou um item só pras Graças II) — nesse caso
+// refaz a lista, mas guardando antes tudo que já foi digitado (quantidades),
+// as categorias abertas e a busca, e devolvendo depois.
+function itemVisivelParaLojaAtual(item, cat) {
+  const interna = isUnidadeInterna(currentUser);
+  if (interna ? cat !== 'Produção / Insumos' : CATEGORIAS_OCULTAS_LOJA_PEDIDO.includes(cat)) return false;
+  const st = itemState[item.id];
+  if (st && st.disponivel === false) return false;
+  if (st && st.restritoUnidades && st.restritoUnidades.length && !st.restritoUnidades.includes(currentUser)) return false;
+  return true;
+}
+
 async function atualizarCatalogoLojaSemPerderDigitado() {
   if (currentRole !== 'loja' || !currentUser) return;
+  if (!document.getElementById('catalog')) return;
   await atualizarPrecosAntesDoRomaneio();
-  let removidos = [];
-  Object.values(CATALOGO).flat().forEach(item => {
-    const qtdEl = document.getElementById('qtd_' + item.id);
-    if (!qtdEl) return; // item nem está renderizado nessa tela (ex: Produção/Insumos)
-    const row = qtdEl.closest('.item-row');
-    const st = itemState[item.id];
-    const indisponivel = (st && st.disponivel === false) ||
-      (st && st.restritoUnidades && st.restritoUnidades.length && !st.restritoUnidades.includes(currentUser));
-    if (indisponivel) {
-      if (parseFloat(qtdEl.value) > 0) removidos.push(item.nome);
-      if (row) row.remove();
-      return;
-    }
-    const preco = (st?.venda || item.preco);
-    const precoSpan = row?.querySelector('.item-name .small');
-    if (precoSpan) precoSpan.textContent = `(R$ ${preco.toFixed(2).replace('.',',')})`;
+
+  const removidos = [];
+  let precisaRefazer = false;
+  Object.entries(CATALOGO).forEach(([cat, itens]) => {
+    itens.forEach(item => {
+      const qtdEl = document.getElementById('qtd_' + item.id);
+      const visivel = itemVisivelParaLojaAtual(item, cat);
+      if (visivel && !qtdEl) precisaRefazer = true;            // item novo liberado
+      if (!visivel && qtdEl) {                                  // item que saiu
+        precisaRefazer = true;
+        if (parseFloat(qtdEl.value) > 0) removidos.push(item.nome);
+      }
+    });
   });
+
+  if (precisaRefazer && !_editandoPedido) {
+    // guarda o que já foi digitado / aberto / buscado
+    const qtds = {};
+    document.querySelectorAll('#catalog .item-qtd').forEach(el => {
+      if (parseFloat(el.value) > 0) qtds[el.id] = el.value;
+    });
+    const abertas = new Set([...document.querySelectorAll('#catalog details.cat-details')]
+      .filter(d => d.open).map(d => d.dataset.cat));
+    const buscaEl = document.getElementById('catalogBusca');
+    const busca = buscaEl ? buscaEl.value : '';
+
+    renderCatalog();
+
+    Object.entries(qtds).forEach(([id, v]) => { const el = document.getElementById(id); if (el) el.value = v; });
+    document.querySelectorAll('#catalog details.cat-details').forEach(d => { if (abertas.has(d.dataset.cat)) d.open = true; });
+    if (buscaEl && busca) { buscaEl.value = busca; if (typeof filtrarCatalogoLoja === 'function') filtrarCatalogoLoja(); }
+  } else {
+    // sem item novo/removido: só atualiza o preço mostrado, linha a linha
+    Object.values(CATALOGO).flat().forEach(item => {
+      const qtdEl = document.getElementById('qtd_' + item.id);
+      if (!qtdEl) return;
+      const row = qtdEl.closest('.item-row');
+      const preco = (itemState[item.id]?.venda || item.preco);
+      const precoSpan = row?.querySelector('.item-name .small');
+      if (precoSpan) precoSpan.textContent = `(R$ ${preco.toFixed(2).replace('.',',')})`;
+    });
+  }
+
   if (removidos.length) {
     alert(`⚠️ Estes itens não estão mais disponíveis e foram removidos do seu pedido:\n\n${removidos.join('\n')}`);
   }
   if (typeof updateOrderTotal === 'function') updateOrderTotal();
 }
+
+// Atualiza assim que a loja volta pra aba/janela (além do ciclo periódico) —
+// pega mudanças feitas enquanto o tablet/PC estava com a tela em segundo plano.
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') atualizarCatalogoLojaSemPerderDigitado();
+});
 
 async function abrirRomaneio(pedido) {
   await atualizarPrecosAntesDoRomaneio();
@@ -2128,7 +2206,7 @@ async function iniciarRelatorios() {
   // Populate unidade filter
   const sel = document.getElementById('relFiltroUnidade');
   if (sel.options.length <= 1) {
-    [...UNIDADES, ...extraUnidades.map(u=>u.nome)].forEach(u => {
+    nomesTodasUnidades().forEach(u => {
       const opt = document.createElement('option'); opt.value=u; opt.textContent=u; sel.appendChild(opt);
     });
   }
@@ -2140,7 +2218,7 @@ async function iniciarRelatorios() {
   // Giro por item — mesmo padrão, mais o datalist com todos os itens do catálogo
   const selItem = document.getElementById('relItemFiltroUnidade');
   if (selItem && selItem.options.length <= 1) {
-    [...UNIDADES, ...extraUnidades.map(u=>u.nome)].forEach(u => {
+    nomesTodasUnidades().forEach(u => {
       const opt = document.createElement('option'); opt.value=u; opt.textContent=u; selItem.appendChild(opt);
     });
   }
@@ -2826,7 +2904,7 @@ async function iniciarEntradas() {
   // Populate saída avulsa selects
   const selUnid = document.getElementById('saidaUnidade');
   if (selUnid && selUnid.options.length === 0) {
-    const opts = ['BOA VIAGEM', ...UNIDADES.filter(u => u !== 'BOA VIAGEM'), ...extraUnidades.map(u=>u.nome)];
+    const opts = ['BOA VIAGEM', ...nomesUnidadesAtivas().filter(u => u !== 'BOA VIAGEM')];
     opts.forEach(u => {
       const opt = document.createElement('option'); opt.value=u; opt.textContent=u; selUnid.appendChild(opt);
     });
@@ -3016,7 +3094,7 @@ async function atualizarItemStateEmMassa(transformFn) {
 // uma loja específica (ex: Boa Viagem) pode pedir itens que estão pausados
 // pra todo mundo. Faz numa tacada só em vez de editar item por item na mão.
 async function restringirItensPausadosParaUnidade() {
-  const todasUnidades = [...UNIDADES, ...extraUnidades.map(u=>u.nome)].join(', ');
+  const todasUnidades = nomesUnidadesAtivas().join(', ');
   const unidade = prompt(
     `Restringir TODOS os itens que estão pausados (Disponível = não) pra qual unidade?\nEles voltam a ficar disponíveis, mas só pra essa unidade — as outras continuam sem ver.\n\nUnidades cadastradas: ${todasUnidades}`,
     'BOA VIAGEM'
@@ -3105,8 +3183,8 @@ function renderGestaoItens() {
           </label>
         </td>
         <td>
-          <span class="small" style="${restrito ? 'color:#E65100;font-weight:600' : 'color:#888'}">${restrito ? '🔒 ' + st.restritoUnidades.join(', ') : 'Todas as lojas'}</span>
-          <br><a href="#" onclick="editarRestricaoItem('${item.id}','${item.nome.replace(/'/g,"\\'")}');return false;" style="font-size:11px">editar</a>
+          <span class="small" title="${restrito ? st.restritoUnidades.join(', ') : ''}" style="${restrito ? 'color:#E65100;font-weight:600' : 'color:#888'}">${restrito ? (st.restritoUnidades.length <= 3 ? '🔒 Só: ' + st.restritoUnidades.join(', ') : '🔒 ' + st.restritoUnidades.length + ' lojas') : 'Todas as lojas'}</span>
+          <br><a href="#" onclick="editarRestricaoItem('${item.id}');return false;" style="font-size:11px">escolher lojas</a>
         </td>
         <td><button class="btn btn-secondary btn-xs" onclick="abrirEditPreco('${item.id}','${item.nome.replace(/'/g,"\\'")}',${st.custo||item.preco},${st.venda||item.preco},'${cat.replace(/'/g,"\\'")}')">✏️ Editar</button></td>
       </tr>`;
@@ -3135,24 +3213,78 @@ function renderGestaoItens() {
 // Restringe um item a uma ou mais unidades específicas (ex: só Boa Viagem) —
 // as outras lojas simplesmente não veem mais esse item no catálogo delas.
 // Deixar em branco libera de novo pra todo mundo.
-async function editarRestricaoItem(id, nome) {
-  const st = getItemState(id, { preco: 0 });
-  const atual = (st.restritoUnidades || []).join(', ');
-  const todasUnidades = [...UNIDADES, ...extraUnidades.map(u=>u.nome)].join(', ');
-  const val = prompt(
-    `Restringir "${nome}" a quais unidades? Separe por vírgula.\nDeixe em branco pra liberar pra todas as lojas.\n\nUnidades cadastradas: ${todasUnidades}`,
-    atual
-  );
-  if (val === null) return; // cancelou
-  const lista = val.split(',').map(s => s.trim().toUpperCase()).filter(Boolean);
+//
+// Agora com caixinhas de marcar (uma por loja) em vez de digitar nomes separados
+// por vírgula — digitar errado ("BV2" em vez de "BV 2") fazia a restrição não
+// funcionar sem ninguém perceber.
+function listarLojasParaRestricao() {
+  const nomes = nomesUnidadesAtivas();
+  return [...new Set(nomes)].filter(n => !isUnidadeInterna(n));
+}
+
+function editarRestricaoItem(id) {
+  const item = Object.values(CATALOGO).flat().find(i => i.id === id);
+  if (!item) return;
+  const st = getItemState(id, item);
+  const lojas = listarLojasParaRestricao();
+  const norm = s => String(s).toUpperCase().replace(/\s+/g, '');
+  const salvas = (st.restritoUnidades || []).map(norm);
+  const todasMarcadas = salvas.length === 0;
+
+  const old = document.getElementById('restricaoModal');
+  if (old) old.remove();
+  const modal = document.createElement('div');
+  modal.id = 'restricaoModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;display:flex;align-items:center;justify-content:center;padding:16px';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:10px;max-width:460px;width:100%;max-height:90vh;overflow:auto;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.3)">
+      <h3 style="margin:0 0 4px;color:#5B2D8E">Quem pode pedir este item?</h3>
+      <div style="font-size:14px;font-weight:600;margin-bottom:12px">${item.nome}</div>
+      <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;background:#F5F0FB;border-radius:6px;margin-bottom:10px;cursor:pointer">
+        <input type="checkbox" id="restricaoAtivo" ${st.disponivel !== false ? 'checked' : ''}>
+        <span><strong>Item ativo</strong> <span class="small">(desmarcado = pausado pra todas as lojas)</span></span>
+      </label>
+      <div style="display:flex;gap:8px;margin-bottom:8px">
+        <button type="button" class="btn btn-secondary btn-xs" onclick="document.querySelectorAll('.chkLojaRestricao').forEach(c=>c.checked=true)">Marcar todas</button>
+        <button type="button" class="btn btn-secondary btn-xs" onclick="document.querySelectorAll('.chkLojaRestricao').forEach(c=>c.checked=false)">Desmarcar todas</button>
+      </div>
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:14px">
+        ${lojas.map(l => `
+          <label style="display:flex;align-items:center;gap:8px;padding:8px 10px;border:1px solid #E0D7EE;border-radius:6px;cursor:pointer;font-size:14px">
+            <input type="checkbox" class="chkLojaRestricao" value="${l}" ${(todasMarcadas || salvas.includes(norm(l))) ? 'checked' : ''}>
+            ${l}
+          </label>`).join('')}
+      </div>
+      <div class="small" style="color:#666;margin-bottom:14px">Marque as lojas que <strong>podem ver e pedir</strong>. As desmarcadas não enxergam o item. Com todas marcadas, qualquer loja vê.</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('restricaoModal').remove()">Cancelar</button>
+        <button type="button" class="btn" onclick="salvarRestricaoModal('${id}')">✅ Salvar</button>
+      </div>
+    </div>`;
+  document.body.appendChild(modal);
+}
+
+async function salvarRestricaoModal(id) {
+  const item = Object.values(CATALOGO).flat().find(i => i.id === id);
+  const todas = listarLojasParaRestricao();
+  const marcadas = [...document.querySelectorAll('.chkLojaRestricao')].filter(c => c.checked).map(c => c.value);
+  const ativo = document.getElementById('restricaoAtivo').checked;
+  if (ativo && marcadas.length === 0) {
+    alert('Marque pelo menos uma loja — ou desmarque "Item ativo" pra pausar o item pra todo mundo.');
+    return;
+  }
+  const lista = marcadas.length === todas.length ? [] : marcadas; // todas marcadas = sem restrição
   try {
-    await atualizarItemStateAtomico(id, { restritoUnidades: lista });
+    await atualizarItemStateAtomico(id, { restritoUnidades: lista, disponivel: ativo });
+    document.getElementById('restricaoModal').remove();
     renderGestaoItens();
-    alert(lista.length
-      ? `✅ "${nome}" restrito a: ${lista.join(', ')}`
-      : `✅ "${nome}" liberado pra todas as lojas.`);
+    alert(!ativo
+      ? `✅ "${item.nome}" pausado pra todas as lojas.`
+      : lista.length
+        ? `✅ "${item.nome}" liberado só pra: ${lista.join(', ')}.\nAs lojas se atualizam sozinhas em até 1 minuto.`
+        : `✅ "${item.nome}" liberado pra todas as lojas.\nAs lojas se atualizam sozinhas em até 1 minuto.`);
   } catch (e) {
-    alert('❌ Não foi possível salvar a restrição. Verifique sua internet e tente de novo.\n\nErro: ' + e.message);
+    alert('❌ Não foi possível salvar. Verifique sua internet e tente de novo.\n\nErro: ' + e.message);
   }
 }
 
@@ -3851,7 +3983,7 @@ function doLogin() {
       renderPrazoPedidoBanner();
       aplicarModoGalpao();
       if (_lojaPollInterval) clearInterval(_lojaPollInterval);
-      _lojaPollInterval = setInterval(atualizarCatalogoLojaSemPerderDigitado, 120000); // a cada 2min
+      _lojaPollInterval = setInterval(atualizarCatalogoLojaSemPerderDigitado, 60000); // a cada 1min
       const situacao = await verificarBoletosUnidade(unit);
       const avisoEl = document.getElementById('ordemBloqueada');
       const msgEl = document.getElementById('ordemBloqueadaMsg');
@@ -3924,7 +4056,7 @@ function restaurarSessao() {
       renderPrazoPedidoBanner();
       aplicarModoGalpao();
       if (_lojaPollInterval) clearInterval(_lojaPollInterval);
-      _lojaPollInterval = setInterval(atualizarCatalogoLojaSemPerderDigitado, 120000); // a cada 2min
+      _lojaPollInterval = setInterval(atualizarCatalogoLojaSemPerderDigitado, 60000); // a cada 1min
       const situacao = await verificarBoletosUnidade(savedUser);
       // aplica avisos de boleto se necessário
     });
@@ -4612,7 +4744,7 @@ async function registrarLog(tipo, descricao, usuario, unidade = '') {
 async function iniciarLog() {
   const sel = document.getElementById('logFiltroUnidade');
   if (sel && sel.options.length <= 1) {
-    [...UNIDADES, ...extraUnidades.map(u=>u.nome)].forEach(u => {
+    nomesTodasUnidades().forEach(u => {
       const opt = document.createElement('option'); opt.value=u; opt.textContent=u; sel.appendChild(opt);
     });
   }
@@ -4806,7 +4938,7 @@ async function iniciarBoletos() {
   const selBoleto = document.getElementById('boletoUnidade');
   const selBloqueio = document.getElementById('bloqueioUnidade');
   const selFiltro = document.getElementById('boletoFiltroUnidade');
-  const unidades = [...UNIDADES, ...extraUnidades.map(u=>u.nome)];
+  const unidades = nomesUnidadesAtivas();
 
   if (selBoleto && selBoleto.options.length === 0) {
     unidades.forEach(u => {
