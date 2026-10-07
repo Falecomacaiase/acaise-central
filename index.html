@@ -1225,16 +1225,16 @@ async function carregarMeusPedidos() {
 
       const editavel = podeEditarPedido(p);
       let botaoAjustar = '';
-      if (despachado) {
-        const rec = recebimentos[chaveRecebimento(p._storageKey)];
-        if (rec || pedidoPedeConfirmacao(p)) botaoAjustar = htmlRecebimentoLoja(rec, idx);
-      } else {
+      const rec = recebimentos[chaveRecebimento(p._storageKey)];
+      if (!despachado && !rec) {
+        // Depois de confirmado o recebimento, o pedido não pode mais ser ajustado.
         if (editavel) {
           botaoAjustar = `<button class="btn btn-secondary btn-xs" style="margin-top:8px" onclick="editarPedidoLoja(${idx})">✏️ Ajustar pedido</button>`;
         } else {
           botaoAjustar = `<span class="small" style="margin-top:8px;display:inline-block;color:#C62828">🔒 Prazo de ajuste encerrado</span>`;
         }
       }
+      if (rec || pedidoPedeConfirmacao(p)) botaoAjustar += htmlRecebimentoLoja(rec, idx);
 
       html += `<div style="border:1px solid #eee;border-radius:8px;padding:12px 14px;margin-bottom:10px;border-left:4px solid ${despachado?'#2E7D32':'#5B2D8E'}">
         <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:6px">
@@ -1269,12 +1269,19 @@ async function carregarMeusPedidos() {
 // alterado, então a sincronização externa que envia o boleto ao despachar não é
 // afetada. O painel da franqueadora escuta esses documentos em tempo real.
 const MOTIVOS_PROBLEMA_RECEB = ['Violado / avariado', 'Faltou na entrega', 'Vencido / estragado', 'Item errado', 'Outro'];
-// Só pedidos despachados a partir do lançamento do recurso pedem confirmação —
-// os antigos não ganham botão nem entram na lista de "sem confirmação".
-const RECEBIMENTO_DESDE = new Date('2026-10-07T00:00:00-03:00').getTime();
-
+// Fluxo real: o carro/transportadora entrega ANTES do despacho no sistema. A loja
+// confere a mercadoria e confirma aqui; com isso a franqueadora despacha — e é o
+// despacho que dispara o boleto (sistema externo). Por isso a confirmação vale
+// para pedidos ainda NÃO despachados.
 function pedidoPedeConfirmacao(p) {
-  return !!(p && p.despachado && p.dataDespacho && new Date(p.dataDespacho).getTime() >= RECEBIMENTO_DESDE);
+  return !!(p && !p.despachado);
+}
+
+function recebimentoDoPedido(pedidoKey) {
+  const ch = chaveRecebimento(pedidoKey);
+  const r = _recebimentos.find(x => x._chave === ch);
+  if (r) return r;
+  return _dataCache && _dataCache[ch] ? parseValue(_dataCache[ch]) : null;
 }
 
 function chaveRecebimento(pedidoKey) {
@@ -1454,6 +1461,7 @@ async function salvarProblemaRecebimento(idx) {
 // ── Painel da franqueadora: escuta em tempo real só os documentos de recebimento
 // (não relê a coleção inteira, então quase não gasta leituras do Firebase).
 let _recebimentos = [];
+let _ultimosPedidosAdmin = null; // última lista renderizada em "Pedidos por unidade"
 let _unsubRecebimentos = null;
 let _recebimentosJaCarregou = false;
 
@@ -1479,6 +1487,8 @@ function iniciarEscutaRecebimentos() {
       _recebimentos = lista;
       _recebimentosJaCarregou = true;
       renderPainelRecebimentos();
+      // Atualiza os selos dos cartões de pedido sem reler a coleção inteira.
+      if (_ultimosPedidosAdmin) renderPorUnidade(_ultimosPedidosAdmin);
       if (novos.length) avisarNovosRecebimentos(novos);
     }, err => console.error('Escuta de recebimentos:', err));
 }
@@ -1515,35 +1525,55 @@ async function ativarNotificacoesRecebimento() {
   renderPainelRecebimentos();
 }
 
-// Pedidos despachados nos últimos 7 dias que a loja ainda não confirmou.
-function despachadosSemConfirmacao() {
-  if (!_dataCache) return [];
-  const confirmados = new Set(_recebimentos.map(r => r._chave));
-  const limite = Date.now() - 7 * 24 * 60 * 60 * 1000;
-  const lista = [];
-  Object.entries(_dataCache).forEach(([k, val]) => {
-    if (!k.startsWith('pedido:')) return;
-    const p = parseValue(val);
-    if (!pedidoPedeConfirmacao(p)) return;
-    if (new Date(p.dataDespacho).getTime() < limite) return;
-    if (confirmados.has(chaveRecebimento(k))) return;
-    lista.push(p);
-  });
-  return lista.sort((a, b) => new Date(a.dataDespacho) - new Date(b.dataDespacho));
+// Abre o romaneio do pedido direto do aviso de recebimento, pra despachar.
+function abrirRomaneioDoRecebimento(chave) {
+  const r = _recebimentos.find(x => x._chave === chave);
+  const p = r && _dataCache ? parseValue(_dataCache[r.pedidoKey]) : null;
+  if (!p) { alert('Pedido não encontrado. Clique em "🔄 Atualizar" e tente de novo.'); return; }
+  abrirRomaneio({ ...p, _storageKey: r.pedidoKey });
 }
 
 function htmlCardRecebimento(r, comBotao) {
   const problema = r.status === 'problema';
+  const ped = _dataCache && r.pedidoKey ? parseValue(_dataCache[r.pedidoKey]) : null;
+  const jaDespachado = !!(ped && ped.despachado);
+  const acaoPedido = !ped ? '' : jaDespachado
+    ? `<span class="small" style="color:#2E7D32;font-weight:600">✅ já despachado</span>`
+    : `<button class="btn btn-xs" style="background:#2E7D32" onclick="abrirRomaneioDoRecebimento('${escHtml(r._chave)}')">🖨️ Abrir romaneio p/ despachar</button>`;
   const itens = (r.itensProblema || []).map(i =>
     `<li><strong>${escHtml(i.nome)}</strong>: ${fmtQtd(i.qtdProblema)}${i.unidadeMedida ? ' ' + escHtml(i.unidadeMedida) : ''} de ${fmtQtd(i.qtdPedido)} — ${escHtml(i.motivo)}</li>`).join('');
   return `<div style="border:1px solid ${problema ? '#FFCC80' : '#C8E6C9'};background:${problema ? '#FFF8F0' : '#F6FBF6'};border-left:4px solid ${problema ? '#E65100' : '#2E7D32'};border-radius:8px;padding:8px 12px;margin-bottom:6px">
     <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
       <div><strong>${problema ? '⚠️' : '📬'} ${escHtml(r.unidade)}</strong> — pedido ${escHtml(r.numeroPedido || '—')}
         <span class="small">${problema ? 'recebido com problema' : 'recebido tudo certo'} em ${fmtDataHora(r.data)}</span></div>
-      ${comBotao ? `<button class="btn btn-secondary btn-xs" onclick="marcarRecebimentoVisto('${escHtml(r._chave)}')">✓ Marcar como visto</button>` : (r.vistoEm ? `<span class="small">visto em ${fmtDataHora(r.vistoEm)}</span>` : '')}
+      <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        ${comBotao ? acaoPedido : ''}
+        ${comBotao ? `<button class="btn btn-secondary btn-xs" onclick="marcarRecebimentoVisto('${escHtml(r._chave)}')">✓ Marcar como visto</button>` : (r.vistoEm ? `<span class="small">visto em ${fmtDataHora(r.vistoEm)}</span>` : '')}
+      </div>
     </div>
+    ${problema && comBotao && !jaDespachado ? `<div class="small" style="margin-top:4px;color:#E65100">Ajuste os itens no romaneio antes de despachar, para o boleto sair com o valor certo.</div>` : ''}
     ${itens ? `<ul style="margin:6px 0 0;padding-left:18px;font-size:13px">${itens}</ul>` : ''}
     ${r.observacao ? `<div style="font-size:13px;margin-top:4px">💬 ${escHtml(r.observacao)}</div>` : ''}
+  </div>`;
+}
+
+// Selo no cartão do pedido (painel) mostrando se a loja já confirmou.
+function htmlSeloRecebimento(rec) {
+  if (!rec) return '';
+  return rec.status === 'problema'
+    ? `<span class="badge" style="margin-left:6px;background:#FFF3E0;color:#E65100">⚠️ Loja recebeu com problema • ${fmtDataHora(rec.data)}</span>`
+    : `<span class="badge" style="margin-left:6px;background:#E8F5E9;color:#2E7D32">📬 Loja confirmou recebimento • ${fmtDataHora(rec.data)}</span>`;
+}
+
+// Aviso no topo do romaneio (onde fica o botão de despachar).
+function htmlAvisoRecebimentoRomaneio(rec) {
+  if (!rec) return '<span style="color:#888">⏳ A loja ainda não confirmou o recebimento.</span>';
+  if (rec.status !== 'problema') return `<span style="color:#2E7D32;font-weight:600">📬 A loja confirmou que recebeu tudo certo em ${fmtDataHora(rec.data)}. Pode despachar.</span>`;
+  const itens = (rec.itensProblema || []).map(i => `${escHtml(i.nome)}: ${fmtQtd(i.qtdProblema)}${i.unidadeMedida ? ' ' + escHtml(i.unidadeMedida) : ''} (${escHtml(i.motivo)})`).join(' • ');
+  return `<div style="background:#FFF3E0;border-left:4px solid #E65100;padding:8px 10px;border-radius:6px;color:#BF360C">
+    <strong>⚠️ A loja recebeu com problema em ${fmtDataHora(rec.data)}.</strong> Ajuste os itens antes de despachar.
+    ${itens ? `<div style="margin-top:4px">${itens}</div>` : ''}
+    ${rec.observacao ? `<div style="margin-top:4px">💬 ${escHtml(rec.observacao)}</div>` : ''}
   </div>`;
 }
 
@@ -1554,7 +1584,6 @@ function renderPainelRecebimentos() {
   const problemas = naoVistos.filter(r => r.status === 'problema').length;
   const limite30 = Date.now() - 30 * 24 * 60 * 60 * 1000;
   const historico = _recebimentos.filter(r => r.vistoAdmin && new Date(r.data).getTime() >= limite30);
-  const pendentes = despachadosSemConfirmacao();
   const podePedirAviso = 'Notification' in window && Notification.permission === 'default';
 
   let html = `<div class="card" style="margin-bottom:14px;border-left:4px solid ${problemas ? '#E65100' : '#5B2D8E'}">
@@ -1567,10 +1596,6 @@ function renderPainelRecebimentos() {
   html += naoVistos.length
     ? `<div style="margin-top:10px">${naoVistos.map(r => htmlCardRecebimento(r, true)).join('')}</div>`
     : `<p class="small" style="margin:8px 0 0">Nenhuma confirmação nova.</p>`;
-  if (pendentes.length) {
-    html += `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:600;color:#F57F17">⏳ ${pendentes.length} pedido(s) despachado(s) nos últimos 7 dias ainda sem confirmação da loja</summary>
-      <ul style="margin:6px 0 0;padding-left:18px;font-size:13px">${pendentes.map(p => `<li><strong>${escHtml(p.unidade)}</strong> — ${escHtml(p.numeroPedido || '—')} • despachado em ${fmtDataHora(p.dataDespacho)}</li>`).join('')}</ul></details>`;
-  }
   if (historico.length) {
     html += `<details style="margin-top:8px"><summary class="small" style="cursor:pointer;font-weight:600">Histórico de recebimentos (últimos 30 dias)</summary>
       <div style="margin-top:6px">${historico.map(r => htmlCardRecebimento(r, false)).join('')}</div></details>`;
@@ -2046,7 +2071,8 @@ async function abrirRomaneio(pedido) {
     btnDespachar.disabled = false;
     btnDespachar.style.background = '#2E7D32';
     btnDespachar.textContent = '✅ Confirmar despacho e imprimir';
-    statusMsg.textContent = '';
+    statusMsg.style.color = '';
+    statusMsg.innerHTML = htmlAvisoRecebimentoRomaneio(recebimentoDoPedido(pedido._storageKey || pedido._key));
     document.getElementById('btnSalvarRomaneio').style.display = 'inline-block';
     btnCorrigir.style.display = 'none';
   }
@@ -5818,6 +5844,7 @@ async function loadAdminData(silencioso = false) {
     if (badge) badge.style.display = 'none';
     renderConsolidado(pedidos);
     renderPorUnidade(pedidos);
+    _ultimosPedidosAdmin = pedidos;
   }
   iniciarEscutaRecebimentos();
   renderPainelRecebimentos();
@@ -5920,6 +5947,7 @@ function renderPorUnidade(pedidos) {
           ${interna ? '<span class="badge" style="margin-left:6px;background:#EFEBE9;color:#5D4037">🏭 Uso interno — não é venda</span>' : ''}
           ${p.urgencia ? '<span class="badge badge-red" style="margin-left:6px">🚨 URGÊNCIA</span>' : ''}
           ${p.despachado ? '<span class="badge" style="margin-left:6px;background:#eee;color:#888">✅ Despachado</span>' : ''}
+          ${htmlSeloRecebimento(recebimentoDoPedido(p._storageKey))}
           ${(p.itensAvulsos && p.itensAvulsos.length) ? `<span class="badge" style="margin-left:6px;background:#E3F2FD;color:#1565C0">📦 ${p.itensAvulsos.length} sem preço</span>` : ''}
         </div>
         <div style="display:flex;gap:6px;align-items:center;flex-wrap:wrap">
