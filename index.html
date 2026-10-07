@@ -253,6 +253,7 @@
         </div>
         <span class="small" id="lastUpdate"></span>
       </div>
+      <div id="painelRecebimentos"></div>
       <div id="adminConsolidado"></div>
       <h3>Pedidos por unidade</h3>
       <div id="adminPorUnidade"></div>
@@ -809,7 +810,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.10.07-1";
+const APP_VERSION = "2026.10.07-2";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -1206,6 +1207,13 @@ async function carregarMeusPedidos() {
       return;
     }
 
+    const dadosCache = await loadAllData();
+    const recebimentos = {};
+    pedidos.forEach(p => {
+      const ch = chaveRecebimento(p._storageKey);
+      if (dadosCache[ch]) recebimentos[ch] = parseValue(dadosCache[ch]);
+    });
+
     let html = '';
     pedidos.forEach((p, idx) => {
       const data = new Date(p.dataEnvio).toLocaleString('pt-BR');
@@ -1217,7 +1225,10 @@ async function carregarMeusPedidos() {
 
       const editavel = podeEditarPedido(p);
       let botaoAjustar = '';
-      if (!despachado) {
+      if (despachado) {
+        const rec = recebimentos[chaveRecebimento(p._storageKey)];
+        if (rec || pedidoPedeConfirmacao(p)) botaoAjustar = htmlRecebimentoLoja(rec, idx);
+      } else {
         if (editavel) {
           botaoAjustar = `<button class="btn btn-secondary btn-xs" style="margin-top:8px" onclick="editarPedidoLoja(${idx})">✏️ Ajustar pedido</button>`;
         } else {
@@ -1249,6 +1260,323 @@ async function carregarMeusPedidos() {
   } catch(e) {
     wrap.innerHTML = `<p class="small" style="color:#C62828">Erro ao carregar: ${e.message}</p>`;
   }
+}
+
+// ─── RECEBIMENTO DE PEDIDOS ──────────────────────────────────────────────────
+// A loja confirma que recebeu um pedido despachado: "tudo certo" ou "com problema"
+// (itens violados, faltando etc.). Fica num documento SEPARADO
+// ("recebimento:<id do pedido>") de propósito: o documento do pedido não é
+// alterado, então a sincronização externa que envia o boleto ao despachar não é
+// afetada. O painel da franqueadora escuta esses documentos em tempo real.
+const MOTIVOS_PROBLEMA_RECEB = ['Violado / avariado', 'Faltou na entrega', 'Vencido / estragado', 'Item errado', 'Outro'];
+// Só pedidos despachados a partir do lançamento do recurso pedem confirmação —
+// os antigos não ganham botão nem entram na lista de "sem confirmação".
+const RECEBIMENTO_DESDE = new Date('2026-10-07T00:00:00-03:00').getTime();
+
+function pedidoPedeConfirmacao(p) {
+  return !!(p && p.despachado && p.dataDespacho && new Date(p.dataDespacho).getTime() >= RECEBIMENTO_DESDE);
+}
+
+function chaveRecebimento(pedidoKey) {
+  return 'recebimento:' + String(pedidoKey || '').replace(/^pedido:/, '');
+}
+
+function escHtml(s) {
+  return String(s ?? '').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+}
+
+function fmtDataHora(iso) {
+  const d = new Date(iso);
+  return isNaN(d) ? '—' : d.toLocaleString('pt-BR', { day:'2-digit', month:'2-digit', hour:'2-digit', minute:'2-digit' });
+}
+
+function fmtQtd(n) {
+  return String(Math.round((Number(n) || 0) * 1000) / 1000).replace('.', ',');
+}
+
+// Grava a confirmação só se ainda não existir (transação): duas confirmações ao
+// mesmo tempo, de dois aparelhos da loja, não se sobrescrevem.
+async function gravarRecebimentoAtomico(pedidoKey, dados) {
+  const chave = chaveRecebimento(pedidoKey);
+  const docRef = _col.doc(toDocId(chave));
+  await _db.runTransaction(async (t) => {
+    const snap = await t.get(docRef);
+    if (snap.exists) throw new Error('O recebimento deste pedido já foi confirmado.');
+    t.set(docRef, {
+      value: JSON.stringify(dados),
+      originalKey: chave,
+      updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+    });
+  });
+  if (_dataCache) _dataCache[chave] = dados;
+  return dados;
+}
+
+async function marcarRecebimentoVisto(chave) {
+  const docRef = _col.doc(toDocId(chave));
+  try {
+    await _db.runTransaction(async (t) => {
+      const snap = await t.get(docRef);
+      if (!snap.exists) return;
+      let val = snap.data().value;
+      if (typeof val === 'string') { try { val = JSON.parse(val); } catch(e) { val = {}; } }
+      t.set(docRef, {
+        value: JSON.stringify({ ...(val || {}), vistoAdmin: true, vistoEm: new Date().toISOString() }),
+        originalKey: chave,
+        updatedAt: firebase.firestore.FieldValue.serverTimestamp()
+      });
+    });
+  } catch(e) {
+    alert('Não foi possível marcar como visto: ' + e.message);
+  }
+}
+
+// Bloco mostrado no card de um pedido despachado em "Meus Pedidos".
+function htmlRecebimentoLoja(rec, idx) {
+  if (rec && rec.status === 'problema') {
+    const n = (rec.itensProblema || []).length;
+    return `<span style="margin-top:8px;display:inline-block;background:#FFF3E0;color:#E65100;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:700">⚠️ Recebido com problema em ${fmtDataHora(rec.data)}${n ? ` • ${n} item(ns)` : ''}</span>`;
+  }
+  if (rec) {
+    return `<span style="margin-top:8px;display:inline-block;background:#E8F5E9;color:#2E7D32;padding:4px 10px;border-radius:12px;font-size:12px;font-weight:700">📬 Recebido em ${fmtDataHora(rec.data)}</span>`;
+  }
+  return `<button class="btn btn-xs" style="margin-top:8px;background:#2E7D32" onclick="confirmarRecebimentoOk(${idx})">✅ Recebi tudo certo</button>
+          <button class="btn btn-xs" style="margin-top:8px;background:#E65100" onclick="abrirProblemaRecebimento(${idx})">⚠️ Recebi com problema</button>`;
+}
+
+function _pedidoDaListaLoja(idx) {
+  const lista = document.getElementById('meusPedidosLista')._pedidos || [];
+  return lista[idx];
+}
+
+function _dadosBaseRecebimento(p) {
+  return {
+    pedidoKey: p._storageKey,
+    numeroPedido: p.numeroPedido || '',
+    unidade: p.unidade || currentUser,
+    dataDespacho: p.dataDespacho || null,
+    data: new Date().toISOString(),
+    vistoAdmin: false
+  };
+}
+
+async function confirmarRecebimentoOk(idx) {
+  const p = _pedidoDaListaLoja(idx);
+  if (!p) return;
+  if (!confirm(`Confirmar que o pedido ${p.numeroPedido || ''} chegou completo e em bom estado?`)) return;
+  try {
+    await gravarRecebimentoAtomico(p._storageKey, { ..._dadosBaseRecebimento(p), status: 'ok', itensProblema: [], observacao: '' });
+    alert('✅ Recebimento confirmado! A franqueadora foi avisada.');
+  } catch(e) {
+    alert('⚠️ ' + e.message);
+  }
+  carregarMeusPedidos();
+}
+
+function abrirProblemaRecebimento(idx) {
+  const p = _pedidoDaListaLoja(idx);
+  if (!p) return;
+  const itens = Object.values(p.itens || {}).filter(i => (Number(i.qtd) || 0) > 0);
+  const old = document.getElementById('recebProblemaModal');
+  if (old) old.remove();
+  const opcoesMotivo = MOTIVOS_PROBLEMA_RECEB.map(m => `<option>${m}</option>`).join('');
+  const modal = document.createElement('div');
+  modal.id = 'recebProblemaModal';
+  modal.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;display:flex;align-items:center;justify-content:center;padding:12px';
+  modal.innerHTML = `
+    <div style="background:#fff;border-radius:10px;max-width:560px;width:100%;max-height:92vh;overflow:auto;padding:18px;box-shadow:0 8px 30px rgba(0,0,0,.3)">
+      <h3 style="margin:0 0 4px;color:#E65100">⚠️ Recebi com problema</h3>
+      <div class="small" style="margin-bottom:12px">Pedido <strong>${escHtml(p.numeroPedido || '')}</strong>. Marque os itens que vieram com problema, informe a quantidade e o motivo.</div>
+      <div id="recebProblemaItens">
+        ${itens.map((it, i) => `
+          <div style="border:1px solid #eee;border-radius:8px;padding:8px 10px;margin-bottom:6px">
+            <label style="display:flex;align-items:center;justify-content:flex-start;text-align:left;gap:10px;cursor:pointer;font-size:14px;margin:0">
+              <input type="checkbox" class="chkRecebProb" data-i="${i}" style="width:18px;height:18px;margin:0;flex:none">
+              <span><strong>${escHtml(it.nome)}</strong> <span class="small">(veio no pedido: ${fmtQtd(it.qtd)}${it.unidade ? ' ' + escHtml(it.unidade) : ''})</span></span>
+            </label>
+            <div style="display:flex;gap:6px;margin-top:6px;flex-wrap:wrap;align-items:center">
+              <span class="small">Qtd com problema:</span>
+              <input type="number" class="qtdRecebProb" data-i="${i}" min="0" step="any" max="${Number(it.qtd) || 0}" value="${Number(it.qtd) || 0}" style="width:90px;padding:4px 6px;margin:0" oninput="marcarItemProblema(${i})">
+              <select class="motivoRecebProb" data-i="${i}" style="width:auto;flex:1;min-width:160px;padding:4px 6px;margin:0" onchange="marcarItemProblema(${i})">${opcoesMotivo}</select>
+            </div>
+          </div>`).join('') || '<p class="small">Este pedido não tem itens listados. Descreva o problema abaixo.</p>'}
+      </div>
+      <label class="small" style="display:block;margin-top:10px;font-weight:600">Observação (o que aconteceu?)</label>
+      <textarea id="recebProblemaObs" rows="3" style="width:100%;box-sizing:border-box;padding:8px;border:1px solid #ddd;border-radius:6px" placeholder="Ex: 2 potes de creme chegaram com a tampa violada"></textarea>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('recebProblemaModal').remove()">Cancelar</button>
+        <button type="button" class="btn" style="background:#E65100" onclick="salvarProblemaRecebimento(${idx})">📨 Enviar para a franqueadora</button>
+      </div>
+    </div>`;
+  modal._itens = itens;
+  document.body.appendChild(modal);
+}
+
+// Mexer na quantidade ou no motivo já marca o item como "com problema".
+function marcarItemProblema(i) {
+  const chk = document.querySelector(`.chkRecebProb[data-i="${i}"]`);
+  if (chk) chk.checked = true;
+}
+
+async function salvarProblemaRecebimento(idx) {
+  const p = _pedidoDaListaLoja(idx);
+  const modal = document.getElementById('recebProblemaModal');
+  if (!p || !modal) return;
+  const itens = modal._itens || [];
+  const itensProblema = [];
+  modal.querySelectorAll('.chkRecebProb').forEach(chk => {
+    if (!chk.checked) return;
+    const i = Number(chk.dataset.i);
+    const it = itens[i];
+    const qtd = parseFloat(modal.querySelector(`.qtdRecebProb[data-i="${i}"]`).value) || 0;
+    const motivo = modal.querySelector(`.motivoRecebProb[data-i="${i}"]`).value;
+    itensProblema.push({ nome: it.nome, qtdPedido: Number(it.qtd) || 0, qtdProblema: qtd, unidadeMedida: it.unidade || '', motivo });
+  });
+  const observacao = document.getElementById('recebProblemaObs').value.trim();
+  if (itensProblema.length === 0 && !observacao) {
+    alert('Marque pelo menos um item com problema ou escreva o que aconteceu.');
+    return;
+  }
+  if (itensProblema.some(i => i.qtdProblema <= 0)) {
+    alert('Informe a quantidade com problema (maior que zero) nos itens marcados.');
+    return;
+  }
+  try {
+    await gravarRecebimentoAtomico(p._storageKey, { ..._dadosBaseRecebimento(p), status: 'problema', itensProblema, observacao });
+    modal.remove();
+    alert('📨 Problema enviado! A franqueadora foi avisada e vai entrar em contato.');
+  } catch(e) {
+    alert('⚠️ ' + e.message);
+  }
+  carregarMeusPedidos();
+}
+
+// ── Painel da franqueadora: escuta em tempo real só os documentos de recebimento
+// (não relê a coleção inteira, então quase não gasta leituras do Firebase).
+let _recebimentos = [];
+let _unsubRecebimentos = null;
+let _recebimentosJaCarregou = false;
+
+function iniciarEscutaRecebimentos() {
+  if (_unsubRecebimentos || currentRole !== 'admin') return;
+  _recebimentosJaCarregou = false;
+  _unsubRecebimentos = _col
+    .where('originalKey', '>=', 'recebimento:')
+    .where('originalKey', '<', 'recebimento:')
+    .onSnapshot(snap => {
+      const anteriores = new Set(_recebimentos.map(r => r._chave));
+      const lista = [];
+      snap.forEach(doc => {
+        const d = doc.data();
+        const r = parseValue(d.value);
+        if (!r || typeof r !== 'object') return;
+        r._chave = d.originalKey;
+        lista.push(r);
+        if (_dataCache) _dataCache[d.originalKey] = r;
+      });
+      lista.sort((a, b) => new Date(b.data) - new Date(a.data));
+      const novos = _recebimentosJaCarregou ? lista.filter(r => !anteriores.has(r._chave) && !r.vistoAdmin) : [];
+      _recebimentos = lista;
+      _recebimentosJaCarregou = true;
+      renderPainelRecebimentos();
+      if (novos.length) avisarNovosRecebimentos(novos);
+    }, err => console.error('Escuta de recebimentos:', err));
+}
+
+function pararEscutaRecebimentos() {
+  if (_unsubRecebimentos) { _unsubRecebimentos(); _unsubRecebimentos = null; }
+  _recebimentos = [];
+  _recebimentosJaCarregou = false;
+}
+
+function avisarNovosRecebimentos(novos) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.25].forEach(t => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 880; g.gain.value = 0.15;
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.15);
+    });
+  } catch(e) {}
+  if ('Notification' in window && Notification.permission === 'granted') {
+    novos.forEach(r => {
+      const titulo = r.status === 'problema' ? `⚠️ ${r.unidade}: recebido com problema` : `📬 ${r.unidade}: pedido recebido`;
+      try { new Notification(titulo, { body: `Pedido ${r.numeroPedido || ''}${r.observacao ? ' — ' + r.observacao : ''}`, icon: 'acaise-logo.png' }); } catch(e) {}
+    });
+  }
+}
+
+async function ativarNotificacoesRecebimento() {
+  if (!('Notification' in window)) { alert('Este navegador não suporta notificações.'); return; }
+  const perm = await Notification.requestPermission();
+  if (perm === 'granted') alert('🔔 Avisos ativados! Com o painel aberto, você será avisado quando uma loja confirmar o recebimento.');
+  else alert('Os avisos não foram permitidos. Para ativar depois, clique no cadeado ao lado do endereço do site e permita notificações.');
+  renderPainelRecebimentos();
+}
+
+// Pedidos despachados nos últimos 7 dias que a loja ainda não confirmou.
+function despachadosSemConfirmacao() {
+  if (!_dataCache) return [];
+  const confirmados = new Set(_recebimentos.map(r => r._chave));
+  const limite = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const lista = [];
+  Object.entries(_dataCache).forEach(([k, val]) => {
+    if (!k.startsWith('pedido:')) return;
+    const p = parseValue(val);
+    if (!pedidoPedeConfirmacao(p)) return;
+    if (new Date(p.dataDespacho).getTime() < limite) return;
+    if (confirmados.has(chaveRecebimento(k))) return;
+    lista.push(p);
+  });
+  return lista.sort((a, b) => new Date(a.dataDespacho) - new Date(b.dataDespacho));
+}
+
+function htmlCardRecebimento(r, comBotao) {
+  const problema = r.status === 'problema';
+  const itens = (r.itensProblema || []).map(i =>
+    `<li><strong>${escHtml(i.nome)}</strong>: ${fmtQtd(i.qtdProblema)}${i.unidadeMedida ? ' ' + escHtml(i.unidadeMedida) : ''} de ${fmtQtd(i.qtdPedido)} — ${escHtml(i.motivo)}</li>`).join('');
+  return `<div style="border:1px solid ${problema ? '#FFCC80' : '#C8E6C9'};background:${problema ? '#FFF8F0' : '#F6FBF6'};border-left:4px solid ${problema ? '#E65100' : '#2E7D32'};border-radius:8px;padding:8px 12px;margin-bottom:6px">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <div><strong>${problema ? '⚠️' : '📬'} ${escHtml(r.unidade)}</strong> — pedido ${escHtml(r.numeroPedido || '—')}
+        <span class="small">${problema ? 'recebido com problema' : 'recebido tudo certo'} em ${fmtDataHora(r.data)}</span></div>
+      ${comBotao ? `<button class="btn btn-secondary btn-xs" onclick="marcarRecebimentoVisto('${escHtml(r._chave)}')">✓ Marcar como visto</button>` : (r.vistoEm ? `<span class="small">visto em ${fmtDataHora(r.vistoEm)}</span>` : '')}
+    </div>
+    ${itens ? `<ul style="margin:6px 0 0;padding-left:18px;font-size:13px">${itens}</ul>` : ''}
+    ${r.observacao ? `<div style="font-size:13px;margin-top:4px">💬 ${escHtml(r.observacao)}</div>` : ''}
+  </div>`;
+}
+
+function renderPainelRecebimentos() {
+  const wrap = document.getElementById('painelRecebimentos');
+  if (!wrap || currentRole !== 'admin') return;
+  const naoVistos = _recebimentos.filter(r => !r.vistoAdmin);
+  const problemas = naoVistos.filter(r => r.status === 'problema').length;
+  const limite30 = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const historico = _recebimentos.filter(r => r.vistoAdmin && new Date(r.data).getTime() >= limite30);
+  const pendentes = despachadosSemConfirmacao();
+  const podePedirAviso = 'Notification' in window && Notification.permission === 'default';
+
+  let html = `<div class="card" style="margin-bottom:14px;border-left:4px solid ${problemas ? '#E65100' : '#5B2D8E'}">
+    <div style="display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap">
+      <h3 style="margin:0">📬 Recebimentos das lojas
+        ${naoVistos.length ? `<span style="background:${problemas ? '#E65100' : '#2E7D32'};color:#fff;padding:2px 9px;border-radius:12px;font-size:12px;margin-left:6px">${naoVistos.length} novo(s)${problemas ? ` • ${problemas} com problema` : ''}</span>` : ''}
+      </h3>
+      ${podePedirAviso ? `<button class="btn btn-secondary btn-xs" onclick="ativarNotificacoesRecebimento()">🔔 Ativar avisos no navegador</button>` : ''}
+    </div>`;
+  html += naoVistos.length
+    ? `<div style="margin-top:10px">${naoVistos.map(r => htmlCardRecebimento(r, true)).join('')}</div>`
+    : `<p class="small" style="margin:8px 0 0">Nenhuma confirmação nova.</p>`;
+  if (pendentes.length) {
+    html += `<details style="margin-top:10px"><summary class="small" style="cursor:pointer;font-weight:600;color:#F57F17">⏳ ${pendentes.length} pedido(s) despachado(s) nos últimos 7 dias ainda sem confirmação da loja</summary>
+      <ul style="margin:6px 0 0;padding-left:18px;font-size:13px">${pendentes.map(p => `<li><strong>${escHtml(p.unidade)}</strong> — ${escHtml(p.numeroPedido || '—')} • despachado em ${fmtDataHora(p.dataDespacho)}</li>`).join('')}</ul></details>`;
+  }
+  if (historico.length) {
+    html += `<details style="margin-top:8px"><summary class="small" style="cursor:pointer;font-weight:600">Histórico de recebimentos (últimos 30 dias)</summary>
+      <div style="margin-top:6px">${historico.map(r => htmlCardRecebimento(r, false)).join('')}</div></details>`;
+  }
+  html += `</div>`;
+  wrap.innerHTML = html;
 }
 
 // Um pedido pode ser ajustado enquanto não tiver sido despachado e, se for um
@@ -4133,6 +4461,7 @@ function logout() {
   sessionStorage.removeItem('acaise_user');
   sessionStorage.removeItem('acaise_role');
   sessionStorage.removeItem('acaise_k');
+  pararEscutaRecebimentos();
   _dataCache = null; // limpa cache ao sair
   document.getElementById('orderScreen').classList.add('hidden');
   document.getElementById('adminScreen').classList.add('hidden');
@@ -5490,6 +5819,8 @@ async function loadAdminData(silencioso = false) {
     renderConsolidado(pedidos);
     renderPorUnidade(pedidos);
   }
+  iniciarEscutaRecebimentos();
+  renderPainelRecebimentos();
 
   if (!_adminPollInterval) {
     // A cada atualização automática, o app relê a coleção inteira do Firestore
