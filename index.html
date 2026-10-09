@@ -48,6 +48,15 @@
   .tabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 2px solid #eee; }
   .tab-btn { background: none; border: none; padding: 10px 16px; font-size: 14px; font-weight: 600; color: #888; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
   .tab-btn.active { color: #5B2D8E; border-bottom: 2px solid #5B2D8E; }
+  .nota-opcao { flex:1; display:flex !important; align-items:center; gap:8px; padding:12px; border:1.5px solid #E0D7EE; border-radius:8px; cursor:pointer; font-weight:600; margin:0 !important; }
+  .nota-opcao input { width:auto !important; margin:0 !important; }
+  .nota-opcao:has(input:checked) { border-color:#5B2D8E; background:#F5F0FB; }
+  .nota-previews { display:flex; gap:8px; flex-wrap:wrap; margin-top:8px; }
+  .nota-thumb { position:relative; width:76px; height:76px; border-radius:6px; overflow:hidden; border:1px solid #ddd; background:#f5f5f5; cursor:pointer; flex:none; }
+  .nota-thumb img { width:100%; height:100%; object-fit:cover; }
+  .nota-thumb button { position:absolute; top:2px; right:2px; width:22px; height:22px; border-radius:50%; border:none; background:rgba(0,0,0,.6); color:#fff; font-size:12px; cursor:pointer; padding:0; line-height:22px; }
+  .nota-card { border:1px solid #eee; border-radius:8px; padding:12px 14px; margin-bottom:10px; border-left:4px solid #5B2D8E; }
+  .nota-status { display:inline-block; padding:2px 9px; border-radius:12px; font-size:11px; font-weight:700; }
   .entry-row { display: flex; justify-content: space-between; padding: 6px 0; border-bottom: 1px solid #eee; font-size: 13px; }
   .toggle-wrap { display:flex;align-items:center;gap:8px; }
   .toggle { position:relative;display:inline-block;width:40px;height:22px; }
@@ -242,6 +251,7 @@
       <button class="tab-btn" id="tabBtnProducao" onclick="switchAdminTab('producao')">🏭 Produção</button>
       <button class="tab-btn" id="tabBtnCompras" onclick="switchAdminTab('compras')">🛒 Lista de Compras</button>
       <button class="tab-btn" id="tabBtnLog" onclick="switchAdminTab('log')">📋 Log</button>
+      <button class="tab-btn" id="tabBtnNotas" onclick="switchAdminTab('notas')">📄 Notas e Boletos</button>
     </div>
 
     <div id="tabPedidos">
@@ -784,8 +794,111 @@
       <div id="logLista"></div>
     </div>
 
+    <!-- ABA: NOTAS E BOLETOS (mesmo painel do login FINANCEIRO) -->
+    <div id="tabNotas" class="hidden">
+      <div id="adminNotasPainel"></div>
+    </div>
+
   </div>
 
+  <!-- RECEBIMENTO DE NOTAS (funcionário do galpão / Boa Viagem) -->
+  <div id="notasScreen" class="card hidden">
+    <div style="background:#5B2D8E;color:#fff;border-radius:8px;padding:14px 18px;margin-bottom:16px">
+      <div style="font-size:18px;font-weight:700">📄 Recebimento de Notas e Boletos</div>
+      <div style="font-size:12px;opacity:.85;margin-top:3px">Recebeu mercadoria? Tire foto da nota/canhoto e do boleto e envie aqui na hora.</div>
+    </div>
+    <div class="field">
+      <label>Seu nome</label>
+      <input type="text" id="notaLancadoPor" placeholder="Quem está lançando" autocomplete="name">
+    </div>
+    <div class="field">
+      <label>Onde recebeu</label>
+      <div style="display:flex;gap:8px">
+        <label class="nota-opcao"><input type="radio" name="notaLocal" value="GALPÃO"> 🏭 Galpão</label>
+        <label class="nota-opcao"><input type="radio" name="notaLocal" value="BOA VIAGEM"> 🏪 Boa Viagem</label>
+      </div>
+    </div>
+    <div class="field">
+      <label>Fornecedor</label>
+      <input type="text" id="notaFornecedor" list="listaFornecedoresNotas" placeholder="Ex: Macropac, Ceasa, Ultra..." autocomplete="off">
+      <datalist id="listaFornecedoresNotas"></datalist>
+    </div>
+    <div class="field">
+      <label>📷 Fotos do que recebeu <span class="small">(nota fiscal, canhoto, romaneio — pode mais de uma)</span></label>
+      <input type="file" id="notaFotosDoc" accept="image/*" capture="environment" multiple onchange="adicionarFotosNota('doc', this)" style="display:none">
+      <button type="button" class="btn btn-secondary" onclick="document.getElementById('notaFotosDoc').click()">📷 Tirar / escolher foto</button>
+      <div id="notaPreviewDoc" class="nota-previews"></div>
+    </div>
+    <div class="field">
+      <label>Veio boleto ou Pix para pagar?</label>
+      <div style="display:flex;gap:8px">
+        <label class="nota-opcao"><input type="radio" name="notaTemBoleto" value="sim" onchange="toggleBoletoNota()"> Sim</label>
+        <label class="nota-opcao"><input type="radio" name="notaTemBoleto" value="nao" onchange="toggleBoletoNota()"> Não</label>
+      </div>
+    </div>
+    <div id="notaBoletoBox" class="hidden" style="background:#F5F0FB;border-radius:8px;padding:12px;margin-bottom:12px">
+      <div class="field">
+        <label>📷 Foto do boleto</label>
+        <input type="file" id="notaFotosBoleto" accept="image/*" capture="environment" multiple onchange="adicionarFotosNota('boleto', this)" style="display:none">
+        <button type="button" class="btn btn-secondary" onclick="document.getElementById('notaFotosBoleto').click()">📷 Tirar / escolher foto do boleto</button>
+        <div id="notaPreviewBoleto" class="nota-previews"></div>
+      </div>
+      <div class="field">
+        <label>Código de barras ou Pix</label>
+        <button type="button" class="btn" onclick="abrirLeitorCodigo()" style="background:#2E7D32">📷 Ler código de barras / QR Pix</button>
+        <input type="text" id="notaCodigo" placeholder="Ou digite a linha numérica do boleto" oninput="interpretarCodigoNota()" style="margin-top:8px">
+        <div id="notaCodigoInfo" class="small" style="margin-top:4px"></div>
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <div class="field" style="flex:1;min-width:140px">
+          <label>Valor (R$)</label>
+          <input type="text" id="notaValor" inputmode="decimal" placeholder="0,00">
+        </div>
+        <div class="field" style="flex:1;min-width:140px">
+          <label>Vencimento</label>
+          <input type="date" id="notaVencimento">
+        </div>
+      </div>
+    </div>
+    <div class="field">
+      <label>Observação <span class="small">(opcional)</span></label>
+      <textarea id="notaObs" rows="2" placeholder="Ex: faltou 1 caixa, boleto para 2 parcelas..."></textarea>
+    </div>
+    <button class="btn" id="btnEnviarNota" onclick="enviarNota()" style="width:100%;font-size:16px;padding:14px">✅ Enviar</button>
+    <div id="notaMsg" class="small" style="margin-top:8px"></div>
+    <h3 style="margin-top:24px">Últimos lançamentos</h3>
+    <div id="notaUltimos"></div>
+  </div>
+
+  <!-- FINANCEIRO (administrativa) -->
+  <div id="financeiroScreen" class="card hidden">
+    <div style="background:#5B2D8E;color:#fff;border-radius:8px;padding:14px 18px;margin-bottom:16px">
+      <div style="font-size:18px;font-weight:700">💼 Financeiro — Notas e Boletos</div>
+      <div style="font-size:12px;opacity:.85;margin-top:3px">Tudo que foi recebido no galpão e na Boa Viagem, por ordem de vencimento.</div>
+    </div>
+    <div id="financeiroPainel"></div>
+  </div>
+
+</div>
+
+<!-- LEITOR DE CÓDIGO (câmera) -->
+<div id="leitorCodigoOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.85);z-index:9999;flex-direction:column;align-items:center;justify-content:center;padding:16px">
+  <div style="color:#fff;font-weight:700;margin-bottom:8px;text-align:center">Aponte para o código de barras do boleto ou para o QR Code do Pix</div>
+  <video id="leitorCodigoVideo" playsinline muted style="width:100%;max-width:520px;border-radius:8px;background:#000"></video>
+  <div id="leitorCodigoStatus" style="color:#ddd;font-size:13px;margin-top:8px;text-align:center">Abrindo câmera...</div>
+  <button class="btn btn-secondary" onclick="fecharLeitorCodigo()" style="margin-top:12px">✕ Cancelar</button>
+</div>
+
+<!-- VISUALIZADOR DE FOTOS -->
+<div id="fotoViewerOverlay" onclick="if(event.target===this)fecharFotoViewer()" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.9);z-index:9999;align-items:center;justify-content:center;flex-direction:column;padding:12px">
+  <img id="fotoViewerImg" style="max-width:100%;max-height:85vh;border-radius:6px;background:#fff">
+  <div style="display:flex;gap:8px;margin-top:10px">
+    <button class="btn btn-secondary" onclick="navFotoViewer(-1)">◀</button>
+    <span id="fotoViewerInfo" style="color:#fff;align-self:center;font-size:13px"></span>
+    <button class="btn btn-secondary" onclick="navFotoViewer(1)">▶</button>
+    <a id="fotoViewerDownload" class="btn btn-secondary" download="documento.jpg">⬇️ Baixar</a>
+    <button class="btn btn-secondary" onclick="fecharFotoViewer()">✕ Fechar</button>
+  </div>
 </div>
 
 <!-- ROMANEIO PARA IMPRESSÃO -->
@@ -810,7 +923,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.10.07-2";
+const APP_VERSION = "2026.10.09-1";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -930,7 +1043,9 @@ const SENHAS_HASH = {
   "STADIUM": "6153ec02f862704bf26697fb9ad9a5c43d94b3cfaac6eb4bd77702640252c265",
   "GALPÃO": "1cf0a6928df241b9cb0da954302b539f795f7077b5a073f11c9ee9669009982c",
   "Franqueadora (Admin)": "1fd8716cc45b9ea178e869d73c767aca090f6ff5a8996718c0bddeae589d71a8",
-  "INVENTÁRIO": "ed1868e053637d07b8aa6270d3a7906286c4b181dd41bc6d983b946307f8ad97"
+  "INVENTÁRIO": "ed1868e053637d07b8aa6270d3a7906286c4b181dd41bc6d983b946307f8ad97",
+  "NOTAS": "ec8951e0d378c79018a42727d32a97006a89da80c7e90ec2a1d2f93b20d83a53",
+  "FINANCEIRO": "72a4c46840227af088f795401364c1294b815f5e20dddce1060f48febfc16329"
 };
 
 async function hashSenha(unidade, senha) {
@@ -1103,6 +1218,12 @@ function populateUnitSelect() {
   const optInv = document.createElement('option');
   optInv.value = "INVENTÁRIO"; optInv.textContent = "📦 Contagem de Inventário";
   sel.appendChild(optInv);
+  const optNotas = document.createElement('option');
+  optNotas.value = "NOTAS"; optNotas.textContent = "📄 Recebimento de Notas";
+  sel.appendChild(optNotas);
+  const optFin = document.createElement('option');
+  optFin.value = "FINANCEIRO"; optFin.textContent = "💼 Financeiro";
+  sel.appendChild(optFin);
   const optAdmin = document.createElement('option');
   optAdmin.value = "Franqueadora (Admin)"; optAdmin.textContent = "🔐 Franqueadora (Admin)";
   sel.appendChild(optAdmin);
@@ -1759,7 +1880,7 @@ function abrirRomaneioLojaObjeto(p) {
 function imprimirRomaneioLoja() { window.print(); }
 
 function switchAdminTab(tab) {
-  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Compras','Log'].forEach(t => {
+  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Compras','Log','Notas'].forEach(t => {
     const el = document.getElementById('tab'+t);
     const btn = document.getElementById('tabBtn'+t);
     if(el) el.classList.toggle('hidden', tab !== t.toLowerCase());
@@ -1773,6 +1894,7 @@ function switchAdminTab(tab) {
   if (tab === 'producao') { iniciarProducao(); }
   if (tab === 'compras') { iniciarListaCompras(); }
   if (tab === 'log') { iniciarLog(); }
+  if (tab === 'notas') { iniciarEscutaNotas(); renderPainelNotas(); }
 }
 
 // ─── CADASTROS ───────────────────────────────────────────────────────────────
@@ -4410,7 +4532,11 @@ async function loadEstoqueEHistorico() {
 }
 
 function papelDaUnidade(unit) {
-  return unit === "Franqueadora (Admin)" ? "admin" : unit === "INVENTÁRIO" ? "inventario" : "loja";
+  if (unit === "Franqueadora (Admin)") return "admin";
+  if (unit === "INVENTÁRIO") return "inventario";
+  if (unit === "NOTAS") return "notas";
+  if (unit === "FINANCEIRO") return "financeiro";
+  return "loja";
 }
 
 async function doLogin() {
@@ -4435,7 +4561,9 @@ async function doLogin() {
   document.getElementById('loginScreen').classList.add('hidden');
   document.getElementById('logoutBtn').style.display = 'inline-block';
 
-  if (currentRole === "inventario") {
+  if (currentRole === "notas" || currentRole === "financeiro") {
+    abrirTelaNotas(currentRole);
+  } else if (currentRole === "inventario") {
     document.getElementById('topbarSub').textContent = "Contagem de Inventário";
     document.getElementById('inventarioScreen').classList.remove('hidden');
     loadSaldoInicial().then(iniciarInventario);
@@ -4488,10 +4616,13 @@ function logout() {
   sessionStorage.removeItem('acaise_role');
   sessionStorage.removeItem('acaise_k');
   pararEscutaRecebimentos();
+  pararEscutaNotas();
   _dataCache = null; // limpa cache ao sair
   document.getElementById('orderScreen').classList.add('hidden');
   document.getElementById('adminScreen').classList.add('hidden');
   document.getElementById('inventarioScreen').classList.add('hidden');
+  document.getElementById('notasScreen').classList.add('hidden');
+  document.getElementById('financeiroScreen').classList.add('hidden');
   document.getElementById('loginScreen').classList.remove('hidden');
   document.getElementById('logoutBtn').style.display = 'none';
   document.getElementById('topbarSub').textContent = "Central de Pedidos";
@@ -4517,7 +4648,9 @@ async function restaurarSessao() {
     savedRole === 'admin' ? "Painel da Franqueadora" :
     savedRole === 'inventario' ? "Contagem de Inventário" :
     "Unidade: " + savedUser;
-  if (savedRole === 'admin') {
+  if (savedRole === 'notas' || savedRole === 'financeiro') {
+    abrirTelaNotas(savedRole);
+  } else if (savedRole === 'admin') {
     document.getElementById('adminScreen').classList.remove('hidden');
     loadExtraUnidades().then(() => loadAdminData()).then(() => aplicarMigracoesCatalogo());
   } else if (savedRole === 'inventario') {
@@ -5847,6 +5980,7 @@ async function loadAdminData(silencioso = false) {
     _ultimosPedidosAdmin = pedidos;
   }
   iniciarEscutaRecebimentos();
+  iniciarEscutaNotas();
   renderPainelRecebimentos();
 
   if (!_adminPollInterval) {
@@ -5998,6 +6132,750 @@ function renderPorUnidade(pedidos) {
 
   wrap.innerHTML = html;
 }
+
+// ─── NOTAS E BOLETOS ─────────────────────────────────────────────────────────
+// O funcionário que recebe mercadoria (galpão ou Boa Viagem) fotografa a nota /
+// canhoto / romaneio e o boleto, e lê o código de barras ou o QR do Pix pela
+// câmera. O FINANCEIRO (administrativa, home office) acompanha por vencimento,
+// copia o código para o app do banco e marca "programado" e depois "pago".
+// Fica em coleções SEPARADAS da 'acaise' de propósito: loadAllData() lê a
+// coleção 'acaise' inteira, e fotos ali deixariam o sistema todo pesado.
+//   acaise_docs  → um documento por lançamento (dados, sem fotos)
+//   acaise_fotos → uma foto por documento (JPEG comprimido, < 1 MB)
+const _colNotas = _db.collection('acaise_docs');
+const _colFotos = _db.collection('acaise_fotos');
+const ZXING_URL = 'https://cdn.jsdelivr.net/npm/@zxing/library@0.21.3/umd/index.min.js';
+const NOTAS_DIAS_CARREGADOS = 180;
+
+let _notasFotos = { doc: [], boleto: [] }; // fotos já comprimidas (data URL) do lançamento em andamento
+let _notasLista = [];
+let _unsubNotas = null;
+let _notasJaCarregou = false;
+let _notasCarregouTudo = false;
+let _notasFiltro = { status: 'apagar', local: '', busca: '' };
+let _fotosCache = {};
+let _fotoViewer = { lista: [], i: 0 };
+
+function abrirTelaNotas(papel) {
+  document.getElementById('topbarSub').textContent = papel === 'notas' ? 'Recebimento de Notas' : 'Financeiro';
+  document.getElementById(papel === 'notas' ? 'notasScreen' : 'financeiroScreen').classList.remove('hidden');
+  if (papel === 'notas') {
+    try {
+      document.getElementById('notaLancadoPor').value = localStorage.getItem('acaise_nota_nome') || '';
+      const loc = localStorage.getItem('acaise_nota_local');
+      document.querySelectorAll('input[name="notaLocal"]').forEach(r => { r.checked = r.value === loc; });
+    } catch(e) {}
+    document.querySelectorAll('input[name="notaLocal"]').forEach(r => r.onchange = renderUltimosNotas);
+    preencherFornecedoresNotas();
+  }
+  iniciarEscutaNotas();
+}
+
+// ── Escuta em tempo real ────────────────────────────────────────────────────
+function iniciarEscutaNotas() {
+  if (_unsubNotas || !['notas', 'financeiro', 'admin'].includes(currentRole)) return;
+  _notasJaCarregou = false;
+  const desde = new Date(Date.now() - NOTAS_DIAS_CARREGADOS * 86400000).toISOString();
+  _unsubNotas = _colNotas.where('lancadoEm', '>=', desde).onSnapshot(snap => {
+    const anteriores = new Set(_notasLista.map(n => n.id));
+    const lista = _notasCarregouTudo ? _notasLista.filter(n => n.lancadoEm < desde) : [];
+    snap.forEach(d => lista.push({ id: d.id, ...d.data() }));
+    const novos = _notasJaCarregou ? lista.filter(n => !anteriores.has(n.id)) : [];
+    _notasLista = lista;
+    _notasJaCarregou = true;
+    atualizarTelasNotas();
+    if (novos.length && (currentRole === 'financeiro' || currentRole === 'admin')) avisarNovasNotas(novos);
+  }, err => console.error('Escuta de notas:', err));
+}
+
+function pararEscutaNotas() {
+  if (_unsubNotas) { _unsubNotas(); _unsubNotas = null; }
+  _notasLista = []; _notasJaCarregou = false; _notasCarregouTudo = false; _fotosCache = {};
+}
+
+async function carregarNotasAntigas() {
+  try {
+    const snap = await _colNotas.get();
+    const porId = new Map(_notasLista.map(n => [n.id, n]));
+    snap.forEach(d => porId.set(d.id, { id: d.id, ...d.data() }));
+    _notasLista = [...porId.values()];
+    _notasCarregouTudo = true;
+    atualizarTelasNotas();
+  } catch(e) { alert('Não foi possível carregar: ' + e.message); }
+}
+
+function atualizarTelasNotas() {
+  if (currentRole === 'notas') { renderUltimosNotas(); preencherFornecedoresNotas(); }
+  else renderPainelNotas();
+  const btn = document.getElementById('tabBtnNotas');
+  if (btn) {
+    const n = _notasLista.filter(x => x.status === 'novo').length;
+    btn.textContent = '📄 Notas e Boletos' + (n ? ` (${n})` : '');
+  }
+}
+
+function avisarNovasNotas(novos) {
+  try {
+    const ctx = new (window.AudioContext || window.webkitAudioContext)();
+    [0, 0.2].forEach(t => {
+      const o = ctx.createOscillator(), g = ctx.createGain();
+      o.frequency.value = 660; g.gain.value = 0.15;
+      o.connect(g); g.connect(ctx.destination);
+      o.start(ctx.currentTime + t); o.stop(ctx.currentTime + t + 0.15);
+    });
+  } catch(e) {}
+  if ('Notification' in window && Notification.permission === 'granted') {
+    novos.forEach(n => {
+      try { new Notification(`📄 ${n.local}: ${n.fornecedor}`, { body: n.temBoleto ? `Boleto ${fmtBRL(n.valor)} • vence ${fmtDataCurta(n.vencimento)}` : 'Documento recebido', icon: 'acaise-logo.png' }); } catch(e) {}
+    });
+  }
+}
+
+// ── Utilitários ─────────────────────────────────────────────────────────────
+function parseValorBR(s) {
+  s = String(s ?? '').trim().replace(/[R$\s]/g, '');
+  if (!s) return 0;
+  if (s.includes(',')) s = s.replace(/\./g, '').replace(',', '.');
+  return Math.round((parseFloat(s) || 0) * 100) / 100;
+}
+function fmtBRL(n) { return (Number(n) || 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' }); }
+function fmtDataCurta(iso) {
+  if (!iso) return '—';
+  const [a, m, d] = String(iso).slice(0, 10).split('-');
+  return d && m && a ? `${d}/${m}/${a}` : '—';
+}
+function diasAteVencimento(iso) {
+  if (!iso) return null;
+  const [a, m, d] = iso.split('-').map(Number);
+  const venc = new Date(a, m - 1, d);
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  return Math.round((venc - hoje) / 86400000);
+}
+async function copiarTexto(txt) {
+  try { await navigator.clipboard.writeText(txt); }
+  catch(e) {
+    const t = document.createElement('textarea'); t.value = txt; document.body.appendChild(t);
+    t.select(); document.execCommand('copy'); t.remove();
+  }
+}
+
+function preencherFornecedoresNotas() {
+  const dl = document.getElementById('listaFornecedoresNotas');
+  if (!dl) return;
+  const nomes = new Set();
+  Object.values(CATALOGO).flat().forEach(i => { if (i.fornecedor && i.fornecedor !== '—') nomes.add(i.fornecedor); });
+  _notasLista.forEach(n => { if (n.fornecedor) nomes.add(n.fornecedor); });
+  dl.innerHTML = [...nomes].sort((a, b) => a.localeCompare(b, 'pt-BR')).map(n => `<option value="${escHtml(n)}">`).join('');
+}
+
+// ── Código de barras do boleto / Pix ────────────────────────────────────────
+function soDigitos(s) { return String(s || '').replace(/\D/g, ''); }
+function mod10(num) {
+  let soma = 0, peso = 2;
+  for (let i = num.length - 1; i >= 0; i--) {
+    let p = Number(num[i]) * peso;
+    if (p > 9) p = Math.floor(p / 10) + (p % 10);
+    soma += p; peso = peso === 2 ? 1 : 2;
+  }
+  const r = soma % 10;
+  return r === 0 ? 0 : 10 - r;
+}
+function mod11Bancario(num) {
+  let soma = 0, peso = 2;
+  for (let i = num.length - 1; i >= 0; i--) { soma += Number(num[i]) * peso; peso = peso === 9 ? 2 : peso + 1; }
+  const dv = 11 - (soma % 11);
+  return (dv === 0 || dv === 10 || dv === 11) ? 1 : dv;
+}
+function mod11Arrecadacao(num) {
+  let soma = 0, peso = 2;
+  for (let i = num.length - 1; i >= 0; i--) { soma += Number(num[i]) * peso; peso = peso === 9 ? 2 : peso + 1; }
+  const r = soma % 11;
+  return (r === 0 || r === 1) ? 0 : (r === 10 ? 1 : 11 - r);
+}
+// Fator de vencimento: dias desde 07/10/1997. Em 22/02/2025 o fator chegou a
+// 9999 e recomeçou em 1000 — por isso testa as duas bases e fica com a data
+// mais próxima de hoje.
+function dataDoFatorVencimento(fator) {
+  if (!fator) return '';
+  const dia = 86400000;
+  const cands = [Date.UTC(1997, 9, 7) + fator * dia];
+  if (fator >= 1000) cands.push(Date.UTC(2025, 1, 22) + (fator - 1000) * dia);
+  const hoje = Date.now();
+  cands.sort((a, b) => Math.abs(a - hoje) - Math.abs(b - hoje));
+  return new Date(cands[0]).toISOString().slice(0, 10);
+}
+function linhaDoBarrasBancario(b) {
+  const c1 = b.slice(0, 4) + b.slice(19, 24), c2 = b.slice(24, 34), c3 = b.slice(34, 44);
+  return c1 + mod10(c1) + c2 + mod10(c2) + c3 + mod10(c3) + b[4] + b.slice(5, 19);
+}
+function linhaDoBarrasArrecadacao(b) {
+  const f = ['6', '7'].includes(b[2]) ? mod10 : mod11Arrecadacao;
+  let l = '';
+  for (let i = 0; i < 44; i += 11) { const bloco = b.slice(i, i + 11); l += bloco + f(bloco); }
+  return l;
+}
+function parsePixEMV(txt) {
+  const campos = {};
+  let i = 0;
+  while (i + 4 <= txt.length) {
+    const id = txt.slice(i, i + 2), len = parseInt(txt.slice(i + 2, i + 4), 10);
+    if (isNaN(len)) break;
+    campos[id] = txt.slice(i + 4, i + 4 + len);
+    i += 4 + len;
+  }
+  return campos;
+}
+
+// Recebe o que a câmera leu ou o que foi digitado e devolve
+// { ok, tipo, codigo (para copiar no banco), valor, vencimento, erro }.
+function interpretarCodigoPagamento(bruto) {
+  const txt = String(bruto || '').trim();
+  if (/^000201/.test(txt.replace(/\s/g, ''))) {
+    const pix = txt;
+    const c = parsePixEMV(pix);
+    return { ok: true, tipo: 'pix', codigo: pix, valor: c['54'] ? Number(c['54']) : 0, vencimento: '', recebedor: c['59'] || '' };
+  }
+  const d = soDigitos(txt);
+  if (d.length === 44 && d[0] === '8') {
+    const f = ['6', '7'].includes(d[2]) ? mod10 : mod11Arrecadacao;
+    if (Number(d[3]) !== f(d.slice(0, 3) + d.slice(4))) return { ok: false, erro: 'Código inválido (dígito não confere). Tente ler de novo.' };
+    return { ok: true, tipo: 'arrecadacao', codigo: linhaDoBarrasArrecadacao(d), valor: Number(d.slice(4, 15)) / 100, vencimento: '' };
+  }
+  if (d.length === 48 && d[0] === '8') {
+    const f = ['6', '7'].includes(d[2]) ? mod10 : mod11Arrecadacao;
+    let barras = '';
+    for (let i = 0; i < 48; i += 12) {
+      const bloco = d.slice(i, i + 11);
+      if (Number(d[i + 11]) !== f(bloco)) return { ok: false, erro: 'Linha digitada com erro — confira os números.' };
+      barras += bloco;
+    }
+    return interpretarCodigoPagamento(barras);
+  }
+  if (d.length === 47) {
+    if (Number(d[9]) !== mod10(d.slice(0, 9)) || Number(d[20]) !== mod10(d.slice(10, 20)) || Number(d[31]) !== mod10(d.slice(21, 31)))
+      return { ok: false, erro: 'Linha digitada com erro — confira os números.' };
+    const barras = d.slice(0, 4) + d[32] + d.slice(33, 47) + d.slice(4, 9) + d.slice(10, 20) + d.slice(21, 31);
+    return interpretarCodigoPagamento(barras);
+  }
+  if (d.length === 44) {
+    if (Number(d[4]) !== mod11Bancario(d.slice(0, 4) + d.slice(5))) return { ok: false, erro: 'Código inválido (dígito não confere). Tente ler de novo.' };
+    const fator = Number(d.slice(5, 9));
+    return { ok: true, tipo: 'boleto', codigo: linhaDoBarrasBancario(d), valor: Number(d.slice(9, 19)) / 100, vencimento: dataDoFatorVencimento(fator) };
+  }
+  if (!d.length) return { ok: false, erro: '' };
+  return { ok: false, erro: `Faltam números (${d.length} de 47). Confira a linha do boleto.` };
+}
+
+function interpretarCodigoNota() {
+  const el = document.getElementById('notaCodigo');
+  const info = document.getElementById('notaCodigoInfo');
+  const r = interpretarCodigoPagamento(el.value);
+  el._resultado = r.ok ? r : null;
+  if (!r.ok) { info.style.color = '#C62828'; info.textContent = r.erro; return; }
+  if (r.valor > 0) document.getElementById('notaValor').value = r.valor.toFixed(2).replace('.', ',');
+  if (r.vencimento) document.getElementById('notaVencimento').value = r.vencimento;
+  info.style.color = '#2E7D32';
+  info.textContent = r.tipo === 'pix'
+    ? `✅ Pix lido${r.recebedor ? ' — ' + r.recebedor : ''}${r.valor ? ' • ' + fmtBRL(r.valor) : ' • informe o valor'}`
+    : `✅ Boleto válido${r.valor ? ' • ' + fmtBRL(r.valor) : ''}${r.vencimento ? ' • vence ' + fmtDataCurta(r.vencimento) : ' • informe o vencimento'}`;
+}
+
+let _zxingPromise = null;
+function carregarZXing() {
+  if (window.ZXing) return Promise.resolve(window.ZXing);
+  if (!_zxingPromise) {
+    _zxingPromise = new Promise((res, rej) => {
+      const s = document.createElement('script');
+      s.src = ZXING_URL;
+      s.onload = () => res(window.ZXing);
+      s.onerror = () => { _zxingPromise = null; rej(new Error('Não foi possível carregar o leitor de código. Verifique a internet.')); };
+      document.head.appendChild(s);
+    });
+  }
+  return _zxingPromise;
+}
+function criarLeitorZXing(Z) {
+  const hints = new Map();
+  hints.set(Z.DecodeHintType.POSSIBLE_FORMATS, [Z.BarcodeFormat.ITF, Z.BarcodeFormat.QR_CODE]);
+  hints.set(Z.DecodeHintType.TRY_HARDER, true);
+  return new Z.BrowserMultiFormatReader(hints, 300);
+}
+
+let _leitorAtivo = null;
+async function abrirLeitorCodigo() {
+  const ov = document.getElementById('leitorCodigoOverlay');
+  const st = document.getElementById('leitorCodigoStatus');
+  ov.style.display = 'flex';
+  st.textContent = 'Abrindo câmera...';
+  try {
+    const Z = await carregarZXing();
+    _leitorAtivo = criarLeitorZXing(Z);
+    st.textContent = 'Deixe o código inteiro aparecendo, com boa luz. Para boleto, deite o celular na horizontal.';
+    await _leitorAtivo.decodeFromConstraints(
+      { video: { facingMode: { ideal: 'environment' }, width: { ideal: 1920 }, height: { ideal: 1080 } } },
+      document.getElementById('leitorCodigoVideo'),
+      (result) => {
+        if (!result) return;
+        const r = interpretarCodigoPagamento(result.getText());
+        if (!r.ok) { st.textContent = '⚠️ Leitura imperfeita, continue apontando...'; return; }
+        document.getElementById('notaCodigo').value = r.codigo;
+        fecharLeitorCodigo();
+        interpretarCodigoNota();
+        if (navigator.vibrate) navigator.vibrate(120);
+      });
+  } catch(e) {
+    st.textContent = '❌ ' + (e && e.name === 'NotAllowedError'
+      ? 'Permita o uso da câmera para este site e tente de novo.'
+      : (e.message || 'Não foi possível abrir a câmera.')) + ' Se preferir, digite a linha do boleto.';
+  }
+}
+function fecharLeitorCodigo() {
+  try { if (_leitorAtivo) _leitorAtivo.reset(); } catch(e) {}
+  _leitorAtivo = null;
+  document.getElementById('leitorCodigoOverlay').style.display = 'none';
+}
+
+// Tenta achar o código direto na foto do boleto (ajuda quando a câmera ao vivo
+// não consegue). Se não achar, tudo bem: a foto vai junto do mesmo jeito.
+async function tentarLerCodigoDaFoto(dataUrl) {
+  const campo = document.getElementById('notaCodigo');
+  if (campo.value.trim()) return;
+  const info = document.getElementById('notaCodigoInfo');
+  info.style.color = '#888';
+  info.textContent = 'Procurando o código na foto...';
+  try {
+    const Z = await carregarZXing();
+    const res = await criarLeitorZXing(Z).decodeFromImageUrl(dataUrl);
+    const r = interpretarCodigoPagamento(res.getText());
+    if (r.ok && !campo.value.trim()) { campo.value = r.codigo; interpretarCodigoNota(); return; }
+  } catch(e) {}
+  if (!campo.value.trim()) info.textContent = 'Não achei o código na foto — use "Ler código" ou digite a linha.';
+}
+
+// ── Fotos ───────────────────────────────────────────────────────────────────
+// Reduz e comprime no próprio celular: cada foto fica abaixo de ~900 KB
+// (limite de 1 MB por documento do Firestore) e continua legível.
+function comprimirImagem(file) {
+  return new Promise((resolve, reject) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      for (const lado of [1800, 1400, 1100, 800]) {
+        const esc = Math.min(1, lado / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width * esc); c.height = Math.round(img.height * esc);
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0, 0, c.width, c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        for (const q of [0.75, 0.62, 0.5]) {
+          const data = c.toDataURL('image/jpeg', q);
+          if (data.length < 900000) return resolve(data);
+        }
+      }
+      reject(new Error('Foto grande demais.'));
+    };
+    img.onerror = () => { URL.revokeObjectURL(url); reject(new Error('Não foi possível abrir a imagem.')); };
+    img.src = url;
+  });
+}
+
+async function adicionarFotosNota(tipo, input) {
+  const files = [...(input.files || [])];
+  input.value = '';
+  for (const f of files) {
+    try {
+      const data = await comprimirImagem(f);
+      _notasFotos[tipo].push(data);
+      renderPreviewsNota();
+      if (tipo === 'boleto') tentarLerCodigoDaFoto(data);
+    } catch(e) { alert('⚠️ ' + e.message); }
+  }
+}
+function removerFotoNota(tipo, i) { _notasFotos[tipo].splice(i, 1); renderPreviewsNota(); }
+function renderPreviewsNota() {
+  [['doc', 'notaPreviewDoc'], ['boleto', 'notaPreviewBoleto']].forEach(([tipo, id]) => {
+    document.getElementById(id).innerHTML = _notasFotos[tipo].map((src, i) =>
+      `<div class="nota-thumb" onclick="abrirFotoViewer(_notasFotos['${tipo}'], ${i})"><img src="${src}"><button type="button" onclick="event.stopPropagation();removerFotoNota('${tipo}', ${i})">✕</button></div>`).join('');
+  });
+}
+
+function toggleBoletoNota() {
+  const sim = document.querySelector('input[name="notaTemBoleto"]:checked')?.value === 'sim';
+  document.getElementById('notaBoletoBox').classList.toggle('hidden', !sim);
+}
+
+// ── Envio (funcionário) ─────────────────────────────────────────────────────
+async function enviarNota() {
+  const msg = document.getElementById('notaMsg');
+  const erro = t => { msg.style.color = '#C62828'; msg.textContent = '⚠️ ' + t; };
+  const lancadoPor = document.getElementById('notaLancadoPor').value.trim();
+  const local = document.querySelector('input[name="notaLocal"]:checked')?.value;
+  const fornecedor = document.getElementById('notaFornecedor').value.trim();
+  const temBoletoSel = document.querySelector('input[name="notaTemBoleto"]:checked')?.value;
+  const observacao = document.getElementById('notaObs').value.trim();
+  if (!lancadoPor) return erro('Informe seu nome.');
+  if (!local) return erro('Marque onde recebeu: Galpão ou Boa Viagem.');
+  if (!fornecedor) return erro('Informe o fornecedor.');
+  if (!temBoletoSel) return erro('Responda se veio boleto ou Pix para pagar.');
+  const temBoleto = temBoletoSel === 'sim';
+  if (!_notasFotos.doc.length && !_notasFotos.boleto.length) return erro('Tire pelo menos uma foto do que recebeu.');
+
+  let valor = 0, vencimento = '', codigo = '', codigoTipo = '';
+  if (temBoleto) {
+    valor = parseValorBR(document.getElementById('notaValor').value);
+    vencimento = document.getElementById('notaVencimento').value;
+    const campoCodigo = document.getElementById('notaCodigo');
+    if (campoCodigo.value.trim()) {
+      const r = interpretarCodigoPagamento(campoCodigo.value);
+      if (!r.ok) return erro(r.erro || 'Código do boleto inválido.');
+      codigo = r.codigo; codigoTipo = r.tipo;
+    }
+    if (!_notasFotos.boleto.length && !codigo) return erro('Tire a foto do boleto ou leia o código.');
+    if (valor <= 0) return erro('Informe o valor do boleto.');
+    if (!vencimento) return erro('Informe o vencimento do boleto.');
+  }
+
+  try { localStorage.setItem('acaise_nota_nome', lancadoPor); localStorage.setItem('acaise_nota_local', local); } catch(e) {}
+  const btn = document.getElementById('btnEnviarNota');
+  btn.disabled = true;
+  msg.style.color = '#5B2D8E';
+  try {
+    const ref = _colNotas.doc();
+    const todas = [..._notasFotos.doc.map(d => ['documento', d]), ..._notasFotos.boleto.map(d => ['boleto', d])];
+    const fotos = [];
+    for (let i = 0; i < todas.length; i++) {
+      msg.textContent = `Enviando foto ${i + 1} de ${todas.length}...`;
+      const fRef = _colFotos.doc();
+      await fRef.set({ notaId: ref.id, tipo: todas[i][0], data: todas[i][1], criadoEm: new Date().toISOString() });
+      fotos.push({ id: fRef.id, tipo: todas[i][0] });
+    }
+    msg.textContent = 'Salvando...';
+    const agora = new Date().toISOString();
+    // O lançamento só é gravado depois das fotos: o financeiro nunca vê um
+    // documento "pela metade".
+    await ref.set({
+      local, fornecedor, lancadoPor, lancadoEm: agora,
+      temBoleto, valor, vencimento, codigo, codigoTipo, observacao,
+      status: temBoleto ? 'novo' : 'arquivo',
+      fotos,
+      historico: [{ acao: 'Lançado', por: lancadoPor, em: agora }]
+    });
+    _notasFotos = { doc: [], boleto: [] };
+    renderPreviewsNota();
+    ['notaFornecedor', 'notaObs', 'notaCodigo', 'notaValor', 'notaVencimento'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('notaCodigoInfo').textContent = '';
+    document.querySelectorAll('input[name="notaTemBoleto"]').forEach(r => r.checked = false);
+    toggleBoletoNota();
+    msg.style.color = '#2E7D32';
+    msg.textContent = `✅ Enviado! ${fornecedor}${temBoleto ? ' • ' + fmtBRL(valor) + ' • vence ' + fmtDataCurta(vencimento) : ''}. O financeiro já recebeu.`;
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  } catch(e) {
+    erro('Não foi possível enviar: ' + e.message + '. Verifique a internet e tente de novo.');
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+function renderUltimosNotas() {
+  const wrap = document.getElementById('notaUltimos');
+  if (!wrap) return;
+  const local = document.querySelector('input[name="notaLocal"]:checked')?.value;
+  const lista = _notasLista.filter(n => !local || n.local === local)
+    .sort((a, b) => String(b.lancadoEm).localeCompare(String(a.lancadoEm))).slice(0, 15);
+  wrap.innerHTML = lista.length ? lista.map(n => `
+    <div class="nota-card" style="border-left-color:${n.temBoleto ? '#5B2D8E' : '#90A4AE'}">
+      <div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap">
+        <strong>${escHtml(n.fornecedor)}</strong>
+        <span class="small">${fmtDataHora(n.lancadoEm)} • ${escHtml(n.lancadoPor)}</span>
+      </div>
+      <div class="small" style="margin-top:4px">${n.temBoleto ? `💳 ${fmtBRL(n.valor)} • vence ${fmtDataCurta(n.vencimento)} • ${htmlStatusNota(n)}` : '📄 Só documento'} • 📷 ${(n.fotos || []).length} foto(s)</div>
+    </div>`).join('') : '<p class="small">Nenhum lançamento ainda.</p>';
+}
+
+// ── Painel FINANCEIRO / franqueadora ────────────────────────────────────────
+function htmlStatusNota(n) {
+  const s = { novo: ['🆕 Novo', '#E3F2FD', '#1565C0'], programado: ['🏦 Programado', '#FFF8E1', '#F57F17'], pago: ['✅ Pago', '#E8F5E9', '#2E7D32'], arquivo: ['📄 Documento', '#ECEFF1', '#546E7A'] }[n.status] || ['—', '#eee', '#666'];
+  return `<span class="nota-status" style="background:${s[1]};color:${s[2]}">${s[0]}</span>`;
+}
+
+function htmlVencimentoNota(n) {
+  if (!n.temBoleto) return '';
+  const dias = diasAteVencimento(n.vencimento);
+  let cor = '#333', extra = '';
+  if (n.status !== 'pago' && dias !== null) {
+    if (dias < 0) { cor = '#C62828'; extra = ` • VENCIDO há ${-dias} dia(s)`; }
+    else if (dias === 0) { cor = '#C62828'; extra = ' • VENCE HOJE'; }
+    else if (dias <= 3) { cor = '#E65100'; extra = ` • vence em ${dias} dia(s)`; }
+  }
+  return `<span style="font-size:16px;font-weight:700">${fmtBRL(n.valor)}</span>
+    <span style="color:${cor};font-weight:600;margin-left:8px">📅 ${fmtDataCurta(n.vencimento)}${extra}</span>`;
+}
+
+function filtrarNotas() {
+  const f = _notasFiltro;
+  const busca = f.busca.trim().toLowerCase();
+  return _notasLista.filter(n => {
+    if (f.local && n.local !== f.local) return false;
+    if (f.status === 'apagar' && !['novo', 'programado'].includes(n.status)) return false;
+    if (['novo', 'programado', 'pago', 'arquivo'].includes(f.status) && n.status !== f.status) return false;
+    if (busca && ![n.fornecedor, n.observacao, n.lancadoPor, n.codigo].some(x => String(x || '').toLowerCase().includes(busca))) return false;
+    return true;
+  }).sort((a, b) => {
+    if (f.status === 'apagar' || f.status === 'novo' || f.status === 'programado')
+      return String(a.vencimento || '9999').localeCompare(String(b.vencimento || '9999'));
+    return String(b.lancadoEm).localeCompare(String(a.lancadoEm));
+  });
+}
+
+function setFiltroNotas(campo, valor) { _notasFiltro[campo] = valor; renderPainelNotas(campo === 'busca'); }
+
+function renderPainelNotas(soLista) {
+  const alvo = document.getElementById(currentRole === 'financeiro' ? 'financeiroPainel' : 'adminNotasPainel');
+  if (!alvo || !['financeiro', 'admin'].includes(currentRole)) return;
+  if (currentRole === 'admin' && document.getElementById('tabNotas').classList.contains('hidden')) return;
+
+  const abertos = _notasLista.filter(n => ['novo', 'programado'].includes(n.status));
+  const vencidos = abertos.filter(n => diasAteVencimento(n.vencimento) !== null && diasAteVencimento(n.vencimento) < 0);
+  const proximos = abertos.filter(n => { const d = diasAteVencimento(n.vencimento); return d !== null && d >= 0 && d <= 3; });
+  const novos = abertos.filter(n => n.status === 'novo');
+  const soma = l => fmtBRL(l.reduce((s, n) => s + (Number(n.valor) || 0), 0));
+  const lista = filtrarNotas();
+
+  const htmlLista = lista.length ? lista.map(htmlCardNota).join('') : '<p class="small">Nada por aqui com esses filtros.</p>';
+  if (soLista && document.getElementById('notasListaWrap')) { document.getElementById('notasListaWrap').innerHTML = htmlLista; return; }
+
+  const chip = (txt, bg, cor) => `<div style="flex:1;min-width:150px;background:${bg};color:${cor};border-radius:8px;padding:10px 12px;font-weight:700">${txt}</div>`;
+  const podePedirAviso = 'Notification' in window && Notification.permission === 'default';
+  const f = _notasFiltro;
+  alvo.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      ${chip(`🔴 Vencidos: ${vencidos.length}<div style="font-size:13px;font-weight:600">${soma(vencidos)}</div>`, '#FFEBEE', '#C62828')}
+      ${chip(`🟠 Vencem em até 3 dias: ${proximos.length}<div style="font-size:13px;font-weight:600">${soma(proximos)}</div>`, '#FFF3E0', '#E65100')}
+      ${chip(`🆕 Ainda não programados: ${novos.length}<div style="font-size:13px;font-weight:600">${soma(novos)}</div>`, '#E3F2FD', '#1565C0')}
+    </div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px;align-items:center">
+      <select onchange="setFiltroNotas('status', this.value)" style="flex:1;min-width:170px">
+        ${[['apagar', 'A pagar (novos + programados)'], ['novo', '🆕 Novos'], ['programado', '🏦 Programados'], ['pago', '✅ Pagos'], ['arquivo', '📄 Só documentos (sem boleto)'], ['todos', 'Todos']].map(([v, t]) => `<option value="${v}" ${f.status === v ? 'selected' : ''}>${t}</option>`).join('')}
+      </select>
+      <select onchange="setFiltroNotas('local', this.value)" style="flex:1;min-width:140px">
+        <option value="">Todos os locais</option>
+        <option value="GALPÃO" ${f.local === 'GALPÃO' ? 'selected' : ''}>🏭 Galpão</option>
+        <option value="BOA VIAGEM" ${f.local === 'BOA VIAGEM' ? 'selected' : ''}>🏪 Boa Viagem</option>
+      </select>
+      <input type="text" placeholder="🔍 Buscar fornecedor, observação..." value="${escHtml(f.busca)}" oninput="setFiltroNotas('busca', this.value)" style="flex:2;min-width:180px">
+      ${podePedirAviso ? `<button class="btn btn-secondary btn-xs" onclick="ativarNotificacoesRecebimento()">🔔 Ativar avisos</button>` : ''}
+    </div>
+    <div id="notasListaWrap">${htmlLista}</div>
+    ${_notasCarregouTudo ? '' : `<button class="btn btn-secondary btn-xs" style="margin-top:8px" onclick="carregarNotasAntigas()">🔎 Carregar também os lançamentos com mais de ${NOTAS_DIAS_CARREGADOS} dias</button>`}`;
+}
+
+function htmlCardNota(n) {
+  const id = escHtml(n.id);
+  const corBorda = { novo: '#1565C0', programado: '#F57F17', pago: '#2E7D32', arquivo: '#90A4AE' }[n.status] || '#5B2D8E';
+  const qtdFotos = (n.fotos || []).length;
+  let acoes = '';
+  if (n.status === 'novo') acoes += `<button class="btn btn-xs" style="background:#F57F17" onclick="mudarStatusNota('${id}', 'programado')">🏦 Marcar como programado</button>`;
+  if (n.status === 'programado') acoes += `<button class="btn btn-xs" style="background:#2E7D32" onclick="abrirPagamentoNota('${id}')">✅ Marcar como pago</button>
+    <button class="btn btn-secondary btn-xs" onclick="mudarStatusNota('${id}', 'novo')">↩ Voltar para novo</button>`;
+  if (n.status === 'pago') acoes += `<button class="btn btn-secondary btn-xs" onclick="mudarStatusNota('${id}', 'programado')">↩ Desfazer pagamento</button>`;
+  const ultimo = (n.historico || []).slice(-1)[0];
+  return `<div class="nota-card" style="border-left-color:${corBorda}">
+    <div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;align-items:center">
+      <div><strong style="font-size:15px">${escHtml(n.fornecedor)}</strong>
+        <span class="badge" style="margin-left:6px;background:#F5F0FB;color:#5B2D8E">${n.local === 'GALPÃO' ? '🏭 Galpão' : '🏪 Boa Viagem'}</span>
+        ${htmlStatusNota(n)}</div>
+      <span class="small">Recebido por <strong>${escHtml(n.lancadoPor)}</strong> em ${fmtDataHora(n.lancadoEm)}</span>
+    </div>
+    ${n.temBoleto ? `<div style="margin-top:6px">${htmlVencimentoNota(n)}</div>` : ''}
+    ${n.codigo ? `<div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
+        <code style="font-size:12px;background:#f5f5f5;padding:4px 6px;border-radius:4px;word-break:break-all;flex:1;min-width:200px">${escHtml(n.codigo)}</code>
+        <button class="btn btn-xs" onclick="copiarCodigoNota('${id}', this)">📋 Copiar ${n.codigoTipo === 'pix' ? 'Pix' : 'código'}</button></div>`
+      : (n.temBoleto ? `<div class="small" style="margin-top:6px;color:#888">Sem código lido — veja na foto do boleto.</div>` : '')}
+    ${n.observacao ? `<div style="margin-top:6px;font-size:13px">💬 ${escHtml(n.observacao)}</div>` : ''}
+    ${n.status === 'pago' && n.pagoEm ? `<div class="small" style="margin-top:4px;color:#2E7D32">Pago em ${fmtDataCurta(n.pagoEm)}${n.pagoPor ? ' • marcado por ' + escHtml(n.pagoPor) : ''}</div>` : ''}
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
+      ${qtdFotos ? `<button class="btn btn-secondary btn-xs" onclick="verFotosNota('${id}')">📷 Ver fotos (${qtdFotos})</button>` : ''}
+      ${acoes}
+      <button class="btn btn-secondary btn-xs" onclick="editarNota('${id}')">✏️ Editar</button>
+      <button class="btn btn-secondary btn-xs" style="background:#FFEBEE;color:#C62828" onclick="excluirNota('${id}')">🗑️ Excluir</button>
+    </div>
+    ${ultimo && ultimo.acao !== 'Lançado' ? `<div class="small" style="margin-top:6px;color:#888">Última ação: ${escHtml(ultimo.acao)} por ${escHtml(ultimo.por)} em ${fmtDataHora(ultimo.em)}</div>` : ''}
+  </div>`;
+}
+
+function _nota(id) { return _notasLista.find(n => n.id === id); }
+function _quemEsta() { return currentRole === 'financeiro' ? 'Financeiro' : 'Franqueadora'; }
+
+async function copiarCodigoNota(id, btn) {
+  const n = _nota(id);
+  if (!n) return;
+  await copiarTexto(n.codigo);
+  const txt = btn.textContent;
+  btn.textContent = '✅ Copiado!';
+  setTimeout(() => { btn.textContent = txt; }, 1500);
+}
+
+// Atualiza só os campos alterados (update do Firestore) — duas pessoas mexendo
+// em documentos diferentes ao mesmo tempo nunca se sobrescrevem.
+async function atualizarNota(id, campos, acao) {
+  try {
+    await _colNotas.doc(id).update({
+      ...campos,
+      historico: firebase.firestore.FieldValue.arrayUnion({ acao, por: _quemEsta(), em: new Date().toISOString() })
+    });
+  } catch(e) { alert('Não foi possível salvar: ' + e.message); }
+}
+
+function mudarStatusNota(id, status) {
+  const campos = { status };
+  const acao = { programado: 'Programado no banco', novo: 'Voltou para novo', pago: 'Pago' }[status];
+  if (status === 'programado') campos.programadoEm = new Date().toISOString();
+  if (status !== 'pago') { campos.pagoEm = firebase.firestore.FieldValue.delete(); campos.pagoPor = firebase.firestore.FieldValue.delete(); }
+  atualizarNota(id, campos, _nota(id)?.status === 'pago' ? 'Pagamento desfeito' : acao);
+}
+
+function abrirPagamentoNota(id) {
+  const n = _nota(id);
+  if (!n) return;
+  const hoje = new Date();
+  const hojeIso = `${hoje.getFullYear()}-${String(hoje.getMonth() + 1).padStart(2, '0')}-${String(hoje.getDate()).padStart(2, '0')}`;
+  abrirModalNota(`
+    <h3 style="margin:0 0 4px;color:#2E7D32">✅ Marcar como pago</h3>
+    <div class="small" style="margin-bottom:12px">${escHtml(n.fornecedor)} • ${fmtBRL(n.valor)}</div>
+    <div class="field"><label>Data do pagamento</label><input type="date" id="pagNotaData" value="${hojeIso}"></div>
+    <div class="field"><label>Comprovante <span class="small">(opcional — foto ou print)</span></label>
+      <input type="file" id="pagNotaComprovante" accept="image/*"></div>
+    <div id="pagNotaMsg" class="small"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-secondary" onclick="fecharModalNota()">Cancelar</button>
+      <button class="btn" style="background:#2E7D32" id="btnConfirmarPagNota" onclick="confirmarPagamentoNota('${escHtml(id)}')">✅ Confirmar</button>
+    </div>`);
+}
+
+async function confirmarPagamentoNota(id) {
+  const n = _nota(id);
+  const data = document.getElementById('pagNotaData').value;
+  const arq = document.getElementById('pagNotaComprovante').files[0];
+  const msg = document.getElementById('pagNotaMsg');
+  if (!data) { msg.textContent = 'Informe a data do pagamento.'; return; }
+  document.getElementById('btnConfirmarPagNota').disabled = true;
+  const campos = { status: 'pago', pagoEm: data, pagoPor: _quemEsta() };
+  try {
+    if (arq) {
+      msg.textContent = 'Enviando comprovante...';
+      const img = await comprimirImagem(arq);
+      const fRef = _colFotos.doc();
+      await fRef.set({ notaId: id, tipo: 'comprovante', data: img, criadoEm: new Date().toISOString() });
+      campos.fotos = firebase.firestore.FieldValue.arrayUnion({ id: fRef.id, tipo: 'comprovante' });
+    }
+    await atualizarNota(id, campos, 'Pago' + (arq ? ' (com comprovante)' : ''));
+    fecharModalNota();
+  } catch(e) {
+    msg.textContent = 'Erro: ' + e.message;
+    document.getElementById('btnConfirmarPagNota').disabled = false;
+  }
+}
+
+function editarNota(id) {
+  const n = _nota(id);
+  if (!n) return;
+  abrirModalNota(`
+    <h3 style="margin:0 0 12px;color:#5B2D8E">✏️ Editar lançamento</h3>
+    <div class="field"><label>Fornecedor</label><input type="text" id="edNotaFornecedor" value="${escHtml(n.fornecedor)}"></div>
+    <label style="display:flex;align-items:center;gap:8px;margin-bottom:10px"><input type="checkbox" id="edNotaTemBoleto" style="width:auto;margin:0" ${n.temBoleto ? 'checked' : ''}> Tem boleto / Pix para pagar</label>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:130px"><label>Valor (R$)</label><input type="text" id="edNotaValor" inputmode="decimal" value="${n.valor ? String(n.valor.toFixed(2)).replace('.', ',') : ''}"></div>
+      <div class="field" style="flex:1;min-width:130px"><label>Vencimento</label><input type="date" id="edNotaVenc" value="${escHtml(n.vencimento || '')}"></div>
+    </div>
+    <div class="field"><label>Código do boleto / Pix</label><input type="text" id="edNotaCodigo" value="${escHtml(n.codigo || '')}"></div>
+    <div class="field"><label>Observação</label><textarea id="edNotaObs" rows="2">${escHtml(n.observacao || '')}</textarea></div>
+    <div id="edNotaMsg" class="small" style="color:#C62828"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:8px">
+      <button class="btn btn-secondary" onclick="fecharModalNota()">Cancelar</button>
+      <button class="btn" onclick="salvarEdicaoNota('${escHtml(id)}')">💾 Salvar</button>
+    </div>`);
+}
+
+async function salvarEdicaoNota(id) {
+  const n = _nota(id);
+  const msg = document.getElementById('edNotaMsg');
+  const temBoleto = document.getElementById('edNotaTemBoleto').checked;
+  const valor = parseValorBR(document.getElementById('edNotaValor').value);
+  const vencimento = document.getElementById('edNotaVenc').value;
+  const codTxt = document.getElementById('edNotaCodigo').value.trim();
+  let codigo = '', codigoTipo = '';
+  if (codTxt) {
+    const r = interpretarCodigoPagamento(codTxt);
+    if (!r.ok) { msg.textContent = r.erro || 'Código inválido.'; return; }
+    codigo = r.codigo; codigoTipo = r.tipo;
+  }
+  if (temBoleto && (valor <= 0 || !vencimento)) { msg.textContent = 'Com boleto, informe valor e vencimento.'; return; }
+  const campos = {
+    fornecedor: document.getElementById('edNotaFornecedor').value.trim() || n.fornecedor,
+    temBoleto, valor: temBoleto ? valor : 0, vencimento: temBoleto ? vencimento : '',
+    codigo, codigoTipo, observacao: document.getElementById('edNotaObs').value.trim()
+  };
+  if (!temBoleto) campos.status = 'arquivo';
+  else if (n.status === 'arquivo') campos.status = 'novo';
+  await atualizarNota(id, campos, 'Editado');
+  fecharModalNota();
+}
+
+async function excluirNota(id) {
+  const n = _nota(id);
+  if (!n) return;
+  if (!confirm(`Excluir o lançamento de ${n.fornecedor}${n.temBoleto ? ' (' + fmtBRL(n.valor) + ')' : ''} e todas as fotos? Isso não pode ser desfeito.`)) return;
+  try {
+    for (const f of (n.fotos || [])) await _colFotos.doc(f.id).delete();
+    await _colNotas.doc(id).delete();
+  } catch(e) { alert('Não foi possível excluir: ' + e.message); }
+}
+
+function abrirModalNota(html) {
+  fecharModalNota();
+  const m = document.createElement('div');
+  m.id = 'notaModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.45);z-index:9998;display:flex;align-items:center;justify-content:center;padding:12px';
+  m.innerHTML = `<div style="background:#fff;border-radius:10px;max-width:480px;width:100%;max-height:92vh;overflow:auto;padding:18px;box-shadow:0 8px 30px rgba(0,0,0,.3)">${html}</div>`;
+  document.body.appendChild(m);
+}
+function fecharModalNota() { const m = document.getElementById('notaModal'); if (m) m.remove(); }
+
+// ── Fotos (visualização) ────────────────────────────────────────────────────
+async function verFotosNota(id) {
+  const n = _nota(id);
+  if (!n || !(n.fotos || []).length) return;
+  const nomes = { documento: 'Documento', boleto: 'Boleto', comprovante: 'Comprovante' };
+  const lista = [];
+  for (const f of n.fotos) {
+    if (!_fotosCache[f.id]) {
+      try {
+        const d = await _colFotos.doc(f.id).get();
+        if (d.exists) _fotosCache[f.id] = d.data().data;
+      } catch(e) {}
+    }
+    if (_fotosCache[f.id]) lista.push({ src: _fotosCache[f.id], legenda: `${nomes[f.tipo] || 'Foto'} — ${n.fornecedor}` });
+  }
+  if (!lista.length) { alert('Não foi possível carregar as fotos.'); return; }
+  abrirFotoViewer(lista, 0);
+}
+
+function abrirFotoViewer(lista, i) {
+  _fotoViewer = { lista: lista.map(x => typeof x === 'string' ? { src: x, legenda: '' } : x), i };
+  document.getElementById('fotoViewerOverlay').style.display = 'flex';
+  navFotoViewer(0);
+}
+function navFotoViewer(passo) {
+  const v = _fotoViewer;
+  if (!v.lista.length) return;
+  v.i = (v.i + passo + v.lista.length) % v.lista.length;
+  const atual = v.lista[v.i];
+  document.getElementById('fotoViewerImg').src = atual.src;
+  document.getElementById('fotoViewerDownload').href = atual.src;
+  document.getElementById('fotoViewerInfo').textContent = `${v.i + 1}/${v.lista.length}${atual.legenda ? ' • ' + atual.legenda : ''}`;
+}
+function fecharFotoViewer() { document.getElementById('fotoViewerOverlay').style.display = 'none'; }
 </script>
 
 </body>
