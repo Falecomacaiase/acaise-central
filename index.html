@@ -820,8 +820,8 @@
     </div>
     <div class="field">
       <label>Fornecedor</label>
-      <input type="text" id="notaFornecedor" list="listaFornecedoresNotas" placeholder="Ex: Macropac, Ceasa, Ultra..." autocomplete="off">
-      <datalist id="listaFornecedoresNotas"></datalist>
+      <input type="text" id="notaFornecedor" placeholder="Digite o nome do fornecedor" autocomplete="off" autocapitalize="words">
+      <div id="notaFornecedoresRecentes" style="display:flex;gap:6px;flex-wrap:wrap;margin-top:6px"></div>
     </div>
     <div class="field">
       <label>📷 Fotos do que recebeu <span class="small">(nota fiscal, canhoto, romaneio — pode mais de uma)</span></label>
@@ -830,10 +830,10 @@
       <div id="notaPreviewDoc" class="nota-previews"></div>
     </div>
     <div class="field">
-      <label>Veio boleto ou Pix para pagar?</label>
-      <div style="display:flex;gap:8px">
-        <label class="nota-opcao"><input type="radio" name="notaTemBoleto" value="sim" onchange="toggleBoletoNota()"> Sim</label>
-        <label class="nota-opcao"><input type="radio" name="notaTemBoleto" value="nao" onchange="toggleBoletoNota()"> Não</label>
+      <label>Tem pagamento a fazer?</label>
+      <div style="display:flex;gap:8px;flex-wrap:wrap">
+        <label class="nota-opcao" style="min-width:200px"><input type="radio" name="notaTemBoleto" value="sim" onchange="toggleBoletoNota()"> <span>💳 Sim, veio boleto ou Pix para pagar</span></label>
+        <label class="nota-opcao" style="min-width:200px"><input type="radio" name="notaTemBoleto" value="nao" onchange="toggleBoletoNota()"> <span>📄 Não, só nota / canhoto <span class="small" style="font-weight:400">(nada a pagar agora)</span></span></label>
       </div>
     </div>
     <div id="notaBoletoBox" class="hidden" style="background:#F5F0FB;border-radius:8px;padding:12px;margin-bottom:12px">
@@ -862,7 +862,7 @@
     </div>
     <div class="field">
       <label>Observação <span class="small">(opcional)</span></label>
-      <textarea id="notaObs" rows="2" placeholder="Ex: faltou 1 caixa, boleto para 2 parcelas..."></textarea>
+      <textarea id="notaObs" rows="2" placeholder="Ex: faltou 1 caixa, boleto para 2 parcelas..." style="width:100%;box-sizing:border-box"></textarea>
     </div>
     <button class="btn" id="btnEnviarNota" onclick="enviarNota()" style="width:100%;font-size:16px;padding:14px">✅ Enviar</button>
     <div id="notaMsg" class="small" style="margin-top:8px"></div>
@@ -923,7 +923,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.10.09-1";
+const APP_VERSION = "2026.10.09-2";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -6259,13 +6259,21 @@ async function copiarTexto(txt) {
   }
 }
 
+// O fornecedor é digitado livremente (muitos não estão em lista nenhuma). Abaixo
+// do campo aparecem só atalhos com os mais usados recentemente, para um toque.
 function preencherFornecedoresNotas() {
-  const dl = document.getElementById('listaFornecedoresNotas');
-  if (!dl) return;
-  const nomes = new Set();
-  Object.values(CATALOGO).flat().forEach(i => { if (i.fornecedor && i.fornecedor !== '—') nomes.add(i.fornecedor); });
-  _notasLista.forEach(n => { if (n.fornecedor) nomes.add(n.fornecedor); });
-  dl.innerHTML = [...nomes].sort((a, b) => a.localeCompare(b, 'pt-BR')).map(n => `<option value="${escHtml(n)}">`).join('');
+  const wrap = document.getElementById('notaFornecedoresRecentes');
+  if (!wrap) return;
+  const contagem = new Map();
+  [..._notasLista].sort((a, b) => String(b.lancadoEm).localeCompare(String(a.lancadoEm))).slice(0, 60).forEach(n => {
+    const nome = String(n.fornecedor || '').trim();
+    if (nome) contagem.set(nome, (contagem.get(nome) || 0) + 1);
+  });
+  const top = [...contagem.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8).map(e => e[0]);
+  wrap.innerHTML = top.length
+    ? `<span class="small" style="align-self:center">Recentes:</span>` + top.map(n =>
+        `<button type="button" class="btn btn-secondary btn-xs" onclick="document.getElementById('notaFornecedor').value=this.dataset.nome" data-nome="${escHtml(n)}">${escHtml(n)}</button>`).join('')
+    : '';
 }
 
 // ── Código de barras do boleto / Pix ────────────────────────────────────────
@@ -6517,7 +6525,7 @@ async function enviarNota() {
   if (!lancadoPor) return erro('Informe seu nome.');
   if (!local) return erro('Marque onde recebeu: Galpão ou Boa Viagem.');
   if (!fornecedor) return erro('Informe o fornecedor.');
-  if (!temBoletoSel) return erro('Responda se veio boleto ou Pix para pagar.');
+  if (!temBoletoSel) return erro('Marque se tem pagamento a fazer (boleto/Pix) ou se é só nota/canhoto.');
   const temBoleto = temBoletoSel === 'sim';
   if (!_notasFotos.doc.length && !_notasFotos.boleto.length) return erro('Tire pelo menos uma foto do que recebeu.');
 
