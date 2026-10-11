@@ -905,8 +905,11 @@
 
 <!-- ROMANEIO PARA IMPRESSÃO -->
 <div id="romaneioOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
-  <div id="romaneioConteudo" style="background:#fff;border-radius:10px;padding:32px;max-width:700px;width:100%">
-    <div style="display:flex;justify-content:space-between;gap:8px;margin-bottom:16px;flex-wrap:wrap" class="no-print">
+  <div id="romaneioConteudo" style="position:relative;background:#fff;border-radius:10px;padding:32px;max-width:700px;width:100%">
+    <!-- Fechar fica isolado no canto, longe do "Confirmar despacho" (toque errado no celular) -->
+    <button class="no-print" onclick="fecharRomaneio()" title="Fechar" aria-label="Fechar"
+      style="position:absolute;top:10px;right:10px;width:40px;height:40px;border-radius:50%;border:1px solid #ddd;background:#fff;color:#555;font-size:20px;line-height:1;cursor:pointer;box-shadow:0 1px 4px rgba(0,0,0,.12)">✕</button>
+    <div style="display:flex;justify-content:space-between;gap:8px;margin:20px 0 16px;flex-wrap:wrap" class="no-print">
       <div style="display:flex;gap:8px;flex-wrap:wrap">
         <button class="btn" id="btnDespachar" onclick="confirmarDespacho()" style="background:#2E7D32">✅ Confirmar despacho e imprimir</button>
         <button class="btn" id="btnSalvarRomaneio" onclick="salvarEdicaoRomaneio()" style="background:#1565C0">💾 Salvar alterações</button>
@@ -914,7 +917,6 @@
         <button class="btn" id="btnSalvarCorrecao" onclick="salvarCorrecaoPosDespacho()" style="background:#C62828;display:none">💾 Salvar correção e ajustar estoque</button>
         <button class="btn btn-secondary" onclick="window.print()">🖨️ Só imprimir</button>
       </div>
-      <button class="btn btn-secondary" onclick="fecharRomaneio()">✕ Fechar</button>
     </div>
     <div id="romaneioStatusMsg" class="small" style="margin-bottom:8px"></div>
     <div id="romaneioBody"></div>
@@ -925,7 +927,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.10.11-1";
+const APP_VERSION = "2026.10.11-2";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -2644,6 +2646,14 @@ async function confirmarDespacho() {
   if (pedidoAtualRomaneio.itensAvulsos && pedidoAtualRomaneio.itensAvulsos.length > 0) {
     const seguir = confirm(`Ainda há ${pedidoAtualRomaneio.itensAvulsos.length} item(ns) fora do catálogo sem preço definido. Eles NÃO vão entrar no valor do romaneio. Quer despachar mesmo assim?`);
     if (!seguir) return;
+  }
+  // Confirmação obrigatória: no celular o botão de despachar ficava perto do
+  // "Fechar" e já foi apertado sem querer — e o despacho dispara o boleto.
+  {
+    const p = pedidoAtualRomaneio;
+    const total = calcularTotalComDesconto(p).toFixed(2).replace('.', ',');
+    const aviso = isUnidadeInterna(p.unidade) ? '' : '\n\nO boleto será enviado ao franqueado.';
+    if (!confirm(`Confirmar o DESPACHO?\n\nLoja: ${p.unidade}\nPedido: ${p.numeroPedido || '—'}\nTotal: R$ ${total}${aviso}`)) return;
   }
 
   const btn = document.getElementById('btnDespachar');
