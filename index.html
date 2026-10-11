@@ -45,9 +45,11 @@
   .error { color: #C62828; font-size: 13px; margin-top: 6px; }
   .small { font-size: 12px; color: #777; }
   .flex-between { display: flex; justify-content: space-between; align-items: center; }
-  .tabs { display: flex; gap: 8px; margin-bottom: 16px; border-bottom: 2px solid #eee; }
-  .tab-btn { background: none; border: none; padding: 10px 16px; font-size: 14px; font-weight: 600; color: #888; cursor: pointer; border-bottom: 2px solid transparent; margin-bottom: -2px; }
-  .tab-btn.active { color: #5B2D8E; border-bottom: 2px solid #5B2D8E; }
+  .tabs { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px solid #eee; }
+  .tab-btn { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; background: #F5F0FB; border: 1px solid #E6DCF3; border-radius: 999px; padding: 8px 14px; font-size: 13.5px; font-weight: 600; color: #5B2D8E; cursor: pointer; transition: background .15s, color .15s, box-shadow .15s; }
+  .tab-btn:hover { background: #EDE3F8; }
+  .tab-btn.active { background: #5B2D8E; border-color: #5B2D8E; color: #fff; box-shadow: 0 2px 6px rgba(91,45,142,.25); }
+  .tab-badge { display: inline-block; min-width: 18px; padding: 0 5px; border-radius: 9px; background: #C62828; color: #fff; font-size: 11px; line-height: 18px; text-align: center; }
   .nota-opcao { flex:1; display:flex !important; align-items:center; gap:8px; padding:12px; border:1.5px solid #E0D7EE; border-radius:8px; cursor:pointer; font-weight:600; margin:0 !important; }
   .nota-opcao input { width:auto !important; margin:0 !important; }
   .nota-opcao:has(input:checked) { border-color:#5B2D8E; background:#F5F0FB; }
@@ -923,7 +925,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.10.09-2";
+const APP_VERSION = "2026.10.11-1";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -6210,7 +6212,7 @@ function atualizarTelasNotas() {
   const btn = document.getElementById('tabBtnNotas');
   if (btn) {
     const n = _notasLista.filter(x => x.status === 'novo').length;
-    btn.textContent = '📄 Notas e Boletos' + (n ? ` (${n})` : '');
+    btn.innerHTML = '📄 Notas e Boletos' + (n ? ` <span class="tab-badge">${n}</span>` : '');
   }
 }
 
