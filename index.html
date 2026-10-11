@@ -927,7 +927,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.10.11-2";
+const APP_VERSION = "2026.10.11-3";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -1859,6 +1859,7 @@ function abrirRomaneioLojaObjeto(p) {
         <th style="padding:8px;text-align:right">Total</th>
       </tr></thead>
       <tbody>${itensHtml}</tbody>
+      <tbody><tr><td colspan="4" style="padding:8px;font-weight:700;border-top:2px solid #5B2D8E">📦 Total de itens: ${textoTotalItens(p.itens)}</td></tr></tbody>
       ${descL ? `<tfoot>
         <tr><td colspan="3" style="padding:6px 8px;text-align:right;color:#888">Total dos itens</td><td style="padding:6px 8px;text-align:right;color:#888"><s>R$ ${totalItens.toFixed(2).replace('.',',')}</s></td></tr>
         <tr><td colspan="3" style="padding:6px 8px;text-align:right;color:#AD1457">Desconto (${descL.motivo})</td><td style="padding:6px 8px;text-align:right;color:#AD1457">− R$ ${descontoCalcL.toFixed(2).replace('.',',')}</td></tr>
@@ -2444,6 +2445,7 @@ function renderRomaneioBody(jaDespachou, modoCorrecao) {
       <tbody>${linhas}</tbody>
     </table>
     <div style="margin-top:12px;padding:12px 10px;background:#F5F0FB;border-radius:6px;text-align:right">
+      <div style="text-align:left;font-size:14px;font-weight:700;color:#333;margin-bottom:6px" id="romaneioTotalItens">📦 Total de itens: ${textoTotalItens(pedido.itens)}</div>
       ${desc ? `<div style="font-size:13px;color:#888">Total dos itens: <s>R$ ${totalItens.toFixed(2).replace('.',',')}</s></div>
       <div style="font-size:12px;color:#AD1457;margin-top:2px">Desconto (${desc.motivo}): − R$ ${descontoCalc.toFixed(2).replace('.',',')}</div>` : ''}
       <span style="font-size:15px;font-weight:700;color:#5B2D8E" id="romaneioGrandTotal">TOTAL${desc ? ' A COBRAR' : ''}: R$ ${total.toFixed(2).replace('.',',')}</span>
@@ -2632,6 +2634,25 @@ function atualizarTotalRomaneio() {
   const total = calcularTotalComDesconto(pedidoAtualRomaneio);
   const el = document.getElementById('romaneioGrandTotal');
   if (el) el.textContent = `${pedidoAtualRomaneio.desconto ? 'TOTAL A COBRAR' : 'TOTAL'}: R$ ${total.toFixed(2).replace('.',',')}`;
+  const elQtd = document.getElementById('romaneioTotalItens');
+  if (elQtd) elQtd.textContent = '📦 Total de itens: ' + textoTotalItens(pedidoAtualRomaneio.itens);
+}
+
+// Soma das quantidades para conferência na separação ("Total de itens: 14").
+// Itens pesados/medidos (kg, g, L) não se somam com unidades — vão à parte.
+function textoTotalItens(itens) {
+  let un = 0;
+  const medidos = {};
+  Object.values(itens || {}).forEach(it => {
+    const q = Number(it.qtd) || 0;
+    if (q <= 0) return;
+    const u = String(it.unidade || 'un').toLowerCase();
+    if (['kg', 'g', 'l'].includes(u)) medidos[u] = (medidos[u] || 0) + q;
+    else un += q;
+  });
+  const fmt = n => String(+n.toFixed(3)).replace('.', ',');
+  const extras = Object.entries(medidos).map(([u, q]) => `${fmt(q)} ${u === 'l' ? 'L' : u}`);
+  return [fmt(un), ...extras].join(' + ');
 }
 
 async function confirmarDespacho() {
