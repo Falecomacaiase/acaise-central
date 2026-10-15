@@ -1,10 +1,17 @@
 <!doctype html>
 <html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
-<script src="config.js"></script>
+<script>
+// Configuração do banco (Supabase). A chave abaixo é a chave pública (anon), feita para ficar na página.
+window.ACAISE_CFG = {
+  url: 'https://gltnusallwwgprjgurls.supabase.co',
+  key: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdsdG51c2FsbHd3Z3Byamd1cmxzIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODMyMzAyNDIsImV4cCI6MjA5ODgwNjI0Mn0.9-Mlzrdh4LbfNC7dyHkDln0mqTZRoNlr00TDRlgdpEM'
+};
+</script>
 <title>Estoque Açaí-se</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=DM+Sans:wght@400;500;600&display=swap">
 <style>
+[hidden]{display:none!important}
 /* Layout: cabeçalho fixo com abas; uma tarefa por aba (contar, pedir, acompanhar, configurar) */
 :root{
   --bg:#f6f4f8; --surface:#ffffff; --fg:#241a2e; --muted:#6c6277; --line:#e4dfea;
@@ -795,7 +802,7 @@ const setDbState = (t, bad) => { const n = $('#dbState'); if (n) { n.textContent
 const getPin = () => { try { return localStorage.getItem('acaise_pin') || ''; } catch (e) { return ''; } };
 async function rpc(fn, args) {
   const r = await fetch(CFG.url + '/rest/v1/rpc/' + fn, { method: 'POST', headers: { apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
-  if (!r.ok) { const t = await r.text(); throw new Error(t.includes('pin_invalido') ? 'pin' : 'http ' + r.status); }
+  if (!r.ok) { const t = await r.text(); throw new Error(t.includes('pin_invalido') ? 'pin' : 'HTTP ' + r.status + ' ' + t.slice(0, 140)); }
   return r.json();
 }
 function dayPayload(d) { return { p_pin: getPin(), p_data: d, p_loja: S.store, p_contagem: S.counts[d] || {}, p_vendas: S.revSplit[d] || {}, p_total: revTotal(d) || 0 }; }
@@ -808,7 +815,7 @@ async function flush(d) {
   try { await rpc('est_salvar', dayPayload(d)); dirty.delete(d); dbMsg = ['Salvo ✓', false]; }
   catch (e) {
     if (e.message === 'pin') { askPin(); return; }
-    dbMsg = ['Sem conexão: ainda não salvou. Tentando de novo...', true]; clearTimeout(timers[d]); timers[d] = setTimeout(() => flush(d), 8000);
+    dbMsg = ['Ainda não salvou (' + e.message + '). Tentando de novo...', true]; clearTimeout(timers[d]); timers[d] = setTimeout(() => flush(d), 8000);
   }
   setDbState(...dbMsg);
 }
@@ -832,7 +839,7 @@ async function loadRemote() {
 }
 async function initDb() {
   if (!getPin()) { askPin(); return; }
-  try { await loadRemote(); } catch (e) { if (e.message === 'pin') askPin(); else { dbMsg = ['Sem conexão com o banco', true]; setDbState(...dbMsg); } }
+  try { await loadRemote(); } catch (e) { if (e.message === 'pin') askPin(); else { dbMsg = ['Sem conexão com o banco: ' + e.message, true]; setDbState(...dbMsg); } }
 }
 render();
 initDb();
