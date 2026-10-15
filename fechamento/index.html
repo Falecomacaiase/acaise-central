@@ -1,0 +1,842 @@
+<!doctype html>
+<html lang="pt-BR"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<script src="config.js"></script>
+<title>Estoque Açaí-se</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=DM+Sans:wght@400;500;600&display=swap">
+<style>
+/* Layout: cabeçalho fixo com abas; uma tarefa por aba (contar, pedir, acompanhar, configurar) */
+:root{
+  --bg:#f6f4f8; --surface:#ffffff; --fg:#241a2e; --muted:#6c6277; --line:#e4dfea;
+  --accent:#5a2d86; --accent-fg:#ffffff; --accent-soft:#ece3f5;
+  --ok:#1f7a4d; --ok-soft:#dff3e8; --warn:#9a5b00; --warn-soft:#fdeccb; --crit:#b3261e; --crit-soft:#fbe0dd; --info:#2a5fa8; --info-soft:#dfeafa;
+  --font-display:'Bricolage Grotesque','Segoe UI',system-ui,sans-serif;
+  --font-body:'DM Sans','Segoe UI',system-ui,sans-serif;
+}
+@media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
+  --bg:#150f1b; --surface:#1f1727; --fg:#efe9f5; --muted:#a498b0; --line:#35293f;
+  --accent:#b88be6; --accent-fg:#1a0f26; --accent-soft:#33214a;
+  --ok:#5fd09a; --ok-soft:#173a2a; --warn:#f0b24a; --warn-soft:#3d2c10; --crit:#ff8a80; --crit-soft:#4a1d1a; --info:#8fb8f0; --info-soft:#1a2b45; color-scheme:dark}}
+:root[data-theme="dark"]{
+  --bg:#150f1b; --surface:#1f1727; --fg:#efe9f5; --muted:#a498b0; --line:#35293f;
+  --accent:#b88be6; --accent-fg:#1a0f26; --accent-soft:#33214a;
+  --ok:#5fd09a; --ok-soft:#173a2a; --warn:#f0b24a; --warn-soft:#3d2c10; --crit:#ff8a80; --crit-soft:#4a1d1a; --info:#8fb8f0; --info-soft:#1a2b45; color-scheme:dark}
+body{background:var(--bg);color:var(--fg);font-family:var(--font-body);font-size:15px;line-height:1.45;padding-inline:16px;padding-block:0 48px}
+*{box-sizing:border-box}
+.wrap{max-width:1000px;margin:0 auto}
+header{padding-block:20px 12px;display:flex;flex-wrap:wrap;gap:8px 16px;align-items:baseline;justify-content:space-between}
+h1{font-family:var(--font-display);font-size:26px;line-height:1.1;margin:0;letter-spacing:-.01em}
+h2{font-family:var(--font-display);font-size:18px;margin:0 0 4px;text-wrap:balance}
+.sub{color:var(--muted);font-size:13px}
+.demo{background:var(--warn-soft);color:var(--warn);border-radius:8px;padding:8px 12px;font-size:13px;margin-bottom:12px}
+nav{display:flex;gap:4px;border-bottom:1px solid var(--line);position:sticky;top:env(safe-area-inset-top,0px);background:var(--bg);z-index:5;overflow-x:auto}
+nav button{font:inherit;font-weight:600;background:none;border:0;border-bottom:3px solid transparent;color:var(--muted);padding:12px 14px;cursor:pointer;white-space:nowrap}
+nav button[aria-selected="true"]{color:var(--accent);border-bottom-color:var(--accent)}
+button:focus-visible,input:focus-visible,select:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+main{padding-block:20px}
+section[hidden]{display:none}
+.bar{display:flex;flex-wrap:wrap;gap:12px 20px;align-items:end;margin-bottom:16px}
+label.f{display:flex;flex-direction:column;gap:4px;font-size:12px;color:var(--muted);font-weight:600;text-transform:uppercase;letter-spacing:.04em}
+input,select{font:inherit;color:var(--fg);background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:8px 10px;min-width:0}
+input[type=number]{width:96px;font-variant-numeric:tabular-nums;text-align:right}
+.btn{font:inherit;font-weight:600;border-radius:8px;padding:9px 14px;border:1px solid var(--accent);background:var(--accent);color:var(--accent-fg);cursor:pointer}
+.btn.ghost{background:transparent;color:var(--accent)}
+.btn.danger{border-color:var(--crit);background:transparent;color:var(--crit)}
+.progress{margin-left:auto;font-size:13px;color:var(--muted)}
+.list{display:flex;flex-direction:column;border:1px solid var(--line);border-radius:12px;background:var(--surface);overflow:hidden}
+.row{display:grid;grid-template-columns:minmax(0,1.5fr) auto minmax(0,1.3fr);gap:6px 14px;align-items:center;padding:10px 14px;border-bottom:1px solid var(--line)}
+.row:last-child{border-bottom:0}
+.row .nm{font-weight:600;min-width:0}
+.row .nm small{display:block;color:var(--muted);font-weight:400;font-size:12px}
+.row .calc{font-size:13px;color:var(--muted);font-variant-numeric:tabular-nums;min-width:0}
+.row .calc b{color:var(--fg)}
+.lbl{display:block;font-size:11px;color:var(--muted)}
+.how{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:12px 16px;margin-bottom:14px;font-size:14px}
+.how b{color:var(--accent)}
+.how ol{margin:6px 0 0;padding-left:20px;display:flex;flex-direction:column;gap:4px}
+.chip{display:inline-block;padding:2px 9px;border-radius:99px;font-size:12px;font-weight:600;white-space:nowrap}
+.chip.ok{background:var(--ok-soft);color:var(--ok)} .chip.warn,.chip.high{background:var(--warn-soft);color:var(--warn)}
+.chip.crit,.chip.low{background:var(--crit-soft);color:var(--crit)} .chip.info,.chip.na{background:var(--info-soft);color:var(--info)}
+.kpis{display:grid;grid-template-columns:repeat(auto-fit,minmax(200px,1fr));gap:12px;margin-bottom:20px}
+.kpi{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:14px 16px;min-width:0}
+.kpi .v{font-family:var(--font-display);font-size:28px;font-weight:700;line-height:1.1;font-variant-numeric:tabular-nums}
+.kpi .k{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.04em;font-weight:600}
+.kpi .d{font-size:13px;color:var(--muted);margin-top:4px}
+.tw{overflow-x:auto;border:1px solid var(--line);border-radius:12px;background:var(--surface)}
+table{border-collapse:collapse;width:100%;font-variant-numeric:tabular-nums}
+th,td{padding:9px 12px;text-align:right;border-bottom:1px solid var(--line);white-space:nowrap;font-size:14px}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);font-weight:600}
+th:first-child,td:first-child{text-align:left;position:sticky;left:0;background:var(--surface);z-index:1}
+tr:last-child td{border-bottom:0}
+td .note{display:block;font-size:12px;color:var(--warn);white-space:normal;max-width:240px}
+tfoot td{font-weight:700;border-top:2px solid var(--line)}
+.meter{width:110px;height:8px;border-radius:4px;background:var(--accent-soft);position:relative;display:inline-block;vertical-align:middle}
+.meter i{position:absolute;left:0;top:0;bottom:0;border-radius:4px;background:var(--ok)}
+.meter i.high{background:var(--warn)} .meter i.low{background:var(--crit)}
+.callout{border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:14px 16px;margin-bottom:16px;display:flex;flex-wrap:wrap;gap:8px 24px;align-items:center}
+.callout .big{font-family:var(--font-display);font-size:28px;font-weight:700;font-variant-numeric:tabular-nums}
+.stack{display:flex;flex-direction:column;gap:20px}
+.cols{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:20px}
+.mini{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.mini li{display:flex;justify-content:space-between;gap:12px;font-size:14px;padding:8px 12px;border:1px solid var(--line);border-radius:8px;background:var(--surface)}
+.mini li{align-items:flex-start}
+.mini li .chip{white-space:normal;border-radius:10px;text-align:right;max-width:55%}
+.empty{color:var(--muted);font-size:14px;margin-top:8px}
+.grp{padding:7px 14px;background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em}
+tr.g td{background:var(--accent-soft);color:var(--accent);font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.05em;text-align:left;position:static;padding-block:6px}
+.toast{position:fixed;left:50%;bottom:calc(16px + env(safe-area-inset-bottom,0px));transform:translateX(-50%);background:var(--fg);color:var(--bg);padding:9px 16px;border-radius:8px;font-size:14px;opacity:0;pointer-events:none;transition:opacity .2s}
+.toast.on{opacity:1}
+@media (max-width:640px){
+  .row,.row.sup{grid-template-columns:1fr 1fr;}
+  .rev3 .tot{margin-left:0;width:100%}
+  .rev3 input{width:100%}
+  .rev3 label{flex:1 1 40%}
+  .row .nm{grid-column:1/-1}
+  .row .calc{grid-column:1/-1;order:3}
+  .lbl{display:block}
+  input[type=number]{width:100%}
+  .progress{margin-left:0;width:100%}
+}
+.rev3{display:flex;flex-wrap:wrap;gap:12px 16px;align-items:end;border:1px solid var(--line);background:var(--surface);border-radius:12px;padding:12px 16px;margin-bottom:14px}
+.rev3 .tot{font-family:var(--font-display);font-size:26px;font-weight:700;font-variant-numeric:tabular-nums;margin-left:auto}
+.rev3 input{width:130px}
+.row.sup{grid-template-columns:minmax(0,1.5fr) auto auto minmax(0,1fr)}
+.ok-line{color:var(--ok);font-weight:600}
+@media (prefers-reduced-motion:reduce){.toast{transition:none}}
+</style>
+
+<body><div class="wrap">
+  <header>
+    <div>
+      <h1>Estoque Açaí-se</h1>
+      <div class="sub" id="storeLine"></div>
+    </div>
+    <div class="sub">Fechamento diário da loja</div>
+  </header>
+  <div id="pinBox" hidden></div>
+  <div id="demoBanner" class="demo" hidden></div>
+  <nav role="tablist" id="tabs" hidden>
+    <button role="tab" data-tab="count" aria-selected="true">Contagem do dia</button>
+    <button role="tab" data-tab="order" aria-selected="false">Pedido sugerido</button>
+    <button role="tab" data-tab="supply" aria-selected="false">Abastecimentos</button>
+    <button role="tab" data-tab="rev" aria-selected="false">Faturamento</button>
+    <button role="tab" data-tab="panel" aria-selected="false">Painel de CMV</button>
+    <button role="tab" data-tab="items" aria-selected="false">Itens</button>
+  </nav>
+  <main>
+    <section id="t-count"></section>
+    <section id="t-order" hidden></section>
+    <section id="t-supply" hidden></section>
+    <section id="t-rev" hidden></section>
+    <section id="t-panel" hidden></section>
+    <section id="t-items" hidden></section>
+  </main>
+</div>
+<div class="toast" id="toast" role="status"></div>
+
+<script>
+/* Motor de estoque Açaí-se — funções puras, sem DOM. Portável para o acaise-central.
+ * Convenções:
+ *  - counts[data][itemId]   = estoque contado no FECHAMENTO do dia
+ *  - receipts[data][itemId] = quantidade recebida (entrada) naquele dia
+ *  - consumo(d) = contagem(d-1) + entrada(d) - contagem(d)
+ *  - Ciclo: pede domingo -> recebe segunda; pede quarta -> recebe quinta
+ */
+const Engine = (() => {
+  const iso = d => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+  const parse = s => { const [y, m, d] = s.split('-').map(Number); return new Date(y, m - 1, d); };
+  const addDays = (s, n) => { const d = parse(s); d.setDate(d.getDate() + n); return iso(d); };
+  const dow = s => parse(s).getDay(); // 0 = domingo
+  const diffDays = (a, b) => Math.round((parse(b) - parse(a)) / 86400000);
+  const mean = a => a.length ? a.reduce((x, y) => x + y, 0) / a.length : 0;
+
+  const ORDER_DAYS = [0, 3];     // domingo, quarta
+  const DELIVERY_DAYS = [1, 4];  // segunda, quinta
+
+  function consumption(S, item, d) {
+    if (S.noReceipt?.[d]?.[item.id]) return null;   // entrada não registrada nesse dia
+    const c0 = S.counts[addDays(d, -1)]?.[item.id];
+    const c1 = S.counts[d]?.[item.id];
+    if (c0 == null || c1 == null) return null;
+    return c0 + (S.receipts[d]?.[item.id] || 0) - c1;
+  }
+
+  // histórico de consumos válidos (>= 0) nos `n` dias anteriores a `before`
+  function history(S, item, before, n) {
+    const out = [];
+    for (let i = 1; i <= n; i++) {
+      const d = addDays(before, -i);
+      const c = consumption(S, item, d);
+      if (c != null && c >= 0) out.push({ d, c });
+    }
+    return out;
+  }
+
+  function avgDaily(S, item, before) {
+    return mean(history(S, item, before, 14).map(x => x.c));
+  }
+
+  // previsão para um dia: média do mesmo dia da semana nas últimas 4 semanas;
+  // sem histórico daquele dia, usa a média diária recente
+  function forecastDay(S, item, date, before) {
+    const same = history(S, item, before, 28).filter(x => dow(x.d) === dow(date)).map(x => x.c);
+    return same.length ? mean(same) : avgDaily(S, item, before);
+  }
+
+  function sumForecast(S, item, from, to, before) {
+    let t = 0;
+    for (let d = from; d <= to; d = addDays(d, 1)) t += forecastDay(S, item, d, before);
+    return t;
+  }
+
+  function lastCountDate(S) {
+    const k = Object.keys(S.counts).filter(d => Object.keys(S.counts[d] || {}).length).sort();
+    return k.length ? k[k.length - 1] : null;
+  }
+
+  function nextOrderDays(today, n = 2) {
+    const out = [];
+    for (let i = 0; out.length < n && i < 21; i++) {
+      const d = addDays(today, i);
+      if (ORDER_DAYS.includes(dow(d))) out.push(d);
+    }
+    return out;
+  }
+
+  // Plano do pedido feito em `O` (data do dia de pedido)
+  function plan(S, O) {
+    const L = lastCountDate(S);
+    if (!L) return null;
+    const before = addDays(L, 1);            // histórico só até a última contagem
+    const D = addDays(O, 1);                 // dia de entrega
+    let nd = addDays(D, 1);
+    while (!DELIVERY_DAYS.includes(dow(nd))) nd = addDays(nd, 1);
+    const coverDays = diffDays(D, nd);       // dias que este pedido precisa cobrir
+    const lastCovered = addDays(nd, -1);
+
+    const rows = S.items.map(it => {
+      const h = history(S, it, before, 14);
+      const avg = mean(h.map(x => x.c));
+      let stock = null, projected = false, staleFrom = null;
+      if (S.counts[O]?.[it.id] != null) stock = S.counts[O][it.id];
+      else {
+        let Li = L;
+        while (S.counts[Li]?.[it.id] == null && diffDays(Li, L) < 14) Li = addDays(Li, -1);
+        if (S.counts[Li]?.[it.id] != null) {
+          projected = O > Li;
+          let inflow = 0;   // entradas já lançadas entre a última contagem e o dia do pedido
+          for (let d = addDays(Li, 1); d <= O; d = addDays(d, 1)) inflow += S.receipts[d]?.[it.id] || 0;
+          stock = Math.max(0, S.counts[Li][it.id] + inflow - (O > Li ? sumForecast(S, it, addDays(Li, 1), O, before) : 0));
+          if (Li < L) staleFrom = Li;
+        }
+      }
+      const need = sumForecast(S, it, D, lastCovered, before);
+      const safety = (it.safetyDays || 0) * avg;
+      const ceiling = Math.max((it.maxDays || 99) * avg, need); // teto nunca abaixo da necessidade
+      const target = Math.min(need + safety, ceiling);
+      const st = stock == null ? 0 : Math.max(stock, 0);
+      let raw = Math.max(0, target - st);
+      const pack = it.pack || 1;
+      const packs = Math.max(0, Math.ceil(raw / pack - 1e-9)) || 0;   // sempre para cima, em embalagens fechadas
+      const qty = packs * pack;
+      const notes = [];
+      if (stock == null) notes.push('sem contagem');
+      if (staleFrom) notes.push(`sem contagem recente: última em ${staleFrom.slice(8)}/${staleFrom.slice(5, 7)}`);
+      if (h.length === 0) notes.push('sem histórico de consumo');
+      else if (avg === 0) notes.push('consumo zero nos dias medidos: conferir contagem');
+      else if (h.length < 4) notes.push(`histórico curto (${h.length} dias)`);
+      if (it.shelfDays && coverDays > it.shelfDays) notes.push(`validade (${it.shelfDays} d) menor que a cobertura (${coverDays} d)`);
+      if (qty === 0 && st > target && avg > 0) notes.push('estoque acima do alvo');
+      return { item: it, avg, stock, projected, need, safety, target, qty, packs, value: qty * (it.cost || 0), notes };
+    });
+    return { O, D, nd, coverDays, L, rows, total: rows.reduce((s, r) => s + r.value, 0) };
+  }
+
+  function revenueAvg(S, before) {
+    const v = [];
+    for (let i = 1; i <= 14; i++) {
+      const r = S.revenue[addDays(before, -i)];
+      if (r != null && r > 0) v.push(r);
+    }
+    return v.length ? mean(v) : (S.revRef || 0);   // sem lançamentos, usa a média de referência
+  }
+
+  // CMV real = consumo valorizado / faturamento, nos `n` dias até `upTo` (inclusive)
+  function realCMV(S, upTo, n = 7) {
+    let cost = 0, rev = 0, days = 0;
+    for (let i = 0; i < n; i++) {
+      const d = addDays(upTo, -i);
+      if (S.start && d < S.start) continue;   // CMV real só vale a partir do início do controle
+      const r = S.revenue[d];
+      if (!(r > 0)) continue;
+      let c = 0, ok = false;
+      S.items.forEach(it => { const x = consumption(S, it, d); if (x != null) { c += Math.max(x, 0) * (it.cost || 0); ok = true; } });
+      if (!ok) continue;
+      cost += c; rev += r; days++;
+    }
+    return { cost, rev, days, cmv: rev > 0 ? cost / rev : null };
+  }
+
+  // Situação de cada item na última contagem
+  function status(S) {
+    const L = lastCountDate(S);
+    if (!L) return [];
+    const before = addDays(L, 1);
+    let nd = addDays(L, 1);
+    while (!DELIVERY_DAYS.includes(dow(nd))) nd = addDays(nd, 1);
+    return S.items.map(it => {
+      const stock = S.counts[L]?.[it.id];
+      const avg = avgDaily(S, it, before);
+      const coverage = avg > 0 && stock != null ? stock / avg : null;
+      const untilDelivery = sumForecast(S, it, addDays(L, 1), addDays(nd, -1), before);
+      const max = (it.maxDays || 99) * avg;
+      const excessQty = stock != null && avg > 0 ? Math.max(0, stock - max) : 0;
+      let state = 'ok';
+      if (stock == null || avg === 0) state = 'na';
+      else if (stock < untilDelivery) state = 'low';
+      else if (excessQty > 0) state = 'high';
+      return { item: it, stock, avg, coverage, untilDelivery, excessQty, excessValue: excessQty * (it.cost || 0), stockValue: (stock || 0) * (it.cost || 0), state };
+    });
+  }
+
+  return { iso, parse, addDays, dow, diffDays, mean, consumption, avgDaily, forecastDay, sumForecast, lastCountDate, nextOrderDays, plan, revenueAvg, realCMV, status, ORDER_DAYS, DELIVERY_DAYS };
+})();
+if (typeof module !== 'undefined') module.exports = Engine;
+
+/* Dados de exemplo: custos e consumos são ilustrativos, para ver o sistema funcionando. */
+function makeDemo(today) {
+  const E = Engine;
+  const items = [
+    { id: 'acai',   name: 'Polpa de açaí',        unit: 'kg',  cost: 23.04, pack: 10, shelfDays: null, safetyDays: 0.5, maxDays: 6, base: 14 },
+    { id: 'ciab',   name: 'Pão ciabatta',         unit: 'un',  cost: 2.4,   pack: 12, shelfDays: 3,    safetyDays: 0.5, maxDays: 3, base: 9 },
+    { id: 'frango', name: 'Proteína: frango',     unit: 'porção', cost: 6.8, pack: 5, shelfDays: 4,   safetyDays: 0.5, maxDays: 4, base: 8 },
+    { id: 'atum',   name: 'Proteína: atum',       unit: 'porção', cost: 7.9, pack: 5, shelfDays: 4,   safetyDays: 0.5, maxDays: 4, base: 4 },
+    { id: 'wrap',   name: 'Disco de wrap',        unit: 'un',  cost: 1.15,  pack: 10, shelfDays: null, safetyDays: 0.5, maxDays: 5, base: 11 },
+    { id: 'molho',  name: 'Molho de wrap',        unit: 'ml',  cost: 0.019, pack: 500, shelfDays: 7,   safetyDays: 0.5, maxDays: 5, base: 900 },
+    { id: 'granola',name: 'Granola',              unit: 'g',   cost: 0.0145,pack: 1000, shelfDays: null, safetyDays: 1,  maxDays: 7, base: 2200 },
+    { id: 'leite',  name: 'Leite em pó',          unit: 'g',   cost: 0.031, pack: 1000, shelfDays: null, safetyDays: 1,  maxDays: 8, base: 800 },
+    { id: 'morango',name: 'Morango',              unit: 'g',   cost: 0.017, pack: 1000, shelfDays: 4,   safetyDays: 0.5, maxDays: 4, base: 2600 },
+    { id: 'banana', name: 'Banana',               unit: 'un',  cost: 0.62,  pack: 12, shelfDays: 4,    safetyDays: 0.5, maxDays: 4, base: 24 },
+    { id: 'c300',   name: 'Copo 300 ml',          unit: 'un',  cost: 0.38,  pack: 50, shelfDays: null, safetyDays: 1,   maxDays: 10, base: 38 },
+    { id: 'c500',   name: 'Copo 500 ml',          unit: 'un',  cost: 0.52,  pack: 50, shelfDays: null, safetyDays: 1,   maxDays: 10, base: 22 },
+  ];
+  // sexta a domingo vendem mais
+  const wk = { 0: 1.35, 1: 0.75, 2: 0.8, 3: 0.9, 4: 1.0, 5: 1.25, 6: 1.4 };
+  let seed = 7;
+  const rnd = () => { seed = (seed * 16807) % 2147483647; return seed / 2147483647; };
+  const counts = {}, receipts = {}, revenue = {};
+  const start = E.addDays(today, -31);
+  const stock = {};
+  items.forEach(it => { stock[it.id] = it.base * 3.5; });
+  counts[start] = {};
+  items.forEach(it => { counts[start][it.id] = Math.ceil(stock[it.id]); });
+  for (let d = E.addDays(start, 1); d < today; d = E.addDays(d, 1)) {
+    const dw = E.dow(d);
+    counts[d] = {}; receipts[d] = {};
+    let dayCost = 0;
+    items.forEach(it => {
+      // a loja pede com folga: ~1,5x a necessidade do período
+      if (E.DELIVERY_DAYS.includes(dw)) {
+        const cover = dw === 1 ? 3 : 4;
+        const want = it.base * cover * 2.0 + it.base * 1.0;
+        let q = Math.max(0, want - stock[it.id]);
+        q = Math.ceil(q / it.pack) * it.pack;
+        if (q > 0) { receipts[d][it.id] = q; stock[it.id] += q; }
+      }
+      let use = it.base * wk[dw] * (0.88 + rnd() * 0.24);
+      if (it.id === 'frango' && rnd() < 0.12) use *= 1.7;   // dia com perda
+      use = Math.min(use, stock[it.id]);
+      stock[it.id] -= use;
+      counts[d][it.id] = Math.ceil(stock[it.id]);
+      dayCost += use * it.cost;
+    });
+    revenue[d] = Math.round(dayCost / (0.44 + (rnd() - 0.5) * 0.06));
+  }
+  const clean = items.map(({ base, ...r }) => r);
+  return { store: 'Loja piloto', cmvMeta: 35, items: clean, counts, receipts, revenue, demo: true };
+}
+if (typeof module !== 'undefined') module.exports = makeDemo;
+
+/* Histórico real da loja Boa Viagem: contagens de fechamento do WhatsApp (20 a 29/09/2026)
+ * e custos/embalagens dos pedidos de abastecimento (22 a 30/09).
+ * As entradas ainda não estão lançadas: o print dos pedidos mostra a data do pedido, não a da chegada.
+ * Dias de entrega (seg/qui) e dias em que o estoque subiu ficam marcados como "entrada não registrada". */
+const REAL_REV = 12;
+function makeReal() {
+  const N = null, X = [N, N, N, N, N, N, N, N, N, N, N];
+  const dates = ['2026-09-20', '2026-09-21', '2026-09-22', '2026-09-23', '2026-09-24', '2026-09-25', '2026-09-26', '2026-09-27', '2026-09-28', '2026-09-29', '2026-09-30'];
+  // [id, nome, unidade, custo por unidade contada, embalagem (múltiplo de compra), segurança (dias), teto (dias), contagens 20..29, grupo]
+  const G1 = 'Açaí e polpinhas', G2 = 'Cremes', G3 = 'Potes e picolé', G4 = 'Leite e granola', G5 = 'Wraps e proteínas';
+  const T = [
+    ['arte',    'Açaí Artesanal 8kg',     'caixa',  184.32, 1,  1,   7,  [0, N, N, N, 3, 1, 2, 1, 3, 5, 4], G1],
+    ['melc',    'Açaí Mel 8kg',           'caixa',  184.32, 1,  1,   7,  [0, 1, 1, N, 1, N, N, 1, N, 2, N], G1],
+    ['barra',   'Açaí Puro kg',           'kg',     23,     5,  1,   5,  [8, 5, 2, 7, 3, 8, 4, 2, 4, N, 5], G1],
+    ['porc1',   'Polpinha 1kg',           'un',     31,     1,  1,   5,  [0, 4, 0, 5, 4, 5, 4, 4, 4, 4, 4], G1],
+    ['porc400', 'Polpinha 400g',          'un',     12,     1,  1,   5,  [4, 4, 4, 4, 4, 4, 4, 4, 4, 4, 4], G1],
+    ['cupu',    'Creme Cupuaçu kg',       'kg',     16,     5,  1,   7,  X, G2],
+    ['ninho',   'Creme Ninho kg',         'kg',     0,      1,  1,   7,  X, G2],
+    ['cmorango','Creme Morango kg',       'kg',     0,      1,  1,   7,  X, G2],
+    ['cpacoca', 'Creme Paçoca kg',        'kg',     0,      1,  1,   7,  X, G2],
+    ['ptrad',   'Pote 1,5L tradicional',  'un',     28,     1,  1,   5,  [12, 18, 6, 2, 8, 12, 14, 13, 11, 13, 23], G3],
+    ['pnuts',   'Pote 1,5L castanha',     'un',     0,      1,  1,   5,  [12, 16, 20, 20, 16, 16, 16, 16, 12, 16, 13], G3],
+    ['picole',  'Picolé',                 'un',     5,      24, 1,   7,  [26, 26, 26, 26, 26, 23, 23, 26, 26, 26, 26], G3],
+    ['leitepo', 'Leite em Pó 200g',       'un',     0,      1,  1,   10, X, G4],
+    ['leitecd', 'Leite Condensado 395g',  'un',     0,      1,  1,   10, X, G4],
+    ['gran30',  'Granola 30g',            'un',     0,      1,  1,   10, X, G4],
+    ['gran15',  'Granola 1,5kg',          'un',     0,      1,  1,   10, X, G4],
+    ['disco',   'Disco Wrap',             'un',     2,      10, 0.5, 5,  [7, 17, 22, 14, 22, 28, 18, 11, 31, 25, 15], G5],
+    ['pao',     'Pão Ciabatta',           'un',     4.9,    10, 0.5, 3,  [0, 10, 9, 5, 12, 11, 10, 18, 17, 15, 10], G5],
+    ['camarao', 'Camarão',                'un',     7,      5,  0.5, 4,  [10, 7, 9, 6, 14, 10, 4, 8, 13, 11, 6], G5],
+    ['frangod', 'Frango Desfiado',        'un',     3.86,   5,  0.5, 4,  [8, 11, 5, 9, 27, 27, 20, 16, 12, 9, 11], G5],
+    ['frangog', 'Frango Grelhado',        'un',     4.16,   5,  0.5, 4,  [8, 18, 15, 10, 24, 18, 16, 13, 18, 16, 7], G5],
+    ['file',    'Filé Mignon',            'un',     10.234, 5,  0.5, 4,  [2, 9, 19, 7, 20, 13, 23, 16, 20, 17, 10], G5],
+  ];
+  // Itens que saíram da lista (continuam existindo em estados antigos, mas não são mais controlados)
+  const DROPPED = ['melb', 'polpaa', 'caja', 'acerola', 'goiaba', 'vitanuts', 'chips', 'farofa', 'crouton', 'cebola', 'queijo', 'molhom', 'molhoq', 'copo300', 'copo500', 'kraft', 'carne'];
+  // Entradas conhecidas pelos pedidos de abastecimento (itens controlados que apareceram nos prints).
+  // Datas de chegada deduzidas cruzando pedido x contagem.
+  const R = {
+    '2026-09-22': { arte: 4, camarao: 5, file: 5, disco: 20 },
+    '2026-09-23': { arte: 5, frangod: 10, barra: 5, porc1: 5 },
+    '2026-09-24': { arte: 4, melc: 1, ptrad: 8, frangog: 20, frangod: 20, file: 15 },
+    '2026-09-26': { arte: 6, melc: 1, ptrad: 8, file: 10 },
+    '2026-09-27': { arte: 4, ptrad: 8, camarao: 5, pao: 10 },
+    '2026-09-28': { arte: 6, melc: 2, barra: 5, ptrad: 8, camarao: 10, disco: 30, file: 10, frangod: 5 },
+    '2026-09-29': { arte: 4, melc: 1, barra: 5, ptrad: 8 },
+    '2026-09-30': { arte: 3, ptrad: 8 },
+  };
+  const items = T.map(([id, name, unit, cost, pack, safetyDays, maxDays, , group]) => ({ id, name, unit, cost, pack, shelfDays: null, safetyDays, maxDays, group }));
+  const counts = {}, noReceipt = {};
+  dates.forEach(d => { counts[d] = {}; });
+  T.forEach(([id, , , , , , , v]) => v.forEach((q, i) => { if (q != null) counts[dates[i]][id] = q; }));
+  const receipts = JSON.parse(JSON.stringify(R));
+  for (let i = 1; i < dates.length; i++) {
+    const d = dates[i], delivery = Engine.DELIVERY_DAYS.includes(Engine.dow(d));
+    T.forEach(([id, , , , , , , v]) => {
+      if (v[i] == null || v[i - 1] == null) return;
+      if ((delivery || v[i] > v[i - 1]) && !(R[d] && R[d][id] != null)) { noReceipt[d] = noReceipt[d] || {}; noReceipt[d][id] = true; }
+    });
+  }
+  return {
+    rev: REAL_REV, store: 'Boa Viagem', cmvMeta: 35, start: '2026-10-01',
+    revRef: 3806.94,   // faturamento médio diário de setembro (DRE: R$ 114.208,09 em 30 dias)
+    baseline: { label: 'Setembro/2026 (DRE)', receita: 114208.09, cmv: 57219.96, canais: [{ nome: 'iFood', valor: 63000.60 }, { nome: 'Balcão', valor: 27749.23 }, { nome: '99Food', valor: 23458.26 }] }, items, counts, receipts, revenue: {}, revSplit: {}, noReceipt, demo: false,
+    note: 'Lista enxuta de 22 itens em 5 categorias. O controle começa em 01/10, com a contagem de 30/09 como abertura. O histórico de 20 a 29/09 serve só de base para a previsão e está incompleto. Itens com custo zero ainda precisam de preço. A loja preenche só o que sobrou e as vendas por canal; os abastecimentos são lançados pelo escritório.'
+  };
+}
+// Atualiza um estado antigo (rev anterior) mantendo o que a loja lançou depois de 29/09
+function migrateReal(old) {
+  const f = makeReal();
+  const dropped = new Set(['melb', 'polpaa', 'caja', 'acerola', 'goiaba', 'vitanuts', 'chips', 'farofa', 'crouton', 'cebola', 'queijo', 'molhom', 'molhoq', 'copo300', 'copo500', 'kraft', 'carne']);
+  const byId = Object.fromEntries((old.items || []).map(i => [i.id, i]));
+  // custo que a loja já preencheu continua valendo quando o cadastro novo está zerado
+  f.items.forEach(it => { const o = byId[it.id]; if (o && o.cost > 0 && !(it.cost > 0)) it.cost = o.cost; });
+  // itens criados pela própria loja continuam na lista
+  (old.items || []).forEach(o => { if (!f.items.some(i => i.id === o.id) && !dropped.has(o.id)) f.items.push(o); });
+  const ids = new Set(f.items.map(i => i.id));
+  Object.keys(old.counts || {}).filter(d => d > '2026-09-29').forEach(d => {
+    f.counts[d] = f.counts[d] || {};
+    Object.entries(old.counts[d]).forEach(([k, v]) => { if (ids.has(k)) f.counts[d][k] = v; });
+  });
+  Object.keys(old.receipts || {}).forEach(d => {
+    f.receipts[d] = f.receipts[d] || {};
+    Object.entries(old.receipts[d]).forEach(([k, v]) => { if (ids.has(k) && f.receipts[d][k] == null) f.receipts[d][k] = v; });
+  });
+  f.revenue = { ...(old.revenue || {}) };
+  f.revSplit = { ...(old.revSplit || {}) };
+  if (old.revRef != null) f.revRef = old.revRef;
+  Object.keys(old.noReceipt || {}).filter(d => d > '2026-09-30').forEach(d => { f.noReceipt[d] = old.noReceipt[d]; });
+  return f;
+}
+if (typeof module !== 'undefined') module.exports = makeReal;
+
+(() => {
+const E = Engine;
+const KEY = 'acaise_estoque_v3';
+const $ = s => document.querySelector(s);
+const brl = n => (n ?? 0).toLocaleString('pt-BR', { style: 'currency', currency: 'BRL' });
+const num = n => n == null || isNaN(n) ? '—' : (Math.ceil(n - 1e-9) || 0).toLocaleString('pt-BR'); // quantidades sempre inteiras, para cima
+const pct = n => n == null ? '—' : (n * 100).toLocaleString('pt-BR', { maximumFractionDigits: 1 }) + '%';
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const WD = ['domingo', 'segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado'];
+const label = d => `${WD[E.dow(d)]}, ${d.slice(8)}/${d.slice(5, 7)}`;
+const today = E.iso(new Date());
+
+let S;
+function load() {
+  try { const r = localStorage.getItem(KEY); if (r) { const st = JSON.parse(r); if (!st.demo && st.note && st.rev !== REAL_REV) return migrateReal(st); return st; } } catch (e) {}
+  return makeReal();
+}
+function save() { try { localStorage.setItem(KEY, JSON.stringify(S)); } catch (e) {} }
+function toast(t) { const el = $('#toast'); el.textContent = t; el.classList.add('on'); clearTimeout(toast.t); toast.t = setTimeout(() => el.classList.remove('on'), 1600); }
+S = load();
+S.revSplit = S.revSplit || {};
+
+/* ---------- Abas ---------- */
+let tab = 'count';
+function showTab(t) {
+  tab = t;
+  document.querySelectorAll('#tabs button').forEach(b => b.setAttribute('aria-selected', b.dataset.tab === t));
+  ['count', 'order', 'supply', 'rev', 'panel', 'items'].forEach(x => $('#t-' + x).hidden = x !== t);
+  render();
+}
+$('#tabs').addEventListener('click', e => { const b = e.target.closest('button[data-tab]'); if (b) showTab(b.dataset.tab); });
+
+/* ---------- Contagem ---------- */
+let cDate = today;
+const CH = [['f99', '99Food'], ['balcao', 'Balcão'], ['ifood', 'iFood']];
+function revTotal(d) { const r = S.revSplit[d]; if (!r) return S.revenue[d] ?? null; const v = CH.map(([k]) => r[k]).filter(x => x != null); return v.length ? v.reduce((a, b) => a + b, 0) : null; }
+function renderCount() {
+  const el = $('#t-count');
+  const prevDate = E.addDays(cDate, -1);
+  let lastG = null;
+  const rows = S.items.map(it => {
+    const g = it.group || 'Outros';
+    const head = g !== lastG ? `<div class="grp">${esc(g)}</div>` : ''; lastG = g;
+    const prev = S.counts[prevDate]?.[it.id];
+    const cur = S.counts[cDate]?.[it.id];
+    const rec = S.receipts[cDate]?.[it.id];
+    return `${head}<div class="row" data-id="${it.id}">
+      <div class="nm">${esc(it.name)}<small>${esc(it.unit)} · ontem: ${prev == null ? 'sem contagem' : num(prev)}${rec ? ` · chegou hoje: ${num(rec)}` : ''}</small></div>
+      <label class="f"><span class="lbl">Sobrou</span><input type="number" inputmode="numeric" min="0" step="1" data-k="cur" value="${cur ?? ''}" placeholder="contar" aria-label="Sobrou de ${esc(it.name)}"></label>
+      <div class="calc"></div>
+    </div>`;
+  }).join('');
+  const rs = S.revSplit[cDate] || {};
+  el.innerHTML = `
+    <div class="bar">
+      <label class="f">Data<input type="date" id="cDate" value="${cDate}"></label>
+      <div class="progress"><div id="cProg"></div><div id="dbState" class="sub"></div></div>
+    </div>
+    <div class="how"><b>Fechamento do dia: preencha uma única vez, ao fechar a loja</b>
+      <ol>
+        <li><b>Vendas do dia</b>, nos três campos: 99Food, Balcão e iFood. O total aparece sozinho.</li>
+        <li><b>Sobrou:</b> conte o que ficou na loja e digite, item por item. Se acabou, digite 0.</li>
+      </ol>
+      <div class="sub" style="margin-top:8px">Tudo é salvo automaticamente. Não precisa lançar o que chegou.</div>
+    </div>
+    <div class="rev3">
+      ${CH.map(([k, n]) => `<label class="f">Vendas ${n} (R$)<input type="number" inputmode="decimal" min="0" step="any" data-ch="${k}" value="${rs[k] ?? ''}" placeholder="0,00"></label>`).join('')}
+      <div class="tot"><div class="sub" style="font-family:var(--font-body)">Total do dia</div><span id="cTot"></span></div>
+    </div>
+    <div class="list">${rows}</div>`;
+  const setTot = () => { const t = revTotal(cDate); $('#cTot').textContent = t == null ? '—' : brl(t); };
+  setTot();
+  $('#cDate').onchange = e => { cDate = e.target.value || today; renderCount(); };
+  el.querySelectorAll('[data-ch]').forEach(inp => inp.oninput = () => {
+    const v = parseFloat(inp.value);
+    S.revSplit[cDate] = S.revSplit[cDate] || {};
+    if (isNaN(v)) delete S.revSplit[cDate][inp.dataset.ch]; else S.revSplit[cDate][inp.dataset.ch] = v;
+    const t = revTotal(cDate);
+    if (t == null) { delete S.revenue[cDate]; delete S.revSplit[cDate]; } else S.revenue[cDate] = t;
+    save(); setTot(); updateProg(); saveDay(cDate);
+  });
+  el.querySelectorAll('.row').forEach(r => {
+    r.querySelectorAll('input').forEach(inp => inp.oninput = () => {
+      const id = r.dataset.id, v = inp.value === '' ? null : parseFloat(inp.value);
+      S.counts[cDate] = S.counts[cDate] || {};
+      if (v == null || isNaN(v)) delete S.counts[cDate][id]; else S.counts[cDate][id] = v;
+      save(); updateCalc(r); updateProg(); saveDay(cDate);
+    });
+    updateCalc(r);
+  });
+  updateProg();
+}
+function updateCalc(r) {
+  const id = r.dataset.id, out = r.querySelector('.calc');
+  const c = S.counts[cDate]?.[id], p = S.counts[E.addDays(cDate, -1)]?.[id];
+  if (c == null) { out.innerHTML = ''; return; }
+  if (p == null) { out.innerHTML = '<span class="chip na">salvo</span>'; return; }
+  const d = c - p;
+  out.innerHTML = `<span class="chip ${d === 0 ? 'info' : 'ok'}">${d === 0 ? 'igual a ontem' : (d > 0 ? '+' : '−') + num(Math.abs(d)) + ' vs ontem'}</span>`;
+}
+function updateProg() {
+  const n = S.items.filter(i => S.counts[cDate]?.[i.id] != null).length;
+  const t = revTotal(cDate);
+  const done = n === S.items.length && t > 0;
+  $('#cProg').innerHTML = done ? '<span class="ok-line">Fechamento completo</span>' : `${n} de ${S.items.length} itens contados · ${t > 0 ? 'vendas lançadas' : 'faltam as vendas'}`;
+  if (typeof dbMsg !== 'undefined') setDbState(...dbMsg);
+}
+
+/* ---------- Pedido ---------- */
+let oDate = null, adj = {};
+function renderOrder() {
+  const el = $('#t-order');
+  const opts = E.nextOrderDays(today, 2);
+  if (!oDate || !opts.includes(oDate)) { oDate = opts[0]; adj = {}; }
+  const p = E.plan(S, oDate);
+  if (!p) { el.innerHTML = '<p class="empty">Lance a primeira contagem para ver a sugestão de pedido.</p>'; return; }
+  const budgetDay = E.revenueAvg(S, E.addDays(p.L, 1));
+  const budget = budgetDay > 0 ? budgetDay * 7 * (S.cmvMeta / 100) / 2 : null;
+  const qtyOf = r => adj[r.item.id] ?? r.qty;
+  let lastOG = null;
+  const body = p.rows.map(r => {
+    const g = r.item.group || 'Outros';
+    const head = g !== lastOG ? `<tr class="g"><td colspan="7">${esc(g)}</td></tr>` : ''; lastOG = g;
+    return `${head}<tr data-id="${r.item.id}">
+    <td>${esc(r.item.name)}${r.notes.map(n => `<span class="note">${esc(n)}</span>`).join('')}</td>
+    <td>${r.stock == null ? '—' : num(r.stock, 1)}${r.projected ? '*' : ''}</td>
+    <td>${num(r.need, 1)}</td><td>${num(r.target, 1)}</td>
+    <td><input type="number" min="0" step="1" inputmode="numeric" value="${qtyOf(r)}" aria-label="Quantidade a pedir de ${esc(r.item.name)}"></td>
+    <td>${esc(r.item.unit)}${r.item.pack > 1 ? ` · emb. ${r.item.pack}` : ''}</td>
+    <td class="val">${brl(qtyOf(r) * r.item.cost)}</td></tr>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="bar">
+      <label class="f">Pedido de<select id="oSel">${opts.map(d => `<option value="${d}" ${d === oDate ? 'selected' : ''}>${label(d)}</option>`).join('')}</select></label>
+      <button class="btn ghost" id="oCopy">Copiar pedido</button>
+    </div>
+    ${E.diffDays(p.L, today) > 1 ? `<div class="demo">A última contagem é de ${label(p.L)}. Lance as contagens dos dias que faltam para a sugestão ficar precisa.</div>` : ''}
+    ${S.items.some(i => !(i.cost > 0)) ? `<div class="demo">${S.items.filter(i => !(i.cost > 0)).length} itens estão sem custo. O valor do pedido e o CMV ficam incompletos até você preencher na aba Itens.</div>` : ''}
+    <div class="callout">
+      <div><div class="sub">Valor do pedido</div><div class="big" id="oTotal"></div></div>
+      <div class="sub" style="max-width:520px">Chega ${label(p.D)} e precisa cobrir ${p.coverDays} dias, até ${label(E.addDays(p.nd, -1))}. A conta usa o consumo médio por dia da semana das últimas 4 semanas e a última contagem (${label(p.L)}).${budget ? `<br>Orçamento de compra por pedido na meta de ${num(S.cmvMeta, 0)}% de CMV: <b>${brl(budget)}</b> <span id="oBudgetState"></span>` : '<br>Informe o faturamento diário na contagem para comparar com o orçamento da meta de CMV.'}</div>
+    </div>
+    <div class="tw"><table>
+      <thead><tr><th>Item</th><th>Estoque</th><th>Necessário no período</th><th>Alvo</th><th>Pedir</th><th>Unidade</th><th>Valor</th></tr></thead>
+      <tbody>${body}</tbody></table></div>
+    <p class="sub" style="margin-top:10px">Alvo = necessidade do período + dias de segurança, limitado ao teto de dias de estoque do item. Todas as quantidades arredondam sempre para cima, e o pedido fecha em embalagens inteiras. Você pode ajustar a coluna Pedir. ${p.rows.some(r => r.projected) ? '* Estoque projetado: ainda não há contagem do dia do pedido, então o sistema desconta o consumo previsto desde a última contagem.' : ''}</p>`;
+  const recalc = () => {
+    let t = 0;
+    p.rows.forEach(r => t += qtyOf(r) * r.item.cost);
+    $('#oTotal').textContent = brl(t);
+    const bs = $('#oBudgetState');
+    if (bs && budget) bs.innerHTML = t > budget ? `<span class="chip warn">${brl(t - budget)} acima</span>` : `<span class="chip ok">dentro</span>`;
+  };
+  recalc();
+  $('#oSel').onchange = e => { oDate = e.target.value; adj = {}; renderOrder(); };
+  el.querySelectorAll('tbody tr[data-id]').forEach(tr => tr.querySelector('input').oninput = e => {
+    const v = parseFloat(e.target.value); const id = tr.dataset.id;
+    adj[id] = isNaN(v) ? 0 : v;
+    tr.querySelector('.val').textContent = brl(adj[id] * S.items.find(i => i.id === id).cost);
+    recalc();
+  });
+  $('#oCopy').onclick = () => {
+    const lines = p.rows.filter(r => qtyOf(r) > 0).map(r => `- ${r.item.name}: ${num(qtyOf(r), 2)} ${r.item.unit}`);
+    const txt = `Pedido ${S.store} · ${label(oDate)} (entrega ${label(p.D)})\n${lines.join('\n')}`;
+    (navigator.clipboard?.writeText(txt) ?? Promise.reject()).then(() => toast('Pedido copiado'), () => toast('Não foi possível copiar'));
+  };
+}
+
+/* ---------- Abastecimentos (escritório) ---------- */
+let sDate = today;
+function renderSupply() {
+  const el = $('#t-supply');
+  const dl = E.DELIVERY_DAYS.includes(E.dow(sDate));
+  let lastG = null;
+  const rows = S.items.map(it => {
+    const g = it.group || 'Outros';
+    const head = g !== lastG ? `<div class="grp">${esc(g)}</div>` : ''; lastG = g;
+    const rec = S.receipts[sDate]?.[it.id];
+    const pk = it.pack > 1 ? it.pack : 1;
+    const packs = rec ? Math.floor(rec / pk) : '', loose = rec ? rec % pk : '';
+    const flag = S.noReceipt?.[sDate]?.[it.id] ? '<span class="chip warn">estoque subiu sem entrada lançada</span>' : '';
+    return `${head}<div class="row sup" data-id="${it.id}" data-pk="${pk}">
+      <div class="nm">${esc(it.name)}<small>${esc(it.unit)}${pk > 1 ? ` · embalagem com ${pk}` : ''}</small></div>
+      <label class="f"><span class="lbl">${pk > 1 ? 'Embalagens' : 'Quantidade'}</span><input type="number" inputmode="numeric" min="0" step="1" data-k="p" value="${packs}" placeholder="0"></label>
+      ${pk > 1 ? `<label class="f"><span class="lbl">Avulsas (un)</span><input type="number" inputmode="numeric" min="0" step="1" data-k="l" value="${loose || ''}" placeholder="0"></label>` : '<span></span>'}
+      <div class="calc">${rec ? `Total: <b>${num(rec)} ${esc(it.unit)}</b> (${brl(rec * it.cost)})` : ''} ${flag}</div>
+    </div>`;
+  }).join('');
+  el.innerHTML = `
+    <div class="bar"><label class="f">Data em que a mercadoria CHEGOU na loja<input type="date" id="sDt" value="${sDate}"></label>
+      <div class="progress" id="sTot"></div></div>
+    <div class="how"><b>Uso do escritório</b> — a loja não mexe aqui.
+      <ol>
+        <li>Escolha a data em que a mercadoria <b>chegou</b> na loja (o pedido de domingo chega na segunda, o de quarta chega na quinta). Retirada vale a data da retirada.</li>
+        <li>Digite o número de <b>embalagens</b> de cada item (caixa de 5 barras, caixa de 24 picolés, pacote de 10 discos...). Barra solta vai em Avulsas.</li>
+      </ol>
+      <div class="sub" style="margin-top:8px">${dl ? 'Dia de entrega do ciclo.' : 'Atenção: esta data não é segunda nem quinta, então conta como abastecimento fora do ciclo.'} Em breve estes lançamentos virão sozinhos do pedido de abastecimento do ERP.</div></div>
+    <div class="list">${rows}</div>`;
+  const tot = () => { const v = S.items.reduce((a, it) => a + (S.receipts[sDate]?.[it.id] || 0) * it.cost, 0); $('#sTot').textContent = `Total lançado na data: ${brl(v)}`; };
+  tot();
+  $('#sDt').onchange = e => { sDate = e.target.value || today; renderSupply(); };
+  el.querySelectorAll('.row').forEach(r => r.querySelectorAll('input').forEach(inp => inp.oninput = () => {
+    const id = r.dataset.id, pk = +r.dataset.pk;
+    const p = parseFloat(r.querySelector('[data-k=p]').value) || 0, l = parseFloat(r.querySelector('[data-k=l]')?.value) || 0;
+    const q = Math.ceil(p) * pk + Math.ceil(l);
+    S.receipts[sDate] = S.receipts[sDate] || {};
+    if (q > 0) { S.receipts[sDate][id] = q; if (S.noReceipt?.[sDate]) delete S.noReceipt[sDate][id]; } else delete S.receipts[sDate][id];
+    const it = S.items.find(i => i.id === id);
+    r.querySelector('.calc').innerHTML = q > 0 ? `Total: <b>${num(q)} ${esc(it.unit)}</b> (${brl(q * it.cost)})` : '';
+    save(); tot();
+  }));
+}
+
+/* ---------- Faturamento ---------- */
+let rMonth = today.slice(0, 7);
+function renderRev() {
+  const el = $('#t-rev');
+  const days = Object.keys(S.revenue).filter(d => d.startsWith(rMonth) && S.revenue[d] > 0).sort();
+  const sum = k => days.reduce((a, d) => a + (S.revSplit[d]?.[k] || 0), 0);
+  const total = days.reduce((a, d) => a + S.revenue[d], 0);
+  const split = CH.reduce((a, [k]) => a + sum(k), 0);
+  const mix = v => split > 0 ? pct(v / split) : '—';
+  const trs = days.map(d => `<tr><td>${label(d)}</td>${CH.map(([k]) => `<td>${S.revSplit[d]?.[k] != null ? brl(S.revSplit[d][k]) : '—'}</td>`).join('')}<td><b>${brl(S.revenue[d])}</b></td></tr>`).join('');
+  const b = S.baseline?.canais;
+  el.innerHTML = `<div class="stack">
+    <div class="bar"><label class="f">Mês<input type="month" id="rMonth" value="${rMonth}"></label></div>
+    <div class="kpis">
+      <div class="kpi"><div class="k">Faturamento no mês</div><div class="v">${brl(total)}</div><div class="d">${days.length} dias lançados${days.length ? ` · média ${brl(total / days.length)} por dia` : ''}</div></div>
+      ${CH.map(([k, n]) => `<div class="kpi"><div class="k">${n}</div><div class="v">${brl(sum(k))}</div><div class="d">${mix(sum(k))} do total por canal</div></div>`).join('')}
+    </div>
+    ${days.length ? `<div class="tw"><table><thead><tr><th>Dia</th>${CH.map(([, n]) => `<th>${n}</th>`).join('')}<th>Total</th></tr></thead><tbody>${trs}</tbody>
+      <tfoot><tr><td>Total do mês</td>${CH.map(([k]) => `<td>${brl(sum(k))}</td>`).join('')}<td>${brl(total)}</td></tr></tfoot></table></div>` : '<p class="empty">Nenhum faturamento lançado neste mês. A loja lança as vendas de cada canal no fechamento do dia.</p>'}
+    ${b ? `<div><h2>Referência: ${esc(S.baseline.label)}</h2><div class="tw"><table><thead><tr><th>Canal</th><th>Valor</th><th>Participação</th></tr></thead><tbody>
+      ${b.map(c => `<tr><td>${esc(c.nome)}</td><td>${brl(c.valor)}</td><td>${pct(c.valor / S.baseline.receita)}</td></tr>`).join('')}</tbody>
+      <tfoot><tr><td>Total</td><td>${brl(S.baseline.receita)}</td><td>100%</td></tr></tfoot></table></div></div>` : ''}
+  </div>`;
+  $('#rMonth').onchange = e => { rMonth = e.target.value || today.slice(0, 7); renderRev(); };
+}
+
+/* ---------- Painel ---------- */
+function renderPanel() {
+  const el = $('#t-panel');
+  const L = E.lastCountDate(S);
+  if (!L) { el.innerHTML = '<p class="empty">Sem contagens ainda.</p>'; return; }
+  const st = E.status(S);
+  const c7 = E.realCMV(S, L, 7);
+  const stockValue = st.reduce((a, s) => a + s.stockValue, 0);
+  const excess = st.reduce((a, s) => a + s.excessValue, 0);
+  let bought = 0;
+  const started = !S.start || L >= S.start;
+  for (let i = 0; i < 7; i++) { const d = E.addDays(L, -i); if (S.start && d < S.start) continue; S.items.forEach(it => bought += (S.receipts[d]?.[it.id] || 0) * it.cost); }
+  let supDays = 0, supOff = 0;
+  for (let i = 0; i < 14; i++) { const d = E.addDays(L, -i); if (S.start && d < S.start) continue; const rc = S.receipts[d]; if (rc && Object.values(rc).some(v => v > 0)) { supDays++; if (!E.DELIVERY_DAYS.includes(E.dow(d))) supOff++; } }
+  const over = c7.cmv != null && c7.cmv > S.cmvMeta / 100;
+  const low = st.filter(s => s.state === 'low'), high = st.filter(s => s.state === 'high').sort((a, b) => b.excessValue - a.excessValue);
+  // divergências: consumo negativo ou muito acima do esperado nos últimos 7 dias
+  const anomalies = [];
+  for (let i = 0; i < 7; i++) {
+    const d = E.addDays(L, -i);
+    S.items.forEach(it => {
+      const c = E.consumption(S, it, d); if (c == null) return;
+      const exp = E.forecastDay(S, it, d, d);
+      if (c < 0) anomalies.push({ d, it, text: `consumo negativo (${num(c, 2)} ${it.unit}). Conferir contagem ou entrada`, kind: 'crit', w: 1e9 });
+      else if (exp > 0 && c > exp * 1.5 && (c - exp) * it.cost > 5) anomalies.push({ d, it, text: `saiu ${num(c, 1)} ${it.unit}, esperado ${num(exp, 1)}`, kind: 'warn', w: (c - exp) * it.cost });
+    });
+  }
+  anomalies.sort((a, b) => b.w - a.w);
+  const repeated = S.items.map(it => { const v = S.counts[L]?.[it.id]; if (v == null) return null; let n = 0; for (let d = L; S.counts[d]?.[it.id] === v; d = E.addDays(d, -1)) n++; return n >= 4 ? { it, v, n } : null; }).filter(Boolean);
+  const stateLabel = { ok: 'Adequado', low: 'Falta antes da entrega', high: 'Excesso', na: 'Sem dados' };
+  const trs = st.map(s => `<tr><td>${esc(s.item.name)}</td><td>${num(s.stock, 1)} ${esc(s.item.unit)}</td><td>${s.coverage == null ? '—' : num(s.coverage, 1) + ' d'}</td>
+    <td><span class="meter" aria-hidden="true"><i class="${s.state}" style="width:${s.coverage == null ? 0 : Math.min(100, s.coverage / ((s.item.maxDays || 7) * 1.25) * 100)}%"></i></span></td>
+    <td>${s.item.maxDays ? s.item.maxDays + ' d' : '—'}</td><td>${brl(s.stockValue)}</td><td><span class="chip ${s.state}">${stateLabel[s.state]}</span></td></tr>`).join('');
+  el.innerHTML = `<div class="stack">
+    <div class="kpis">
+      <div class="kpi"><div class="k">CMV real, últimos 7 dias</div><div class="v" style="color:${c7.cmv == null ? 'inherit' : over ? 'var(--crit)' : 'var(--ok)'}">${pct(c7.cmv)}</div><div class="d">Meta ${num(S.cmvMeta, 0)}%${c7.days ? ` · ${c7.days} dias com faturamento` : ' · informe o faturamento diário'}</div></div>
+      <div class="kpi"><div class="k">Entradas lançadas, 7 dias</div><div class="v">${started ? brl(bought) : '—'}</div><div class="d">Consumido: ${brl(c7.cost)}</div></div>
+      <div class="kpi"><div class="k">Dias com abastecimento, 14 dias</div><div class="v" style="color:${supOff > 0 ? 'var(--warn)' : 'inherit'}">${started ? supDays : '—'}</div><div class="d">${started ? `${supOff} fora de segunda e quinta. ` : ''}Ciclo: 2 por semana${S.start ? ` · desde ${S.start.slice(8)}/${S.start.slice(5, 7)}` : ''}</div></div>
+      <div class="kpi"><div class="k">Estoque na prateleira</div><div class="v">${brl(stockValue)}</div><div class="d">Contagem de ${label(L)}</div></div>
+      <div class="kpi"><div class="k">Excesso acima do teto</div><div class="v" style="color:${excess > 0 ? 'var(--warn)' : 'inherit'}">${brl(excess)}</div><div class="d">${high.length} itens acima do teto de dias</div></div>
+    </div>
+    ${S.baseline ? (() => { const b = S.baseline, alvo = b.receita * S.cmvMeta / 100; return `<div class="callout"><div><div class="sub">Compras na DRE, ${esc(b.label)}</div><div class="big">${brl(b.cmv)}</div></div><div class="sub" style="max-width:640px">${pct(b.cmv / b.receita)} da receita bruta de ${brl(b.receita)}. Na meta de ${num(S.cmvMeta)}% seriam ${brl(alvo)}, uma diferença de <b>${brl(b.cmv - alvo)}</b> no mês. O CMV da DRE conta o que foi comprado. O CMV real do sistema conta o que foi consumido: compras + estoque inicial − estoque final.</div></div>`; })() : ''}
+    <div class="cols">
+      <div><h2>Risco de faltar antes da entrega</h2>${low.length ? `<ul class="mini">${low.map(s => `<li><span>${esc(s.item.name)}</span><span>${num(s.stock, 1)} de ${num(s.untilDelivery, 1)} ${esc(s.item.unit)} necessários</span></li>`).join('')}</ul>` : '<p class="empty">Nenhum item abaixo do necessário até a próxima entrega.</p>'}</div>
+      <div><h2>Divergências nos últimos 7 dias</h2>${anomalies.length ? `<ul class="mini">${anomalies.slice(0, 6).map(a => `<li><span>${esc(a.it.name)} · ${label(a.d)}</span><span class="chip ${a.kind}">${esc(a.text)}</span></li>`).join('')}</ul>` : '<p class="empty">Nada fora do padrão.</p>'}</div>
+      <div><h2>Contagem repetida</h2>${repeated.length ? `<ul class="mini">${repeated.map(x => `<li><span>${esc(x.it.name)}</span><span class="chip info">${num(x.v)} há ${x.n} dias seguidos</span></li>`).join('')}</ul><p class="sub" style="margin:6px 0 0">Pode ser estoque parado ou número copiado do dia anterior.</p>` : '<p class="empty">Nenhum item com a mesma contagem por 4 dias ou mais.</p>'}</div>
+    </div>
+    <div><h2>Cobertura por item</h2><p class="sub" style="margin:0 0 8px">Quantos dias de venda o estoque atual cobre, com o consumo médio recente.</p>
+      <div class="tw"><table><thead><tr><th>Item</th><th>Estoque</th><th>Cobre</th><th></th><th>Teto</th><th>Valor parado</th><th>Situação</th></tr></thead><tbody>${trs}</tbody></table></div></div>
+  </div>`;
+}
+
+/* ---------- Itens ---------- */
+let confirmWipe = false;
+function renderItems() {
+  const el = $('#t-items');
+  const f = (it, k, step = 'any') => `<td><input type="number" min="0" step="${step}" data-k="${k}" value="${it[k] ?? ''}" aria-label="${k} de ${esc(it.name)}"></td>`;
+  const trs = S.items.map(it => `<tr data-id="${it.id}">
+    <td><input type="text" data-k="name" value="${esc(it.name)}" style="width:200px" aria-label="Nome"></td>
+    <td><input type="text" data-k="unit" value="${esc(it.unit)}" style="width:70px" aria-label="Unidade"></td>
+    ${f(it, 'cost')}${f(it, 'pack')}${f(it, 'shelfDays')}${f(it, 'safetyDays')}${f(it, 'maxDays')}
+    <td><button class="btn danger" data-del="${it.id}" aria-label="Remover ${esc(it.name)}">Remover</button></td></tr>`).join('');
+  el.innerHTML = `<div class="stack">
+    <div class="bar">
+      <label class="f">Loja<input type="text" id="sStore" value="${esc(S.store)}" style="width:180px"></label>
+      <label class="f">Faturamento médio por dia (R$)<input type="number" id="sRev" min="0" step="any" value="${S.revRef ?? ''}" style="width:130px"></label>
+      <label class="f">Meta de CMV (%)<input type="number" id="sMeta" min="1" max="100" value="${S.cmvMeta}"></label>
+    </div>
+    <div><h2>Itens controlados</h2><p class="sub" style="margin:0 0 8px">Custo por unidade. Embalagem é o múltiplo de compra (proteína vem de 5 em 5, disco de wrap de 10 em 10). Segurança é a folga em dias de venda. Teto é o máximo de dias de estoque que a loja deve manter.</p>
+      <div class="tw"><table><thead><tr><th>Nome</th><th>Unidade</th><th>Custo (R$)</th><th>Embalagem</th><th>Validade (dias)</th><th>Segurança (dias)</th><th>Teto (dias)</th><th></th></tr></thead><tbody>${trs}</tbody></table></div></div>
+    <div class="bar"><button class="btn ghost" id="sAdd">Adicionar item</button>
+      <button class="btn ghost" id="sReal">Carregar histórico real de 20 a 29/09 (substitui os dados atuais)</button>
+      <button class="btn ghost" id="sDemo">Recarregar dados de exemplo</button>
+      ${confirmWipe ? '<span class="sub">Apagar todos os itens e lançamentos?</span><button class="btn danger" id="sWipeYes">Sim, apagar tudo</button><button class="btn ghost" id="sWipeNo">Cancelar</button>' : '<button class="btn danger" id="sWipe">Apagar tudo e começar do zero</button>'}</div>
+  </div>`;
+  const bind = (id, fn) => { const n = $(id); if (n) n.onclick = fn; };
+  $('#sStore').oninput = e => { S.store = e.target.value; save(); $('#storeLine').textContent = S.store; };
+  $('#sRev').oninput = e => { const v = parseFloat(e.target.value); S.revRef = isNaN(v) ? 0 : v; save(); };
+  $('#sMeta').oninput = e => { S.cmvMeta = parseFloat(e.target.value) || 35; save(); };
+  el.querySelectorAll('tbody tr').forEach(tr => tr.querySelectorAll('input').forEach(inp => inp.oninput = () => {
+    const it = S.items.find(i => i.id === tr.dataset.id), k = inp.dataset.k;
+    it[k] = inp.type === 'number' ? (inp.value === '' ? null : parseFloat(inp.value)) : inp.value;
+    save();
+  }));
+  el.querySelectorAll('[data-del]').forEach(b => b.onclick = () => { S.items = S.items.filter(i => i.id !== b.dataset.del); save(); renderItems(); });
+  bind('#sAdd', () => { S.items.push({ id: 'i' + Date.now().toString(36), name: 'Novo item', unit: 'un', cost: 0, pack: 1, shelfDays: null, safetyDays: 0.5, maxDays: 5 }); save(); renderItems(); });
+  bind('#sDemo', () => { S = makeDemo(today); save(); renderAll(); toast('Dados de exemplo recarregados'); });
+  bind('#sReal', () => { S = makeReal(); save(); renderAll(); toast('Histórico real carregado'); });
+  bind('#sWipe', () => { confirmWipe = true; renderItems(); });
+  bind('#sWipeNo', () => { confirmWipe = false; renderItems(); });
+  bind('#sWipeYes', () => { S = { store: S.store, cmvMeta: S.cmvMeta, items: [], counts: {}, receipts: {}, revenue: {}, revSplit: {}, demo: false }; confirmWipe = false; save(); renderAll(); toast('Tudo apagado'); });
+}
+
+function render() {
+  $('#storeLine').textContent = S.store;
+  const bn = $('#demoBanner'); const msg = S.demo ? 'Dados de exemplo.' : ''; bn.textContent = msg; bn.hidden = !msg;
+  if (tab === 'count') renderCount(); else if (tab === 'order') renderOrder(); else if (tab === 'supply') renderSupply(); else if (tab === 'rev') renderRev(); else if (tab === 'panel') renderPanel(); else renderItems();
+}
+function renderAll() { render(); }
+/* ---------- Banco de dados (Supabase, sem login: acesso por PIN da loja) ---------- */
+const CFG = window.ACAISE_CFG;
+let timers = {}, dirty = new Set(), dbMsg = ['Conectando...', false];
+const setDbState = (t, bad) => { const n = $('#dbState'); if (n) { n.textContent = t; n.style.color = bad ? 'var(--warn)' : ''; } };
+const getPin = () => { try { return localStorage.getItem('acaise_pin') || ''; } catch (e) { return ''; } };
+async function rpc(fn, args) {
+  const r = await fetch(CFG.url + '/rest/v1/rpc/' + fn, { method: 'POST', headers: { apikey: CFG.key, Authorization: 'Bearer ' + CFG.key, 'Content-Type': 'application/json' }, body: JSON.stringify(args) });
+  if (!r.ok) { const t = await r.text(); throw new Error(t.includes('pin_invalido') ? 'pin' : 'http ' + r.status); }
+  return r.json();
+}
+function dayPayload(d) { return { p_pin: getPin(), p_data: d, p_loja: S.store, p_contagem: S.counts[d] || {}, p_vendas: S.revSplit[d] || {}, p_total: revTotal(d) || 0 }; }
+function saveDay(d) {
+  dirty.add(d); clearTimeout(timers[d]);
+  setDbState('Salvando...');
+  timers[d] = setTimeout(() => flush(d), 700);
+}
+async function flush(d) {
+  try { await rpc('est_salvar', dayPayload(d)); dirty.delete(d); dbMsg = ['Salvo ✓', false]; }
+  catch (e) {
+    if (e.message === 'pin') { askPin(); return; }
+    dbMsg = ['Sem conexão: ainda não salvou. Tentando de novo...', true]; clearTimeout(timers[d]); timers[d] = setTimeout(() => flush(d), 8000);
+  }
+  setDbState(...dbMsg);
+}
+function askPin() {
+  const el = $('#pinBox'); el.hidden = false;
+  el.innerHTML = '<div class="how"><b>Digite o PIN da loja</b><div class="bar" style="margin:8px 0 0"><input type="password" id="pinIn" inputmode="numeric" style="width:140px;text-align:left"><button class="btn" id="pinOk">Entrar</button></div><div id="pinErr" class="sub" style="color:var(--crit)"></div></div>';
+  $('#pinOk').onclick = async () => {
+    const v = $('#pinIn').value.trim();
+    try { localStorage.setItem('acaise_pin', v); } catch (e) {}
+    try { await loadRemote(); el.hidden = true; dirty.forEach(d => flush(d)); } catch (e) { $('#pinErr').textContent = e.message === 'pin' ? 'PIN incorreto.' : 'Sem conexão.'; }
+  };
+}
+async function loadRemote() {
+  const rows = await rpc('est_ler', { p_pin: getPin(), p_desde: E.addDays(today, -45) });
+  rows.forEach(v => {
+    const d = v.data; if (dirty.has(d)) return;
+    S.counts[d] = v.contagem || {};
+    if (v.vendas && Object.keys(v.vendas).length) { S.revSplit[d] = v.vendas; S.revenue[d] = revTotal(d); }
+  });
+  save(); dbMsg = ['Conectado', false]; render();
+}
+async function initDb() {
+  if (!getPin()) { askPin(); return; }
+  try { await loadRemote(); } catch (e) { if (e.message === 'pin') askPin(); else { dbMsg = ['Sem conexão com o banco', true]; setDbState(...dbMsg); } }
+}
+render();
+initDb();
+})();
+</script>
+
+</body></html>
