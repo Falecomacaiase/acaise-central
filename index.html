@@ -254,6 +254,7 @@
       <button class="tab-btn" id="tabBtnCompras" onclick="switchAdminTab('compras')">🛒 Lista de Compras</button>
       <button class="tab-btn" id="tabBtnLog" onclick="switchAdminTab('log')">📋 Log</button>
       <button class="tab-btn" id="tabBtnNotas" onclick="switchAdminTab('notas')">📄 Notas e Boletos</button>
+      <button class="tab-btn" id="tabBtnFechamentos" onclick="switchAdminTab('fechamentos')">📊 Fechamentos</button>
     </div>
 
     <div id="tabPedidos">
@@ -801,6 +802,11 @@
       <div id="adminNotasPainel"></div>
     </div>
 
+    <!-- ABA: FECHAMENTOS (lê o fechamento diário da Boa Viagem e cruza com os despachos) -->
+    <div id="tabFechamentos" class="hidden">
+      <div id="fechPainel"></div>
+    </div>
+
   </div>
 
   <!-- RECEBIMENTO DE NOTAS (funcionário do galpão / Boa Viagem) -->
@@ -927,7 +933,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.10.11-3";
+const APP_VERSION = "2026.10.19-1";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -1885,7 +1891,7 @@ function abrirRomaneioLojaObjeto(p) {
 function imprimirRomaneioLoja() { window.print(); }
 
 function switchAdminTab(tab) {
-  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Compras','Log','Notas'].forEach(t => {
+  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Compras','Log','Notas','Fechamentos'].forEach(t => {
     const el = document.getElementById('tab'+t);
     const btn = document.getElementById('tabBtn'+t);
     if(el) el.classList.toggle('hidden', tab !== t.toLowerCase());
@@ -1900,6 +1906,7 @@ function switchAdminTab(tab) {
   if (tab === 'compras') { iniciarListaCompras(); }
   if (tab === 'log') { iniciarLog(); }
   if (tab === 'notas') { iniciarEscutaNotas(); renderPainelNotas(); }
+  if (tab === 'fechamentos') { iniciarFechamentos(); }
 }
 
 // ─── CADASTROS ───────────────────────────────────────────────────────────────
@@ -6917,6 +6924,315 @@ function navFotoViewer(passo) {
   document.getElementById('fotoViewerInfo').textContent = `${v.i + 1}/${v.lista.length}${atual.legenda ? ' • ' + atual.legenda : ''}`;
 }
 function fecharFotoViewer() { document.getElementById('fotoViewerOverlay').style.display = 'none'; }
+
+// ─── FECHAMENTOS (Boa Viagem) ────────────────────────────────────────────────
+// Lê o fechamento diário que a loja faz em /fechamento/ (outro banco: Supabase,
+// acesso pelo PIN da loja) e cruza com o que a central DESPACHOU para a Boa
+// Viagem — despachar = a mercadoria foi entregue na loja. Com isso:
+//   consumo do período = sobrou na abertura + entradas (despachos) − sobrou no fim
+// A aba só LÊ os dados; não altera nada do que a loja usa.
+// O PIN nunca fica no código (o repositório é público): é digitado uma vez e
+// guardado só no navegador de quem usa.
+// A configuração do banco do fechamento é lida da própria página /fechamento/
+// (fonte única): nenhuma chave é copiada para este arquivo.
+let FECH_SUPABASE = null;
+const FECH_LOJA = 'BOA VIAGEM';
+const FECH_CANAIS = [['f99', '99Food'], ['balcao', 'Balcão'], ['ifood', 'iFood']];
+const FECH_CREMES = ['cupu', 'ninho', 'cmorango', 'cpacoca'];
+// Os 22 itens controlados no fechamento (mesmos ids da página /fechamento/)
+const FECH_ITENS = [
+  ['arte', 'Açaí Artesanal 8kg', 'cx', 'Açaí e polpinhas'], ['melc', 'Açaí Mel 8kg', 'cx', 'Açaí e polpinhas'],
+  ['barra', 'Açaí Puro', 'kg', 'Açaí e polpinhas'], ['porc1', 'Polpinha 1kg', 'un', 'Açaí e polpinhas'], ['porc400', 'Polpinha 400g', 'un', 'Açaí e polpinhas'],
+  ['cupu', 'Creme Cupuaçu', 'kg', 'Cremes'], ['ninho', 'Creme Ninho', 'kg', 'Cremes'], ['cmorango', 'Creme Morango', 'kg', 'Cremes'], ['cpacoca', 'Creme Paçoca', 'kg', 'Cremes'],
+  ['ptrad', 'Pote 1,5L tradicional', 'un', 'Potes e picolé'], ['pnuts', 'Pote 1,5L castanha', 'un', 'Potes e picolé'], ['picole', 'Picolé', 'un', 'Potes e picolé'],
+  ['leitepo', 'Leite em Pó 200g', 'un', 'Leite e granola'], ['leitecd', 'Leite Condensado', 'un', 'Leite e granola'], ['gran30', 'Granola 30g', 'un', 'Leite e granola'], ['gran15', 'Granola 1,5kg', 'un', 'Leite e granola'],
+  ['disco', 'Disco Wrap', 'un', 'Wraps e proteínas'], ['pao', 'Pão Ciabatta', 'un', 'Wraps e proteínas'], ['camarao', 'Camarão', 'porção', 'Wraps e proteínas'],
+  ['frangod', 'Frango Desfiado', 'porção', 'Wraps e proteínas'], ['frangog', 'Frango Grelhado', 'porção', 'Wraps e proteínas'], ['file', 'Filé Mignon', 'porção', 'Wraps e proteínas']
+].map(([id, nome, un, grupo]) => ({ id, nome, un, grupo }));
+// Item do catálogo da central → [item do fechamento, quantas unidades do fechamento vêm em 1 unidade despachada]
+// (conferido pelos preços: ex. Filé c/05 R$ 51,17 = 5 × R$ 10,23 da página de fechamento)
+const FECH_MAPA = {
+  PA88: ['arte', 1], PA86: ['arte', 1], PA245: ['arte', 1],
+  PA246: ['melc', 1], PA89: ['melc', 1], PA91: ['melc', 1],
+  PA92: ['barra', 5], PA93: ['porc1', 1], PA94: ['porc400', 1],
+  PA95: ['cupu', 'creme'], PA263: ['ninho', 'creme'], PA262: ['cmorango', 'creme'], PA264: ['cpacoca', 'creme'],
+  PA96: ['ptrad', 'cx4'], PA97: ['pnuts', 'cx4'], PA98: ['picole', 24],
+  AC62: ['leitepo', 1], AC61: ['leitecd', 1], AC64: ['gran30', 100], AC65: ['gran15', 1],
+  PROD233: ['disco', 10], PROD239: ['pao', 10], PROD259: ['camarao', 5], PROD128: ['frangod', 5], PROD235: ['frangog', 5], PROD293: ['file', 5]
+};
+
+let _fech = { linhas: null, erro: '', ini: '', fim: '', cfg: { pesoCaixaCreme: 5 } };
+
+function fechIso(d) { return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`; }
+function fechAddDias(iso, n) { const [a, m, d] = iso.split('-').map(Number); return fechIso(new Date(a, m - 1, d + n)); }
+function fechDow(iso) { const [a, m, d] = iso.split('-').map(Number); return new Date(a, m - 1, d).getDay(); }
+const FECH_DIAS = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+function fechRotulo(iso) { return `${FECH_DIAS[fechDow(iso)]} ${iso.slice(8)}/${iso.slice(5, 7)}`; }
+function fechNum(n, casas = 1) { return n == null || isNaN(n) ? '—' : (Math.round(n * 10 ** casas) / 10 ** casas).toLocaleString('pt-BR'); }
+function fechPin() { try { return localStorage.getItem('acaise_fech_pin') || ''; } catch(e) { return ''; } }
+
+// Lê url e chave pública do banco direto da página de fechamento publicada.
+async function fechCarregarConfig() {
+  if (FECH_SUPABASE) return FECH_SUPABASE;
+  const html = await fetch('fechamento/index.html', { cache: 'no-store' }).then(r => { if (!r.ok) throw new Error('página de fechamento não encontrada'); return r.text(); });
+  const url = (html.match(/url:\s*'([^']+)'/) || [])[1];
+  const key = (html.match(/key:\s*'([^']+)'/) || [])[1];
+  if (!url || !key) throw new Error('configuração do fechamento não encontrada');
+  FECH_SUPABASE = { url, key };
+  return FECH_SUPABASE;
+}
+
+async function fechRpc(fn, args) {
+  await fechCarregarConfig();
+  const r = await fetch(FECH_SUPABASE.url + '/rest/v1/rpc/' + fn, {
+    method: 'POST',
+    headers: { apikey: FECH_SUPABASE.key, Authorization: 'Bearer ' + FECH_SUPABASE.key, 'Content-Type': 'application/json' },
+    body: JSON.stringify(args)
+  });
+  const txt = await r.text();
+  if (!r.ok) throw new Error(txt.includes('pin_invalido') ? 'pin' : 'HTTP ' + r.status);
+  return txt ? JSON.parse(txt) : [];
+}
+
+async function iniciarFechamentos(forcar) {
+  const alvo = document.getElementById('fechPainel');
+  try {
+    const r = await safeGet('fechamentoConfig', true);
+    if (r && r.value) _fech.cfg = { ..._fech.cfg, ...parseValue(r.value) };
+  } catch(e) {}
+  try { await loadItemState(); } catch(e) {}
+  if (!fechPin()) { renderFechPin(); return; }
+  if (_fech.linhas && !forcar) { renderFechamentos(); return; }
+  alvo.innerHTML = '<p class="small">Carregando fechamentos...</p>';
+  try {
+    const linhas = await fechRpc('est_ler', { p_pin: fechPin(), p_desde: '2026-09-01' });
+    _fech.linhas = linhas.filter(l => !l.loja || /boa viagem/i.test(l.loja));
+    _fech.erro = '';
+    if (forcar) { _dataCache = null; await loadAllData(); }
+  } catch(e) {
+    if (e.message === 'pin') { try { localStorage.removeItem('acaise_fech_pin'); } catch(_) {} renderFechPin('PIN incorreto.'); return; }
+    _fech.erro = e.message;
+  }
+  renderFechamentos();
+}
+
+function renderFechPin(erro) {
+  document.getElementById('fechPainel').innerHTML = `
+    <div class="card" style="max-width:420px">
+      <h3 style="margin-top:0">🔐 PIN do fechamento</h3>
+      <p class="small">Digite o PIN da loja usado na página de fechamento. Ele fica salvo só neste navegador.</p>
+      <input type="password" id="fechPinIn" inputmode="numeric" placeholder="PIN" style="max-width:180px">
+      <button class="btn" style="margin-top:8px" onclick="salvarFechPin()">Entrar</button>
+      <div class="small" style="color:#C62828;margin-top:6px">${erro || ''}</div>
+    </div>`;
+}
+function salvarFechPin() {
+  const v = document.getElementById('fechPinIn').value.trim();
+  if (!v) return;
+  try { localStorage.setItem('acaise_fech_pin', v); } catch(e) {}
+  _fech.linhas = null;
+  iniciarFechamentos();
+}
+
+// Contagens normalizadas: cremes são pesados — valores grandes (≥ 50) foram
+// digitados em gramas e viram kg; valores pequenos já estão em kg.
+function fechContagens() {
+  const out = {};
+  (_fech.linhas || []).forEach(l => {
+    const c = {};
+    Object.entries(l.contagem || {}).forEach(([k, v]) => {
+      if (v == null || isNaN(v)) return;
+      c[k] = FECH_CREMES.includes(k) && v >= 50 ? v / 1000 : Number(v);
+    });
+    out[l.data] = c;
+  });
+  return out;
+}
+function fechVendas() {
+  const out = {};
+  (_fech.linhas || []).forEach(l => {
+    const v = l.vendas || {};
+    const tot = FECH_CANAIS.reduce((s, [k]) => s + (Number(v[k]) || 0), 0);
+    if (tot > 0) out[l.data] = { ...v, total: Math.round(tot * 100) / 100 };
+  });
+  return out;
+}
+
+// Entradas = despachos da central para a Boa Viagem, convertidos para a
+// unidade que a loja conta. Data = dia do despacho.
+function fechEntradas() {
+  const porDia = {};
+  const pedidos = [];
+  if (!_dataCache) return { porDia, pedidos };
+  Object.entries(_dataCache).forEach(([k, v]) => {
+    if (!k.startsWith('pedido:')) return;
+    const p = parseValue(v);
+    if (!p || p.unidade !== FECH_LOJA || !p.despachado || !p.dataDespacho) return;
+    const dia = fechIso(new Date(p.dataDespacho));
+    const linhas = [];
+    Object.entries(p.itens || {}).forEach(([id, it]) => {
+      const m = FECH_MAPA[id];
+      if (!m) return;
+      let fator = m[1];
+      if (fator === 'creme') fator = Number(_fech.cfg.pesoCaixaCreme) || 5;
+      if (fator === 'cx4') fator = dia >= '2026-10-05' ? 4 : 1; // potes viraram "cx c/4" em 05/10
+      const q = (Number(it.qtd) || 0) * fator;
+      if (q <= 0) return;
+      const preco = Number(it.precoUnitario ?? it.preco) || 0;
+      porDia[dia] = porDia[dia] || {};
+      porDia[dia][m[0]] = porDia[dia][m[0]] || { q: 0, valor: 0 };
+      porDia[dia][m[0]].q += q;
+      porDia[dia][m[0]].valor += preco * (Number(it.qtd) || 0);
+      linhas.push({ fid: m[0], q });
+    });
+    if (linhas.length) pedidos.push({ dia, numero: p.numeroPedido, linhas, quando: p.dataDespacho });
+  });
+  pedidos.sort((a, b) => String(b.quando).localeCompare(String(a.quando)));
+  return { porDia, pedidos };
+}
+
+// Custo por unidade contada = preço que a central cobra ÷ fator da embalagem
+function fechCustoUnit(fid) {
+  const ent = Object.entries(FECH_MAPA).find(([, m]) => m[0] === fid);
+  if (!ent) return 0;
+  const item = Object.values(CATALOGO).flat().find(i => i.id === ent[0]);
+  if (!item) return 0;
+  const st = itemState[item.id] || {};
+  const preco = Number(st.venda || item.preco) || 0;
+  let fator = ent[1][1];
+  if (fator === 'creme') fator = Number(_fech.cfg.pesoCaixaCreme) || 5;
+  if (fator === 'cx4') fator = 4;
+  return preco / fator;
+}
+
+function setFechPeriodo(campo, v) { _fech[campo] = v; renderFechamentos(); }
+
+async function salvarFechCfg() {
+  const v = parseFloat(String(document.getElementById('fechPesoCreme').value).replace(',', '.'));
+  if (!(v > 0)) { alert('Informe o peso médio da caixa de creme em kg (ex: 5).'); return; }
+  _fech.cfg.pesoCaixaCreme = v;
+  await saveDocument('fechamentoConfig', _fech.cfg);
+  renderFechamentos();
+}
+
+function trocarFechPin() { try { localStorage.removeItem('acaise_fech_pin'); } catch(e) {} _fech.linhas = null; renderFechPin(); }
+
+function renderFechamentos() {
+  const alvo = document.getElementById('fechPainel');
+  if (!alvo) return;
+  if (_fech.erro && !_fech.linhas) { alvo.innerHTML = `<p class="small" style="color:#C62828">Não foi possível ler os fechamentos: ${escHtml(_fech.erro)}. <button class="btn btn-secondary btn-xs" onclick="iniciarFechamentos(true)">Tentar de novo</button></p>`; return; }
+  const cont = fechContagens(), vendas = fechVendas();
+  const { porDia: entradas, pedidos } = fechEntradas();
+  const diasCont = Object.keys(cont).filter(d => Object.keys(cont[d]).length).sort();
+  const hoje = fechIso(new Date()), ontem = fechAddDias(hoje, -1);
+  // Só considera o período em que a loja realmente começou a fechar (com vendas)
+  const diasReais = Object.keys(vendas).sort();
+  const primeiro = diasReais[0] || diasCont[0] || ontem;
+  const ultimo = diasCont[diasCont.length - 1] || ontem;
+  if (!_fech.fim) _fech.fim = ultimo;
+  if (!_fech.ini) _fech.ini = [fechAddDias(_fech.fim, -6), fechAddDias(primeiro, 1)].sort().pop();
+  const ini = _fech.ini, fim = _fech.fim;
+  const dias = []; for (let d = ini; d <= fim; d = fechAddDias(d, 1)) dias.push(d);
+  const brl = n => fmtBRL(n);
+
+  // ── Financeiro
+  const fatPeriodo = dias.reduce((s, d) => s + (vendas[d]?.total || 0), 0);
+  const diasComVenda = dias.filter(d => vendas[d]);
+  const somaCanal = k => dias.reduce((s, d) => s + (Number(vendas[d]?.[k]) || 0), 0);
+  const mediaMesmoDia = d => {
+    const ant = []; for (let i = 1; i <= 6; i++) { const x = fechAddDias(d, -7 * i); if (vendas[x]) ant.push(vendas[x].total); }
+    return ant.length ? ant.reduce((a, b) => a + b, 0) / ant.length : null;
+  };
+  const ontemSemFechamento = ontem >= primeiro && !vendas[ontem];
+  const linhasFin = dias.map(d => {
+    const v = vendas[d], c = cont[d];
+    const qtdContados = c ? FECH_ITENS.filter(i => c[i.id] != null).length : 0;
+    const ref = mediaMesmoDia(d);
+    const varTxt = v && ref ? (() => { const p = (v.total / ref - 1) * 100; return `<span style="color:${p >= 0 ? '#2E7D32' : '#C62828'};font-weight:600">${p >= 0 ? '▲' : '▼'} ${fechNum(Math.abs(p), 0)}%</span>`; })() : '<span class="small">—</span>';
+    const status = !v && !c ? '<span class="nota-status" style="background:#FFEBEE;color:#C62828">⚠️ sem fechamento</span>'
+      : !v ? '<span class="nota-status" style="background:#FFF3E0;color:#E65100">faltam as vendas</span>'
+      : qtdContados < FECH_ITENS.length ? `<span class="nota-status" style="background:#FFF8E1;color:#F57F17">contagem ${qtdContados}/${FECH_ITENS.length}</span>`
+      : '<span class="nota-status" style="background:#E8F5E9;color:#2E7D32">✅ completo</span>';
+    return `<tr><td>${fechRotulo(d)}</td>${FECH_CANAIS.map(([k]) => `<td style="text-align:right">${v && v[k] != null ? brl(v[k]) : '—'}</td>`).join('')}
+      <td style="text-align:right;font-weight:700">${v ? brl(v.total) : '—'}</td><td style="text-align:right">${varTxt}</td><td>${status}</td></tr>`;
+  }).join('');
+
+  // ── Consumo do período: abertura (contagem do dia anterior) + entradas − fechamento
+  const abertura = fechAddDias(ini, -1);
+  const temAbertura = !!cont[abertura], temFim = !!cont[fim];
+  let custoTotal = 0;
+  const linhasCons = FECH_ITENS.map(it => {
+    const a = cont[abertura]?.[it.id], f = cont[fim]?.[it.id];
+    const e = dias.reduce((s, d) => s + (entradas[d]?.[it.id]?.q || 0), 0);
+    const ok = a != null && f != null;
+    const consumo = ok ? a + e - f : null;
+    const cu = fechCustoUnit(it.id);
+    const custo = consumo != null && consumo > 0 ? consumo * cu : 0;
+    custoTotal += custo;
+    const por1000 = consumo != null && fatPeriodo > 0 ? consumo / fatPeriodo * 1000 : null;
+    const alerta = consumo != null && consumo < 0 ? '<span class="nota-status" style="background:#FFEBEE;color:#C62828">⚠️ negativo: conferir contagem ou entrada</span>'
+      : !ok ? '<span class="small">sem contagem</span>' : '';
+    return { it, html: `<tr><td>${escHtml(it.nome)} <span class="small">(${it.un})</span></td>
+      <td style="text-align:right">${fechNum(a)}</td><td style="text-align:right">${e ? '+' + fechNum(e) : '—'}</td><td style="text-align:right">${fechNum(f)}</td>
+      <td style="text-align:right;font-weight:700">${fechNum(consumo)}</td><td style="text-align:right">${fechNum(consumo != null ? consumo / dias.length : null)}</td>
+      <td style="text-align:right">${fechNum(por1000)}</td><td style="text-align:right">${custo ? brl(custo) : '—'}</td><td>${alerta}</td></tr>` };
+  });
+  let grupoAnt = '';
+  const htmlCons = linhasCons.map(l => { const g = l.it.grupo !== grupoAnt ? `<tr><td colspan="9" style="background:#F5F0FB;font-weight:700;color:#5B2D8E">${escHtml(l.it.grupo)}</td></tr>` : ''; grupoAnt = l.it.grupo; return g + l.html; }).join('');
+  const cmv = fatPeriodo > 0 ? custoTotal / fatPeriodo * 100 : null;
+
+  // ── Entradas (despachos) no período
+  const nomeF = fid => FECH_ITENS.find(i => i.id === fid)?.nome || fid;
+  const unF = fid => FECH_ITENS.find(i => i.id === fid)?.un || '';
+  const pedPeriodo = pedidos.filter(p => p.dia >= ini && p.dia <= fim);
+  const htmlEntradas = pedPeriodo.length ? pedPeriodo.map(p => `<div style="padding:6px 0;border-bottom:1px solid #f0f0f0;font-size:13px">
+      <strong>${fechRotulo(p.dia)}</strong> • ${escHtml(p.numero || '—')}: ${p.linhas.map(l => `${escHtml(nomeF(l.fid))} ${fechNum(l.q)} ${unF(l.fid)}`).join(' • ')}</div>`).join('')
+    : '<p class="small">Nenhum despacho para a Boa Viagem neste período com itens controlados.</p>';
+
+  const card = (t, v, sub, cor) => `<div style="flex:1;min-width:160px;background:#fff;border:1px solid #eee;border-radius:8px;padding:10px 12px"><div class="small">${t}</div><div style="font-size:20px;font-weight:700;color:${cor || '#333'}">${v}</div><div class="small">${sub || ''}</div></div>`;
+  const mix = k => fatPeriodo > 0 ? fechNum(somaCanal(k) / fatPeriodo * 100, 0) + '%' : '—';
+
+  alvo.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
+      <div class="field" style="margin:0"><label>De</label><input type="date" value="${ini}" onchange="setFechPeriodo('ini', this.value)"></div>
+      <div class="field" style="margin:0"><label>Até</label><input type="date" value="${fim}" onchange="setFechPeriodo('fim', this.value)"></div>
+      <button class="btn btn-secondary" onclick="iniciarFechamentos(true)">🔄 Atualizar</button>
+      <span class="small" style="margin-left:auto">Loja: <strong>Boa Viagem</strong> • fechamentos desde ${fechRotulo(primeiro)} • <a href="#" onclick="trocarFechPin();return false">trocar PIN</a></span>
+    </div>
+    ${ontemSemFechamento ? `<div style="background:#FFEBEE;border-left:4px solid #C62828;padding:10px 12px;border-radius:6px;margin-bottom:12px;color:#B71C1C"><strong>⚠️ A loja não fez o fechamento de ontem (${fechRotulo(ontem)}).</strong> Sem ele, o consumo e o CMV ficam incompletos.</div>` : ''}
+
+    <h3 style="margin:8px 0">💰 Financeiro</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      ${card('Faturamento no período', brl(fatPeriodo), `${diasComVenda.length} de ${dias.length} dias com fechamento`)}
+      ${card('Média por dia', diasComVenda.length ? brl(fatPeriodo / diasComVenda.length) : '—', 'dias com vendas lançadas')}
+      ${FECH_CANAIS.map(([k, n]) => card(n, brl(somaCanal(k)), mix(k) + ' do faturamento')).join('')}
+    </div>
+    <div class="tw" style="overflow-x:auto"><table style="width:100%;font-size:13px">
+      <thead><tr><th>Dia</th>${FECH_CANAIS.map(([, n]) => `<th style="text-align:right">${n}</th>`).join('')}<th style="text-align:right">Total</th><th style="text-align:right" title="Comparado com a média do mesmo dia da semana nas semanas anteriores">vs mesmo dia</th><th>Fechamento</th></tr></thead>
+      <tbody>${linhasFin}</tbody></table></div>
+    <p class="small">"vs mesmo dia" compara com a média do mesmo dia da semana nas semanas anteriores (aparece quando já houver semanas anteriores lançadas).</p>
+
+    <h3 style="margin:18px 0 8px">📦 Consumo no período</h3>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+      ${card('Custo do que foi consumido', brl(custoTotal), 'itens controlados, a preço da central')}
+      ${card('CMV dos itens controlados', cmv == null ? '—' : fechNum(cmv, 1) + '%', 'custo consumido ÷ faturamento', cmv != null && cmv > 35 ? '#C62828' : '#2E7D32')}
+    </div>
+    ${!temAbertura || !temFim ? `<div style="background:#FFF8E1;border-left:4px solid #F57F17;padding:8px 10px;border-radius:6px;margin-bottom:8px;font-size:13px">Para calcular o consumo é preciso a contagem de <strong>${fechRotulo(abertura)}</strong> (abertura) e de <strong>${fechRotulo(fim)}</strong> (fim). ${!temAbertura ? 'Falta a abertura.' : ''} ${!temFim ? 'Falta a do fim.' : ''}</div>` : ''}
+    <div class="tw" style="overflow-x:auto"><table style="width:100%;font-size:13px">
+      <thead><tr><th>Item</th><th style="text-align:right">Sobrou em ${fechRotulo(abertura)}</th><th style="text-align:right">Entrou (despachos)</th><th style="text-align:right">Sobrou em ${fechRotulo(fim)}</th><th style="text-align:right">Consumo</th><th style="text-align:right">Por dia</th><th style="text-align:right">Por R$ 1.000 vendidos</th><th style="text-align:right">Custo</th><th></th></tr></thead>
+      <tbody>${htmlCons}</tbody></table></div>
+    <p class="small">Consumo = o que sobrou no dia anterior ao período + o que a central despachou para a loja − o que sobrou no último dia. "Por R$ 1.000 vendidos" mostra quanto de cada item sai a cada mil reais de venda: se subir sem motivo, é sinal de desperdício, porção maior ou contagem errada.</p>
+
+    <h3 style="margin:18px 0 8px">🚚 Entradas no período (despachos da central)</h3>
+    ${htmlEntradas}
+    <details style="margin-top:14px"><summary class="small" style="cursor:pointer;font-weight:600">⚙️ Ajustes</summary>
+      <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:8px">
+        <div class="field" style="margin:0"><label>Peso médio de 1 caixa de creme (kg)</label><input type="text" id="fechPesoCreme" inputmode="decimal" value="${String(_fech.cfg.pesoCaixaCreme).replace('.', ',')}" style="max-width:120px"></div>
+        <button class="btn btn-secondary" onclick="salvarFechCfg()">Salvar</button>
+      </div>
+      <p class="small">A central despacha creme em caixa, e a loja conta em peso. Aqui se define quantos kg tem uma caixa, para converter as entradas. Contagens de creme acima de 50 são tratadas como gramas (ex: 8665 = 8,665 kg).</p>
+    </details>`;
+}
 </script>
 
 </body>
