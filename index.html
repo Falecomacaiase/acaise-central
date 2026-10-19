@@ -254,7 +254,7 @@
       <button class="tab-btn" id="tabBtnCompras" onclick="switchAdminTab('compras')">🛒 Lista de Compras</button>
       <button class="tab-btn" id="tabBtnLog" onclick="switchAdminTab('log')">📋 Log</button>
       <button class="tab-btn" id="tabBtnNotas" onclick="switchAdminTab('notas')">📄 Notas e Boletos</button>
-      <button class="tab-btn" id="tabBtnFechamentos" onclick="switchAdminTab('fechamentos')">📊 Fechamentos</button>
+      <button class="tab-btn" id="tabBtnFechamentos" onclick="switchAdminTab('fechamentos')">🏪 Acompanhamento Loja Boa Viagem</button>
     </div>
 
     <div id="tabPedidos">
@@ -933,7 +933,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.10.19-1";
+const APP_VERSION = "2026.10.19-2";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
 
@@ -7193,11 +7193,15 @@ function renderFechamentos() {
   const mix = k => fatPeriodo > 0 ? fechNum(somaCanal(k) / fatPeriodo * 100, 0) + '%' : '—';
 
   alvo.innerHTML = `
+    <div style="background:#5B2D8E;color:#fff;border-radius:8px;padding:12px 16px;margin-bottom:14px">
+      <div style="font-size:18px;font-weight:700">🏪 Acompanhamento Loja Boa Viagem</div>
+      <div style="font-size:12px;opacity:.85;margin-top:2px">Só a loja própria de Boa Viagem: fechamento diário da loja cruzado com o que a central despachou para ela.</div>
+    </div>
     <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:flex-end;margin-bottom:12px">
       <div class="field" style="margin:0"><label>De</label><input type="date" value="${ini}" onchange="setFechPeriodo('ini', this.value)"></div>
       <div class="field" style="margin:0"><label>Até</label><input type="date" value="${fim}" onchange="setFechPeriodo('fim', this.value)"></div>
       <button class="btn btn-secondary" onclick="iniciarFechamentos(true)">🔄 Atualizar</button>
-      <span class="small" style="margin-left:auto">Loja: <strong>Boa Viagem</strong> • fechamentos desde ${fechRotulo(primeiro)} • <a href="#" onclick="trocarFechPin();return false">trocar PIN</a></span>
+      <span class="small" style="margin-left:auto">Fechamentos desde ${fechRotulo(primeiro)} • <a href="#" onclick="trocarFechPin();return false">trocar PIN</a></span>
     </div>
     ${ontemSemFechamento ? `<div style="background:#FFEBEE;border-left:4px solid #C62828;padding:10px 12px;border-radius:6px;margin-bottom:12px;color:#B71C1C"><strong>⚠️ A loja não fez o fechamento de ontem (${fechRotulo(ontem)}).</strong> Sem ele, o consumo e o CMV ficam incompletos.</div>` : ''}
 
