@@ -192,7 +192,7 @@
 
       <!-- ITENS FORA DO CATÁLOGO (sem preço — a franqueadora precifica ao processar).
            Pra unidades internas (GALPÃO) essa vira a ÚNICA forma de pedir. -->
-      <div style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:8px;padding:14px;margin-top:16px">
+      <div id="itensAvulsosBox" style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:8px;padding:14px;margin-top:16px">
         <div style="font-size:13px;font-weight:700;color:#1565C0;margin-bottom:8px" id="itensAvulsosTitulo">📦 Itens fora do catálogo</div>
         <p class="small" style="margin:0 0 10px;color:#1565C0" id="itensAvulsosDesc">Materiais de escritório, frutas ou qualquer outra demanda que não está na lista. Não precisa de preço — a franqueadora define o valor ao processar o pedido.</p>
         <div id="itensAvulsosLista"></div>
@@ -933,9 +933,18 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.10.19-2";
+const APP_VERSION = "2026.10.23-1";
 
-const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","GALPÃO"];
+const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
+// Clientes (não são franquias): compram de nós como revenda.
+const UNIDADES_CLIENTES = ["STADIUM", "REDMART"];
+// Cliente com catálogo fechado: na tela de pedido só aparecem estes itens.
+// REDMART compra só os potes de 1,5 L (tradicional e nuts) e o picolé.
+const CATALOGO_FIXO_UNIDADE = { "REDMART": ["PA96", "PA97", "PA98"] };
+function itemNoCatalogoDaUnidade(unidade, itemId) {
+  const lista = CATALOGO_FIXO_UNIDADE[unidade];
+  return !lista || lista.includes(itemId);
+}
 
 // Operações encerradas/pausadas: somem do login e das listas de uso diário
 // (pedido, restrição de itens, bloqueio...), mas continuam nos filtros de
@@ -1051,6 +1060,7 @@ const SENHAS_HASH = {
   "PIEDADE": "991d83cbeb30b53a437c96aa69669ef72e5feed9d3dbfb5dfee826248794b2d9",
   "PORTO": "58d07ff81aab2101cd9c2368ce1d128a2de0a901d4381cbc27e88f5c6aa2a042",
   "STADIUM": "6153ec02f862704bf26697fb9ad9a5c43d94b3cfaac6eb4bd77702640252c265",
+  "REDMART": "9bf62902b97599e5fbea302945d9c1e2bbe34adfc30075c37d66f1090e650ed4",
   "GALPÃO": "1cf0a6928df241b9cb0da954302b539f795f7077b5a073f11c9ee9669009982c",
   "Franqueadora (Admin)": "1fd8716cc45b9ea178e869d73c767aca090f6ff5a8996718c0bddeae589d71a8",
   "INVENTÁRIO": "ed1868e053637d07b8aa6270d3a7906286c4b181dd41bc6d983b946307f8ad97",
@@ -2016,7 +2026,9 @@ function renderListaUnidades() {
   });
   // Fixed
   fixas.forEach(n => {
-    const tipoBadge = isUnidadeInterna(n) ? '<span class="badge" style="background:#EFEBE9;color:#5D4037">🏭 Interna</span>' : '<span class="badge badge-gray">Franquia</span>';
+    const tipoBadge = isUnidadeInterna(n) ? '<span class="badge" style="background:#EFEBE9;color:#5D4037">🏭 Interna</span>'
+      : UNIDADES_CLIENTES.includes(n) ? `<span class="badge" style="background:#E3F2FD;color:#1565C0">🤝 Cliente${CATALOGO_FIXO_UNIDADE[n] ? ' (catálogo fechado)' : ''}</span>`
+      : '<span class="badge badge-gray">Franquia</span>';
     const inativaBadge = UNIDADES_INATIVAS.includes(n) ? ' <span class="badge" style="background:#ECEFF1;color:#607D8B;font-size:10px">inativa</span>' : '';
     html += `<tr style="${UNIDADES_INATIVAS.includes(n) ? 'opacity:.55' : ''}"><td>${n}${inativaBadge}</td><td>${tipoBadge}</td><td>—</td><td>🔒 protegida</td></tr>`;
   });
@@ -2118,6 +2130,7 @@ async function atualizarPrecosAntesDoRomaneio() {
 function itemVisivelParaLojaAtual(item, cat) {
   const interna = isUnidadeInterna(currentUser);
   if (interna ? cat !== 'Produção / Insumos' : CATEGORIAS_OCULTAS_LOJA_PEDIDO.includes(cat)) return false;
+  if (!itemNoCatalogoDaUnidade(currentUser, item.id)) return false;
   const st = itemState[item.id];
   if (st && st.disponivel === false) return false;
   if (st && st.restritoUnidades && st.restritoUnidades.length && !st.restritoUnidades.includes(currentUser)) return false;
@@ -4736,6 +4749,7 @@ function renderCatalog() {
       return;
     }
     const itensVisiveis = CATALOGO[cat].filter(item => {
+      if (!itemNoCatalogoDaUnidade(currentUser, item.id)) return false;
       const st = itemState[item.id];
       // Só oculta se explicitamente marcado como false — qualquer outro caso mostra
       if (st && st.disponivel === false) return false;
@@ -4833,6 +4847,9 @@ function aplicarModoGalpao() {
   const titulo = document.getElementById('itensAvulsosTitulo');
   const desc = document.getElementById('itensAvulsosDesc');
   if (campoEntrega) campoEntrega.classList.toggle('hidden', interna);
+  // Cliente com catálogo fechado (ex: REDMART) não usa "itens fora do catálogo"
+  const boxAvulsos = document.getElementById('itensAvulsosBox');
+  if (boxAvulsos) boxAvulsos.classList.toggle('hidden', !!CATALOGO_FIXO_UNIDADE[currentUser]);
   if (titulo) titulo.textContent = interna ? '🏭 Outros itens que a produção/galpão precisa' : '📦 Itens fora do catálogo';
   if (desc) desc.textContent = interna
     ? 'Pra insumos que ainda não estão na lista acima. Coloque o nome do item e a quantidade. A franqueadora lança o preço de compra ao processar o pedido — é só pra controle interno, não é venda.'
