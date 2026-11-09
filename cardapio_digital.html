@@ -585,7 +585,7 @@ async function validarCupom(codigo){
   const cod = normalizarCodigoCupom(codigo);
   if(!cod) return null;
   try{
-    const { data, error } = await sb.from('parceiros_marca').select('id, nome, cupom').eq('ativo', true).ilike('cupom', cod).limit(1);
+    const { data, error } = await sb.from('parceiros_marca').select('id, nome, cupom').eq('ativo', true).eq('cupom_ativo', true).ilike('cupom', cod).limit(1);
     if(error || !data || data.length === 0) return null;
     return { codigo: cod, parceiroId: data[0].id, parceiroNome: data[0].nome };
   } catch(e){ return null; }
@@ -617,7 +617,7 @@ let avisoCupomEncerrado = false;
 async function revalidarCupomAtivo(){
   if(!cupomAtivo) return;
   try{
-    const { data, error } = await sb.from('parceiros_marca').select('id').eq('ativo', true).ilike('cupom', cupomAtivo.codigo).limit(1);
+    const { data, error } = await sb.from('parceiros_marca').select('id').eq('ativo', true).eq('cupom_ativo', true).ilike('cupom', cupomAtivo.codigo).limit(1);
     if(error || !data) return;
     if(data.length === 0){
       cupomAtivo = null;

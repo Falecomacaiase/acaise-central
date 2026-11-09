@@ -76,6 +76,42 @@ function limiteDoParceiro(parceiro) {
   return state.categorias[parceiro.categoria]?.limite_mensal || 0;
 }
 
+// ---------- cupom do cardápio digital ----------
+const URL_CARDAPIO_DIGITAL = 'https://falecomacaiase.github.io/acaise-central/cardapio_digital.html';
+function linkDoCupom(codigo) {
+  return `${URL_CARDAPIO_DIGITAL}?cupom=${encodeURIComponent(codigo)}`;
+}
+function normalizarCupomDigitado(v) {
+  return String(v || '').toUpperCase().normalize('NFD').replace(/[\u0300-\u036f]/g, '').replace(/[^A-Z0-9]/g, '').slice(0, 20);
+}
+// Alterar cupom exige a senha do Painel do Gestor (a aba Parceiros é aberta a todas as lojas)
+function exigirSenhaGestor() {
+  return painelDesbloqueado() || solicitarSenhaPainel();
+}
+// Resultados dos cupons no mês: { CODIGO: { pedidos, vendido, desconto, repetidos } } (null se o SQL ainda não foi rodado)
+async function carregarResumoCupons(mesStr) {
+  const { inicio, fim } = getInicioFimMes(mesStr);
+  const { data, error } = await sb.rpc('resumo_cupons', { p_inicio: inicio, p_fim: fim });
+  if (error) { console.warn('resumo_cupons:', error); return null; }
+  const mapa = {};
+  (data || []).forEach(r => { mapa[String(r.cupom).toUpperCase()] = r; });
+  return mapa;
+}
+function textoResultadoCupom(r) {
+  if (!r) return 'Nenhum pedido enviado com este cupom neste mês ainda.';
+  return `${r.pedidos} pedido${Number(r.pedidos) === 1 ? '' : 's'} enviado${Number(r.pedidos) === 1 ? '' : 's'} · R$ ${formatarMoeda(r.vendido)} em itens · R$ ${formatarMoeda(r.desconto)} de desconto dado` +
+    (Number(r.repetidos) > 0 ? ` · ${r.repetidos} de cliente que já tinha usado` : '');
+}
+async function copiarTexto(texto) {
+  try { await navigator.clipboard.writeText(texto); return true; }
+  catch (e) {
+    const t = document.createElement('textarea');
+    t.value = texto; document.body.appendChild(t); t.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (e2) {}
+    t.remove(); return ok;
+  }
+}
+
 // ---------- confirmação grande de pedido lançado ----------
 function mostrarConfirmacaoGrande(parceiroNome, valorTotal) {
   const overlay = document.createElement('div');
@@ -411,6 +447,22 @@ async function abrirDetalheParceiro(id) {
       <button class="btn-texto" id="btnUsarLimitePadrao">Usar padrão da categoria</button>
     </div>
 
+    <h3 style="margin-top:20px;">🎟️ Cupom no cardápio digital</h3>
+    <label for="inpCupomDetalhe">Código do cupom (10% de desconto)</label>
+    <input type="text" id="inpCupomDetalhe" maxlength="20" placeholder="Ex: ALINE10" value="${escapeHtml(parceiro.cupom || '')}" style="text-transform:uppercase;">
+    <div class="detalhe">Só letras e números, sem espaço. O parceiro divulga esse código; o desconto vale em todo pedido dos clientes dele enquanto o cupom estiver ativo.</div>
+    <div class="linha-acoes">
+      <button class="btn btn-secundario btn-pequeno" id="btnSalvarCupom">Salvar cupom</button>
+      ${parceiro.cupom ? `<button class="btn btn-secundario btn-pequeno" id="btnPausarCupom">${parceiro.cupom_ativo === false ? 'Reativar cupom' : 'Pausar cupom'}</button>` : ''}
+    </div>
+    ${parceiro.cupom ? `
+      <div class="detalhe" style="margin-top:6px;">Status: ${parceiro.cupom_ativo === false ? '⏸️ <strong>pausado</strong> (não dá desconto)' : '✅ <strong>ativo</strong>'}</div>
+      <label for="inpLinkCupom" style="margin-top:12px;">Link para o parceiro divulgar</label>
+      <input type="text" id="inpLinkCupom" readonly value="${escapeHtml(linkDoCupom(parceiro.cupom))}">
+      <div class="linha-acoes"><button class="btn btn-secundario btn-pequeno" id="btnCopiarLinkCupom">Copiar link</button></div>
+      <div class="detalhe" id="resumoCupomDetalhe" style="margin-top:6px;">Carregando resultados de ${nomeDoMes(mes)}...</div>
+    ` : ''}
+
     <h3 style="margin-top:20px;">Pedidos do mês</h3>
     <div id="listaPedidosParceiro">${renderPedidosParceiro(pedidos)}</div>
 
@@ -430,6 +482,43 @@ async function abrirDetalheParceiro(id) {
       abrirDetalheParceiro(id);
     });
   });
+  document.getElementById('btnSalvarCupom').addEventListener('click', async () => {
+    if (!exigirSenhaGestor()) return;
+    const codigo = normalizarCupomDigitado(document.getElementById('inpCupomDetalhe').value);
+    if (codigo && codigo.length < 3) { alert('O cupom precisa ter pelo menos 3 letras ou números.'); return; }
+    const { error } = await sb.from('parceiros_marca').update({ cupom: codigo || null }).eq('id', id);
+    if (error) {
+      alert(error.code === '23505' ? 'Esse código já está em uso por outro parceiro. Escolha outro.' : 'Erro ao salvar o cupom: ' + error.message);
+      return;
+    }
+    await carregarParceiros();
+    abrirDetalheParceiro(id);
+  });
+  const btnPausarCupom = document.getElementById('btnPausarCupom');
+  if (btnPausarCupom) btnPausarCupom.addEventListener('click', async () => {
+    if (!exigirSenhaGestor()) return;
+    const pausar = parceiro.cupom_ativo !== false;
+    if (!confirm(pausar ? `Pausar o cupom ${parceiro.cupom}? Ele deixa de dar desconto na hora.` : `Reativar o cupom ${parceiro.cupom}?`)) return;
+    const { error } = await sb.from('parceiros_marca').update({ cupom_ativo: !pausar }).eq('id', id);
+    if (error) { alert('Erro: ' + error.message); return; }
+    await carregarParceiros();
+    abrirDetalheParceiro(id);
+  });
+  const btnCopiar = document.getElementById('btnCopiarLinkCupom');
+  if (btnCopiar) btnCopiar.addEventListener('click', async () => {
+    const ok = await copiarTexto(document.getElementById('inpLinkCupom').value);
+    btnCopiar.textContent = ok ? 'Link copiado ✅' : 'Não consegui copiar — selecione e copie';
+    setTimeout(() => { btnCopiar.textContent = 'Copiar link'; }, 2500);
+  });
+  if (parceiro.cupom) {
+    carregarResumoCupons(mes).then(mapa => {
+      const el = document.getElementById('resumoCupomDetalhe');
+      if (!el) return;
+      el.textContent = mapa === null
+        ? 'Resultados indisponíveis (falta rodar o SQL 5 no Supabase).'
+        : `${nomeDoMes(mes)}: ` + textoResultadoCupom(mapa[String(parceiro.cupom).toUpperCase()]);
+    });
+  }
   document.getElementById('btnDesativarParceiro').addEventListener('click', async () => {
     if (!confirm(`Desativar ${parceiro.nome}? Ele não vai mais aparecer nas buscas.`)) return;
     await sb.from('parceiros_marca').update({ ativo: false }).eq('id', id);
@@ -543,6 +632,8 @@ async function renderPainel() {
 
   linhas.sort((a, b) => (b.consumidoNaLoja / (b.limite || 1)) - (a.consumidoNaLoja / (a.limite || 1)));
 
+  renderCuponsPainel(mes, catFiltro);
+
   const totalGeral = linhas.reduce((s, d) => s + d.consumidoNaLoja, 0);
   const totalExcedido = linhas.filter(d => d.consumidoTotal > d.limite).length;
   const totalSemPost = linhas.reduce((s, d) => s + d.semPostagem, 0);
@@ -587,6 +678,37 @@ async function renderPainel() {
   document.getElementById('listaPendentesPostagem').innerHTML = '';
   document.getElementById('corpoTabelaPainel').innerHTML = '';
  }
+}
+
+async function renderCuponsPainel(mes, catFiltro) {
+  const corpo = document.getElementById('corpoTabelaCupons');
+  const resumo = document.getElementById('resumoCuponsPainel');
+  if (!corpo) return;
+  const mapa = await carregarResumoCupons(mes);
+  if (mapa === null) {
+    resumo.textContent = 'Resultados indisponíveis: falta rodar o SQL 5 no Supabase.';
+    corpo.innerHTML = '';
+    return;
+  }
+  const lista = state.parceiros
+    .filter(p => p.cupom && (!catFiltro || p.categoria === catFiltro))
+    .map(p => ({ p, r: mapa[String(p.cupom).toUpperCase()] }))
+    .sort((a, b) => Number(b.r?.pedidos || 0) - Number(a.r?.pedidos || 0) || a.p.nome.localeCompare(b.p.nome));
+  const totPedidos = lista.reduce((s, x) => s + Number(x.r?.pedidos || 0), 0);
+  const totVendido = lista.reduce((s, x) => s + Number(x.r?.vendido || 0), 0);
+  const totDesc = lista.reduce((s, x) => s + Number(x.r?.desconto || 0), 0);
+  resumo.textContent = `${nomeDoMes(mes)}: ${totPedidos} pedido(s) enviados com cupom · R$ ${formatarMoeda(totVendido)} em itens · R$ ${formatarMoeda(totDesc)} de desconto dado.`;
+  if (lista.length === 0) {
+    corpo.innerHTML = '<tr><td colspan="5" class="vazio">Nenhum parceiro com cupom ainda.</td></tr>';
+    return;
+  }
+  corpo.innerHTML = lista.map(({ p, r }) => `<tr>
+    <td><strong>${escapeHtml(p.nome)}</strong></td>
+    <td>${escapeHtml(p.cupom)}<br>${p.cupom_ativo === false ? '<span class="badge-postou nao">Pausado</span>' : '<span class="badge-postou sim">Ativo</span>'}</td>
+    <td>${r ? r.pedidos : 0}</td>
+    <td>R$ ${formatarMoeda(r?.vendido)}</td>
+    <td>R$ ${formatarMoeda(r?.desconto)}</td>
+  </tr>`).join('');
 }
 
 function renderConsumoPorLoja(porLoja) {
