@@ -6209,7 +6209,7 @@ let _notasLista = [];
 let _unsubNotas = null;
 let _notasJaCarregou = false;
 let _notasCarregouTudo = false;
-let _notasFiltro = { status: 'apagar', local: '', busca: '' };
+let _notasFiltro = { status: 'apagar', local: '', busca: '', venc: '', de: '', ate: '' };
 let _fotosCache = {};
 let _fotoViewer = { lista: [], i: 0 };
 
@@ -6677,6 +6677,33 @@ function htmlVencimentoNota(n) {
     <span style="color:${cor};font-weight:600;margin-left:8px">📅 ${fmtDataCurta(n.vencimento)}${extra}</span>`;
 }
 
+// Filtro por data de vencimento (iso = 'YYYY-MM-DD')
+function vencimentoNoFiltro(iso, f) {
+  if (f.venc === 'sem') return !iso;
+  if (!iso) return false;
+  const d = diasAteVencimento(String(iso).slice(0, 10));
+  if (d === null) return false;
+  switch (f.venc) {
+    case 'vencidos': return d < 0;
+    case 'hoje': return d === 0;
+    case '3dias': return d >= 0 && d <= 3;
+    case '7dias': return d >= 0 && d <= 7;
+    case '15dias': return d >= 0 && d <= 15;
+    case 'mes': {
+      const h = new Date();
+      const [a, m] = String(iso).slice(0, 10).split('-').map(Number);
+      return a === h.getFullYear() && m === h.getMonth() + 1;
+    }
+    case 'periodo': {
+      const v = String(iso).slice(0, 10);
+      if (f.de && v < f.de) return false;
+      if (f.ate && v > f.ate) return false;
+      return true;
+    }
+  }
+  return true;
+}
+
 function filtrarNotas() {
   const f = _notasFiltro;
   const busca = f.busca.trim().toLowerCase();
@@ -6685,6 +6712,7 @@ function filtrarNotas() {
     if (f.status === 'apagar' && !['novo', 'programado'].includes(n.status)) return false;
     if (['novo', 'programado', 'pago', 'arquivo'].includes(f.status) && n.status !== f.status) return false;
     if (busca && ![n.fornecedor, n.observacao, n.lancadoPor, n.codigo].some(x => String(x || '').toLowerCase().includes(busca))) return false;
+    if (f.venc && !vencimentoNoFiltro(n.vencimento, f)) return false;
     return true;
   }).sort((a, b) => {
     if (f.status === 'apagar' || f.status === 'novo' || f.status === 'programado')
@@ -6707,7 +6735,8 @@ function renderPainelNotas(soLista) {
   const soma = l => fmtBRL(l.reduce((s, n) => s + (Number(n.valor) || 0), 0));
   const lista = filtrarNotas();
 
-  const htmlLista = lista.length ? lista.map(htmlCardNota).join('') : '<p class="small">Nada por aqui com esses filtros.</p>';
+  const resumoFiltro = (_notasFiltro.venc && lista.length) ? `<p class="small" style="margin:0 0 8px"><strong>${lista.length}</strong> nota(s) • total <strong>${soma(lista)}</strong></p>` : '';
+  const htmlLista = lista.length ? resumoFiltro + lista.map(htmlCardNota).join('') : '<p class="small">Nada por aqui com esses filtros.</p>';
   if (soLista && document.getElementById('notasListaWrap')) { document.getElementById('notasListaWrap').innerHTML = htmlLista; return; }
 
   const chip = (txt, bg, cor) => `<div style="flex:1;min-width:150px;background:${bg};color:${cor};border-radius:8px;padding:10px 12px;font-weight:700">${txt}</div>`;
@@ -6728,6 +6757,11 @@ function renderPainelNotas(soLista) {
         <option value="GALPÃO" ${f.local === 'GALPÃO' ? 'selected' : ''}>🏭 Galpão</option>
         <option value="BOA VIAGEM" ${f.local === 'BOA VIAGEM' ? 'selected' : ''}>🏪 Boa Viagem</option>
       </select>
+      <select onchange="setFiltroNotas('venc', this.value)" style="flex:1;min-width:170px" title="Filtrar por data de vencimento">
+        ${[['', '📅 Qualquer vencimento'], ['vencidos', '🔴 Vencidos'], ['hoje', 'Vence hoje'], ['3dias', 'Próximos 3 dias'], ['7dias', 'Próximos 7 dias'], ['15dias', 'Próximos 15 dias'], ['mes', 'Neste mês'], ['periodo', '🗓️ Escolher período...'], ['sem', 'Sem vencimento']].map(([v, t]) => `<option value="${v}" ${f.venc === v ? 'selected' : ''}>${t}</option>`).join('')}
+      </select>
+      ${f.venc === 'periodo' ? `<label class="small" style="display:flex;align-items:center;gap:4px">De <input type="date" value="${escHtml(f.de)}" onchange="setFiltroNotas('de', this.value)"></label>
+      <label class="small" style="display:flex;align-items:center;gap:4px">até <input type="date" value="${escHtml(f.ate)}" onchange="setFiltroNotas('ate', this.value)"></label>` : ''}
       <input type="text" placeholder="🔍 Buscar fornecedor, observação..." value="${escHtml(f.busca)}" oninput="setFiltroNotas('busca', this.value)" style="flex:2;min-width:180px">
       ${podePedirAviso ? `<button class="btn btn-secondary btn-xs" onclick="ativarNotificacoesRecebimento()">🔔 Ativar avisos</button>` : ''}
     </div>
