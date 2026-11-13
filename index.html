@@ -1111,9 +1111,19 @@ let _dataCache = null;
 let _dirtyKeys = new Set();
 let _saveTimeout = null;
 
+// Cache com "promessa": quem chamar enquanto a 1ª carga ainda está em andamento ESPERA os dados,
+// em vez de receber {} vazio (isso fazia os produtos cadastrados não entrarem no catálogo das lojas).
+let _dataLoading = null;
 async function loadAllData() {
-  if (_dataCache) return _dataCache;
+  if (_dataCache) { if (_dataLoading) await _dataLoading; return _dataCache; }
   _dataCache = {};
+  let _fimCarga;
+  const _p = new Promise(r => { _fimCarga = r; });
+  _dataLoading = _p;
+  try { await _carregarDadosDoFirestore(); } finally { _fimCarga(); if (_dataLoading === _p) _dataLoading = null; }
+  return _dataCache;
+}
+async function _carregarDadosDoFirestore() {
   try {
     const snapshot = await _col.get();
     snapshot.forEach(doc => {
