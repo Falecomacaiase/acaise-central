@@ -138,6 +138,10 @@
     #romaneioOverlay { position:static !important; background:none !important; padding:0 !important; display:block !important; }
     #romaneioConteudo { box-shadow:none !important; border-radius:0 !important; }
     .no-print { display:none !important; }
+    /* Comprovante da loja ("Meus Pedidos" → Imprimir) */
+    body.imprimindo-loja > *:not(#romaneioLojaOverlay) { display:none !important; }
+    body.imprimindo-loja #romaneioLojaOverlay { position:static !important; background:none !important; padding:0 !important; display:block !important; overflow:visible !important; }
+    body.imprimindo-loja #romaneioLojaConteudo { max-width:none !important; padding:0 !important; border-radius:0 !important; }
     /* Quantidade e preço editáveis saem impressos como texto, sem caixinha */
     #romaneioBody input { border:none !important; background:none !important; padding:0 !important; box-shadow:none !important; -webkit-appearance:none; -moz-appearance:textfield; appearance:none; color:#000; }
     #romaneioBody input::-webkit-inner-spin-button, #romaneioBody input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
@@ -300,7 +304,7 @@
          tanto em "Meus Pedidos" quanto logo após enviar/ajustar um pedido em "Fazer Pedido" -->
     <div id="romaneioLojaOverlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;align-items:flex-start;justify-content:center;padding:20px;overflow-y:auto">
       <div style="background:#fff;border-radius:12px;max-width:600px;width:100%;padding:24px" id="romaneioLojaConteudo">
-        <div style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
+        <div class="no-print" style="display:flex;gap:10px;margin-bottom:16px;flex-wrap:wrap">
           <button class="btn btn-secondary" onclick="imprimirRomaneioLoja()">🖨️ Imprimir</button>
           <button class="btn btn-secondary" onclick="document.getElementById('romaneioLojaOverlay').style.display='none'">✕ Fechar</button>
         </div>
@@ -1010,7 +1014,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.16-2";
+const APP_VERSION = "2026.11.16-3";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -1985,7 +1989,19 @@ function abrirRomaneioLojaObjeto(p) {
   document.getElementById('romaneioLojaOverlay').style.display = 'flex';
 }
 
-function imprimirRomaneioLoja() { window.print(); }
+// O romaneio da loja fica dentro da tela da loja, e a regra de impressão só
+// liberava o romaneio do painel — por isso imprimia em branco. Aqui o overlay
+// vai para o corpo da página e a classe "imprimindo-loja" libera só ele.
+function imprimirRomaneioLoja() {
+  const ov = document.getElementById('romaneioLojaOverlay');
+  if (ov && ov.parentElement !== document.body) document.body.appendChild(ov);
+  document.body.classList.add('imprimindo-loja');
+  const limpar = () => { document.body.classList.remove('imprimindo-loja'); window.removeEventListener('afterprint', limpar); };
+  window.addEventListener('afterprint', limpar);
+  window.print();
+  // (sem timeout: no celular a janela de impressão não trava o script, e tirar a
+  // classe cedo imprimiria a página errada; a classe só afeta a impressão)
+}
 
 // ─── MENU LATERAL DO PAINEL ─────────────────────────────────────────────────
 function mostrarModoAdmin(ativo) {
