@@ -91,6 +91,11 @@
   .tabs-lateral .tab-btn.active { background:#5B2D8E; border-color:#5B2D8E; color:#fff; }
   .tabs-lateral .tab-badge { margin-left:auto; }
   .admin-titulo { margin:0 0 14px; font-size:20px; color:#3D1F61; }
+  .resumo-semana { margin-bottom:12px; }
+  .resumo-semana > summary { list-style:none; display:flex; align-items:center; gap:10px; padding:12px 14px; background:#5B2D8E; color:#fff; border-radius:8px; font-weight:600; cursor:pointer; user-select:none; }
+  .resumo-semana > summary::-webkit-details-marker { display:none; }
+  .resumo-seta { display:inline-block; transition:transform .15s; }
+  .resumo-semana[open] .resumo-seta { transform:rotate(90deg); }
   body.tem-aviso-atualizacao .admin-nav { top:48px; }
   @media (min-width: 900px) {
     body.modo-admin { padding-left:250px; }
@@ -1014,7 +1019,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.16-3";
+const APP_VERSION = "2026.11.16-4";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -6219,23 +6224,33 @@ function renderConsolidado(pedidos) {
     });
   });
 
+  // Resumo da semana fica MINIMIZADO por padrão (só a barra roxa com o total),
+  // para no celular os pedidos por loja aparecerem logo. Abrir/fechar é lembrado
+  // neste aparelho (localStorage).
   const allItems = Object.values(CATALOGO).flat();
-  let html = `<div class="flex-between" style="margin-bottom:10px;padding:12px 14px;background:#5B2D8E;color:#fff;border-radius:8px;font-weight:600;">
-    <span>Valor total dos pedidos da semana</span><span>R$ ${grandTotal.toFixed(2).replace('.',',')}</span></div>`;
-  html += `<table><thead><tr><th>Item</th><th>Total pedido</th><th>Estoque central</th><th>Valor (R$)</th><th>Status</th></tr></thead><tbody>`;
+  let linhas = '', nInsuf = 0;
   if (Object.keys(totals).length === 0) {
-    html += `<tr><td colspan="5" class="small">Nenhum pedido recebido ainda nesta semana.</td></tr>`;
+    linhas = `<tr><td colspan="5" class="small">Nenhum pedido recebido ainda nesta semana.</td></tr>`;
   } else {
     Object.entries(totals).sort((a,b)=>b[1].valor-a[1].valor).forEach(([id, t]) => {
       const itemRef = allItems.find(i => i.id === id);
       const estoque = itemRef ? (itemRef._estoqueAtual !== undefined ? itemRef._estoqueAtual : itemRef.estoqueCentral) : 0;
       let badge = `<span class="badge badge-green">OK</span>`;
-      if (t.qtd > estoque) badge = `<span class="badge badge-red">Insuficiente</span>`;
+      if (t.qtd > estoque) { badge = `<span class="badge badge-red">Insuficiente</span>`; nInsuf++; }
       else if (t.qtd > estoque * 0.8) badge = `<span class="badge badge-yellow">Atenção</span>`;
-      html += `<tr><td>${t.nome}</td><td>${t.qtd}</td><td>${estoque}</td><td>R$ ${t.valor.toFixed(2).replace('.',',')}</td><td>${badge}</td></tr>`;
+      linhas += `<tr><td>${t.nome}</td><td>${t.qtd}</td><td>${estoque}</td><td>R$ ${t.valor.toFixed(2).replace('.',',')}</td><td>${badge}</td></tr>`;
     });
   }
-  html += `</tbody></table>`;
+  let aberto = false;
+  try { aberto = localStorage.getItem('acaise_resumo_aberto') === '1'; } catch(e) {}
+  const html = `<details class="resumo-semana" ${aberto ? 'open' : ''} ontoggle="try{localStorage.setItem('acaise_resumo_aberto', this.open ? '1' : '0')}catch(e){}">
+    <summary>
+      <span class="resumo-seta">▸</span>
+      <span style="flex:1">Resumo da semana <span style="font-weight:400;opacity:.85;font-size:12.5px">· ${Object.keys(totals).length} itens${nInsuf ? ` · <span style="background:#C62828;color:#fff;border-radius:9px;padding:1px 7px;font-weight:700">${nInsuf} sem estoque</span>` : ''}</span></span>
+      <span style="white-space:nowrap">R$ ${grandTotal.toFixed(2).replace('.',',')}</span>
+    </summary>
+    <div style="overflow-x:auto;margin-top:8px"><table><thead><tr><th>Item</th><th>Total pedido</th><th>Estoque central</th><th>Valor (R$)</th><th>Status</th></tr></thead><tbody>${linhas}</tbody></table></div>
+  </details>`;
   document.getElementById('adminConsolidado').innerHTML = html;
 }
 
