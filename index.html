@@ -340,6 +340,7 @@
       <button class="tab-btn" id="tabBtnLog" onclick="switchAdminTab('log')">📋 Log</button>
       <button class="tab-btn" id="tabBtnNotas" onclick="switchAdminTab('notas')">📄 Notas e Boletos</button>
       <button class="tab-btn" id="tabBtnFechamentos" onclick="switchAdminTab('fechamentos')">🏪 Acompanhamento Loja Boa Viagem</button>
+      <button class="tab-btn" id="tabBtnMargens" onclick="switchAdminTab('margens')">💹 Margens e CMV</button>
     </div>
     </nav>
 
@@ -893,6 +894,11 @@
       <div id="fechPainel"></div>
     </div>
 
+    <!-- ABA: MARGENS E CMV (custo da última compra × venda ao franqueado; fichas do cardápio) -->
+    <div id="tabMargens" class="hidden">
+      <div id="margensPainel"><p class="small">Carregando...</p></div>
+    </div>
+
   </div>
 
   <!-- RECEBIMENTO DE NOTAS (funcionário do galpão / Boa Viagem) -->
@@ -1019,7 +1025,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.16-4";
+const APP_VERSION = "2026.11.16-5";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -1153,6 +1159,40 @@ const SENHAS_HASH = {
   "NOTAS": "ec8951e0d378c79018a42727d32a97006a89da80c7e90ec2a1d2f93b20d83a53",
   "FINANCEIRO": "72a4c46840227af088f795401364c1294b815f5e20dddce1060f48febfc16329"
 };
+
+// Senha MASTER (só Borja): exigida para desbloquear loja e aplicar desconto no
+// romaneio. Guardado só o hash; a senha legível está em senhas-lojas.txt (local).
+// Obs.: é uma barreira para a equipe que usa o login de admin, não proteção
+// contra alguém com conhecimento técnico (a regra do Firestore está aberta).
+const SENHA_MASTER_HASH = 'b01fe05940a1eb5a2b18ab988a71aae254bdaaca8f1a9ac1869286281d2d5915';
+
+function pedirSenhaMaster(acao) {
+  return new Promise(resolve => {
+    const m = document.createElement('div');
+    m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;display:flex;align-items:center;justify-content:center;padding:16px';
+    m.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:380px;width:100%;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.3)">
+      <div style="font-size:17px;font-weight:700;color:#5B2D8E">🔐 Senha master</div>
+      <div class="small" style="margin:6px 0 12px">${acao}. Só o Borja tem essa senha.</div>
+      <input type="password" id="senhaMasterIn" autocomplete="off" placeholder="Senha master">
+      <div class="error" id="senhaMasterErr"></div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+        <button class="btn btn-secondary" data-r="0">Cancelar</button>
+        <button class="btn" data-r="1">Confirmar</button>
+      </div></div>`;
+    document.body.appendChild(m);
+    const inp = m.querySelector('#senhaMasterIn');
+    const fechar = ok => { m.remove(); resolve(ok); };
+    const conferir = async () => {
+      const h = await hashSenha('MASTER', inp.value);
+      if (h === SENHA_MASTER_HASH) { try { registrarLog('senha_master', '🔐 Senha master usada: ' + acao, currentUser); } catch(e) {} fechar(true); }
+      else { m.querySelector('#senhaMasterErr').textContent = 'Senha incorreta.'; inp.select(); }
+    };
+    m.querySelector('[data-r="0"]').onclick = () => fechar(false);
+    m.querySelector('[data-r="1"]').onclick = conferir;
+    inp.addEventListener('keydown', e => { if (e.key === 'Enter') conferir(); if (e.key === 'Escape') fechar(false); });
+    setTimeout(() => inp.focus(), 50);
+  });
+}
 
 async function hashSenha(unidade, senha) {
   const dados = new TextEncoder().encode('acaise-central|' + unidade + '|' + senha);
@@ -2034,7 +2074,7 @@ function atualizarAlertaMenu() {
 }
 
 function switchAdminTab(tab) {
-  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Compras','Log','Notas','Fechamentos'].forEach(t => {
+  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Compras','Log','Notas','Fechamentos','Margens'].forEach(t => {
     const el = document.getElementById('tab'+t);
     const btn = document.getElementById('tabBtn'+t);
     if(el) el.classList.toggle('hidden', tab !== t.toLowerCase());
@@ -2053,6 +2093,7 @@ function switchAdminTab(tab) {
   if (tab === 'log') { iniciarLog(); }
   if (tab === 'notas') { iniciarEscutaNotas(); renderPainelNotas(); }
   if (tab === 'fechamentos') { iniciarFechamentos(); }
+  if (tab === 'margens') { iniciarMargens(); }
 }
 
 // ─── CADASTROS ───────────────────────────────────────────────────────────────
@@ -2663,6 +2704,7 @@ async function aplicarDescontoRomaneio() {
   if (isNaN(valor) || valor <= 0) { alert('Informe um valor de desconto maior que zero.'); return; }
   if (tipo === 'percentual' && valor > 100) { alert('Percentual não pode passar de 100%.'); return; }
   if (!motivo) { alert('Descreva o motivo do desconto — fica registrado no pedido e visível pro franqueado.'); return; }
+  if (!(await pedirSenhaMaster(`Desconto no pedido de ${pedidoAtualRomaneio.unidade}`))) return;
 
   pedidoAtualRomaneio.desconto = {
     tipo, valor, motivo,
@@ -5768,15 +5810,29 @@ async function iniciarBoletos() {
 
 let boletos = [];
 
+// Bloqueio/desbloqueio gravado em transação: altera só a unidade escolhida,
+// sem regravar a lista inteira a partir de uma cópia velha da aba.
+async function alterarBloqueioAtomico(unidade, dados) {
+  const docRef = _col.doc(toDocId('bloqueiosUnidade'));
+  const final = await _db.runTransaction(async (t) => {
+    const snap = await t.get(docRef);
+    let val = snap.exists ? snap.data().value : '{}';
+    if (typeof val === 'string') { try { val = JSON.parse(val); } catch(e) { val = {}; } }
+    val = val || {};
+    if (dados) val[unidade] = dados; else delete val[unidade];
+    t.set(docRef, { value: JSON.stringify(val), originalKey: 'bloqueiosUnidade', updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    return val;
+  });
+  if (_dataCache) _dataCache['bloqueiosUnidade'] = final;
+  return final;
+}
+
 async function ativarBloqueio() {
   const unidade = document.getElementById('bloqueioUnidade').value;
   const msg = document.getElementById('bloqueioMsg');
   if (!unidade) { msg.textContent = 'Selecione uma unidade.'; return; }
   try {
-    let bloqueios = {};
-    try { const r = await safeGet('bloqueiosUnidade', true); if(r&&r.value) bloqueios=parseValue(r.value); } catch(e) {}
-    bloqueios[unidade] = { data: new Date().toISOString(), ativadoPor: currentUser };
-    await saveDocument('bloqueiosUnidade', bloqueios);
+    await alterarBloqueioAtomico(unidade, { data: new Date().toISOString(), ativadoPor: currentUser });
     msg.style.color = '#C62828';
     msg.textContent = `🔒 ${unidade} bloqueada com sucesso.`;
     renderBloqueiosAtivos();
@@ -5787,11 +5843,9 @@ async function desativarBloqueio() {
   const unidade = document.getElementById('bloqueioUnidade').value;
   const msg = document.getElementById('bloqueioMsg');
   if (!unidade) { msg.textContent = 'Selecione uma unidade.'; return; }
+  if (!(await pedirSenhaMaster(`Desbloquear ${unidade}`))) { msg.style.color = '#C62828'; msg.textContent = 'Desbloqueio cancelado (precisa da senha master).'; return; }
   try {
-    let bloqueios = {};
-    try { const r = await safeGet('bloqueiosUnidade', true); if(r&&r.value) bloqueios=parseValue(r.value); } catch(e) {}
-    delete bloqueios[unidade];
-    await saveDocument('bloqueiosUnidade', bloqueios);
+    await alterarBloqueioAtomico(unidade, null);
     msg.style.color = '#2E7D32';
     msg.textContent = `🔓 ${unidade} desbloqueada.`;
     renderBloqueiosAtivos();
@@ -6412,9 +6466,47 @@ async function carregarNotasAntigas() {
   } catch(e) { alert('Não foi possível carregar: ' + e.message); }
 }
 
+// Pop-up das contas a pagar (boletos lançados em Notas e Boletos) que vencem
+// hoje ou já venceram sem estar pagos — para conferir com o Bruno. Aparece uma
+// vez por sessão (ao entrar), para admin e financeiro.
+function verificarPopupVencimentos() {
+  if (!['admin', 'financeiro'].includes(currentRole)) return;
+  const hojeIso = new Date().toLocaleDateString('sv-SE');
+  const chave = 'acaise_popup_venc_' + hojeIso;
+  try { if (sessionStorage.getItem(chave)) return; } catch(e) {}
+  const abertos = _notasLista.filter(n => n.temBoleto && ['novo', 'programado'].includes(n.status) && n.vencimento);
+  const comDias = abertos.map(n => ({ n, d: diasAteVencimento(n.vencimento) }));
+  const hoje = comDias.filter(x => x.d === 0);
+  const atras = comDias.filter(x => x.d < 0).sort((a, b) => a.d - b.d);
+  const amanha = comDias.filter(x => x.d === 1);
+  if (!hoje.length && !atras.length) return;
+  try { sessionStorage.setItem(chave, '1'); } catch(e) {}
+  const linha = ({ n, d }) => `<div style="display:flex;justify-content:space-between;gap:8px;padding:8px 0;border-bottom:1px solid #eee;font-size:13.5px">
+    <div><strong>${n.fornecedor || '—'}</strong> <span class="small">${n.local || ''}</span><br>
+    <span style="font-size:12px;font-weight:600;color:${n.status === 'novo' ? '#C62828' : '#1565C0'}">${n.status === 'novo' ? '⚠️ ainda não programado' : '🏦 programado'}</span>${d < 0 ? ` <span style="font-size:12px;color:#C62828">· venceu ${fmtDataCurta(n.vencimento)} (${-d} dia${d < -1 ? 's' : ''})</span>` : ''}</div>
+    <strong style="white-space:nowrap">${fmtBRL(n.valor)}</strong></div>`;
+  const soma = arr => fmtBRL(arr.reduce((s, x) => s + (Number(x.n.valor) || 0), 0));
+  const m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:4000;display:flex;align-items:center;justify-content:center;padding:12px';
+  m.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:480px;width:100%;max-height:88vh;overflow:auto;padding:18px;box-shadow:0 8px 30px rgba(0,0,0,.3)">
+    <div style="font-size:18px;font-weight:700;color:#5B2D8E">📅 Contas a pagar — ${fmtDataCurta(hojeIso)}</div>
+    <div class="small" style="margin:4px 0 10px">Conferir com o Bruno o que precisa ser autorizado hoje.</div>
+    ${hoje.length ? `<div style="font-weight:700;color:#F57F17;margin-top:6px">Vencem HOJE (${hoje.length}) — ${soma(hoje)}</div>${hoje.map(linha).join('')}` : ''}
+    ${atras.length ? `<div style="font-weight:700;color:#C62828;margin-top:12px">Vencidos sem pagamento (${atras.length}) — ${soma(atras)}</div>${atras.map(linha).join('')}` : ''}
+    ${amanha.length ? `<div class="small" style="margin-top:12px">Amanhã vencem mais ${amanha.length} (${soma(amanha)}).</div>` : ''}
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px;flex-wrap:wrap">
+      <button class="btn btn-secondary" data-a="fechar">Fechar</button>
+      ${currentRole === 'admin' ? '<button class="btn" data-a="ver">Ver em Notas e Boletos</button>' : ''}
+    </div></div>`;
+  document.body.appendChild(m);
+  m.querySelector('[data-a="fechar"]').onclick = () => m.remove();
+  const ver = m.querySelector('[data-a="ver"]');
+  if (ver) ver.onclick = () => { m.remove(); switchAdminTab('notas'); };
+}
+
 function atualizarTelasNotas() {
   if (currentRole === 'notas') { renderUltimosNotas(); preencherFornecedoresNotas(); }
-  else renderPainelNotas();
+  else { renderPainelNotas(); verificarPopupVencimentos(); }
   const btn = document.getElementById('tabBtnNotas');
   if (btn) {
     const n = _notasLista.filter(x => x.status === 'novo').length;
@@ -6944,10 +7036,12 @@ function htmlCardNota(n) {
         <button class="btn btn-xs" onclick="copiarCodigoNota('${id}', this)">📋 Copiar ${n.codigoTipo === 'pix' ? 'Pix' : 'código'}</button></div>`
       : (n.temBoleto ? `<div class="small" style="margin-top:6px;color:#888">Sem código lido — veja na foto do boleto.</div>` : '')}
     ${n.observacao ? `<div style="margin-top:6px;font-size:13px">💬 ${escHtml(n.observacao)}</div>` : ''}
+    ${htmlProdutosNota(n)}
     ${n.status === 'pago' && n.pagoEm ? `<div class="small" style="margin-top:4px;color:#2E7D32">Pago em ${fmtDataCurta(n.pagoEm)}${n.pagoPor ? ' • marcado por ' + escHtml(n.pagoPor) : ''}</div>` : ''}
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-top:8px">
       ${qtdFotos ? `<button class="btn btn-secondary btn-xs" onclick="verFotosNota('${id}')">📷 Ver fotos (${qtdFotos})</button>` : ''}
       ${acoes}
+      ${!n.entradaProdutos ? `<button class="btn btn-xs" style="background:#5B2D8E" onclick="abrirEntradaProdutosNota('${id}')">📦 Lançar produtos</button>` : ''}
       <button class="btn btn-secondary btn-xs" onclick="editarNota('${id}')">✏️ Editar</button>
       <button class="btn btn-secondary btn-xs" style="background:#FFEBEE;color:#C62828" onclick="excluirNota('${id}')">🗑️ Excluir</button>
     </div>
@@ -7076,11 +7170,415 @@ async function salvarEdicaoNota(id) {
 async function excluirNota(id) {
   const n = _nota(id);
   if (!n) return;
-  if (!confirm(`Excluir o lançamento de ${n.fornecedor}${n.temBoleto ? ' (' + fmtBRL(n.valor) + ')' : ''} e todas as fotos? Isso não pode ser desfeito.`)) return;
+  if (!confirm(`Excluir o lançamento de ${n.fornecedor}${n.temBoleto ? ' (' + fmtBRL(n.valor) + ')' : ''} e todas as fotos? Isso não pode ser desfeito.${n.entradaProdutos ? '\n\nATENÇÃO: os produtos desta nota já entraram no estoque central. Excluir a nota NÃO tira do estoque — se foi lançada errada, ajuste em Entradas de Estoque.' : ''}`)) return;
   try {
     for (const f of (n.fotos || [])) await _colFotos.doc(f.id).delete();
     await _colNotas.doc(id).delete();
   } catch(e) { alert('Não foi possível excluir: ' + e.message); }
+}
+
+// ── Produtos da nota → entrada no estoque central + custo da última compra ──
+// A Jéssica (financeiro) ou a franqueadora lança os itens da nota com quantidade
+// e preço NA UNIDADE EM QUE VENDEMOS PARA A LOJA (a mesma do catálogo). Ao
+// confirmar: (1) a nota é marcada com os itens (transação — impede dar entrada
+// duas vezes), (2) o estoque central soma as quantidades (ajustarSaldoAtomico),
+// (3) o custo de cada item vira o preço desta compra (atualizarItemStateEmMassa),
+// (4) fica um registro "entrada:" igual ao da aba Entradas de Estoque.
+let _entradaNotaLinhas = [], _entradaNotaId = null;
+
+function _itensCatalogoOrdenados() {
+  return Object.entries(CATALOGO).flatMap(([cat, its]) => its.map(i => ({ ...i, cat })))
+    .sort((a, b) => a.nome.localeCompare(b.nome, 'pt-BR'));
+}
+function _vendaItem(id) {
+  const it = Object.values(CATALOGO).flat().find(i => i.id === id);
+  return Number(itemState[id]?.venda || it?.preco || 0);
+}
+// Margem do galpão sobre o preço de venda ao franqueado
+function margemPct(custo, venda) { return venda > 0 ? (venda - custo) / venda * 100 : null; }
+function htmlSeloMargem(pct) {
+  if (pct === null || isNaN(pct)) return '<span class="badge" style="background:#eee;color:#666">sem custo</span>';
+  const meta = metaMargemGalpao();
+  const [bg, cor, txt] = pct < 0 ? ['#FFEBEE', '#C62828', 'prejuízo'] : pct < meta / 2 ? ['#FFEBEE', '#C62828', 'ajustar'] : pct < meta ? ['#FFFDE7', '#F57F17', 'atenção'] : ['#E8F5E9', '#2E7D32', 'saudável'];
+  return `<span class="badge" style="background:${bg};color:${cor}">${pct.toFixed(1).replace('.', ',')}% · ${txt}</span>`;
+}
+
+async function abrirEntradaProdutosNota(id) {
+  const n = _nota(id);
+  if (!n) return;
+  try { await loadItemState(); } catch(e) {}
+  _entradaNotaLinhas = [{ itemId: '', qtd: '', preco: '' }];
+  _entradaNotaId = id;
+  const opts = _itensCatalogoOrdenados().map(i => `<option value="${escHtml(i.nome)} · ${escHtml(i.id)}"></option>`).join('');
+  abrirModalNota(`
+    <h3 style="margin:0 0 4px;color:#5B2D8E">📦 Produtos da nota</h3>
+    <div class="small" style="margin-bottom:10px">${escHtml(n.fornecedor)}${n.temBoleto ? ' • ' + fmtBRL(n.valor) : ''}. Quantidade e preço <strong>na unidade em que vendemos para a loja</strong> (ex.: caixa, pacote). O estoque central e o custo são atualizados ao confirmar.</div>
+    <datalist id="dlItensNota">${opts}</datalist>
+    <div id="entNotaLinhas"></div>
+    <button class="btn btn-secondary btn-xs" style="margin-top:6px" onclick="_entradaNotaLinhas.push({itemId:'',qtd:'',preco:''});renderLinhasEntradaNota()">➕ Mais um produto</button>
+    <div id="entNotaResumo" style="margin-top:12px"></div>
+    <div id="entNotaMsg" class="small" style="color:#C62828;margin-top:6px"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+      <button class="btn btn-secondary" onclick="fecharModalNota()">Cancelar</button>
+      <button class="btn" id="btnConfEntNota" onclick="confirmarEntradaProdutosNota('${escHtml(id)}')">✅ Dar entrada</button>
+    </div>`);
+  renderLinhasEntradaNota();
+}
+
+function _idDoTextoItem(txt) {
+  const m = String(txt || '').match(/·\s*(\S+)\s*$/);
+  const id = m ? m[1] : '';
+  return Object.values(CATALOGO).flat().some(i => i.id === id) ? id : '';
+}
+
+function renderLinhasEntradaNota() {
+  const wrap = document.getElementById('entNotaLinhas');
+  if (!wrap) return;
+  const todos = Object.values(CATALOGO).flat();
+  wrap.innerHTML = _entradaNotaLinhas.map((l, i) => {
+    const it = todos.find(x => x.id === l.itemId);
+    const custoAnt = Number(itemState[l.itemId]?.custo) || 0;
+    const preco = parseValorBR(l.preco), venda = l.itemId ? _vendaItem(l.itemId) : 0;
+    const info = it ? `<div class="small" style="margin-top:4px">Vende p/ loja: <strong>${fmtBRL(venda)}</strong> • custo anterior: ${custoAnt ? fmtBRL(custoAnt) : '—'}${preco ? ' • ' + htmlSeloMargem(margemPct(preco, venda)) : ''}${preco && custoAnt ? ` <span style="color:${preco > custoAnt ? '#C62828' : '#2E7D32'}">(${preco > custoAnt ? '▲' : '▼'} ${Math.abs((preco - custoAnt) / custoAnt * 100).toFixed(1).replace('.', ',')}%)</span>` : ''}</div>` : '';
+    return `<div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:6px">
+      <div style="display:flex;gap:6px;align-items:center">
+        <input list="dlItensNota" placeholder="Produto (digite para buscar)" value="${it ? escHtml(it.nome + ' · ' + it.id) : escHtml(l.texto || '')}" onchange="_entradaNotaLinhas[${i}].texto=this.value;_entradaNotaLinhas[${i}].itemId=_idDoTextoItem(this.value);renderLinhasEntradaNota()" style="flex:1">
+        <button class="btn btn-secondary btn-xs" title="Remover" onclick="_entradaNotaLinhas.splice(${i},1);if(!_entradaNotaLinhas.length)_entradaNotaLinhas.push({itemId:'',qtd:'',preco:''});renderLinhasEntradaNota()">✕</button>
+      </div>
+      <div style="display:flex;gap:6px;margin-top:6px">
+        <input type="text" inputmode="decimal" placeholder="Qtd" value="${escHtml(l.qtd)}" oninput="_entradaNotaLinhas[${i}].qtd=this.value;resumoEntradaNota()" onchange="renderLinhasEntradaNota()" style="width:90px">
+        <input type="text" inputmode="decimal" placeholder="R$ por unidade" value="${escHtml(l.preco)}" oninput="_entradaNotaLinhas[${i}].preco=this.value;resumoEntradaNota()" onchange="renderLinhasEntradaNota()" style="flex:1">
+      </div>${info}</div>`;
+  }).join('');
+  resumoEntradaNota();
+}
+
+function resumoEntradaNota() {
+  const el = document.getElementById('entNotaResumo');
+  if (!el) return;
+  const total = _entradaNotaLinhas.reduce((s, l) => s + (parseValorBR(l.qtd) || 0) * (parseValorBR(l.preco) || 0), 0);
+  const n = _nota(_entradaNotaId);
+  const dif = n && n.valor ? total - n.valor : null;
+  el.innerHTML = `<div style="background:#F5F0FB;border-radius:8px;padding:8px 10px;font-size:13.5px">Total dos produtos: <strong>${fmtBRL(total)}</strong>${dif !== null ? ` • boleto: ${fmtBRL(n.valor)} ${Math.abs(dif) < 0.05 ? '<span style="color:#2E7D32">✓ bate</span>' : `<span style="color:#F57F17">(diferença ${fmtBRL(dif)} — frete/impostos/itens não lançados?)</span>`}` : ''}</div>`;
+}
+
+async function confirmarEntradaProdutosNota(id) {
+  const n = _nota(id);
+  const msg = document.getElementById('entNotaMsg');
+  const itens = [];
+  for (const l of _entradaNotaLinhas) {
+    if (!l.itemId && !l.qtd && !l.preco) continue;
+    if (!l.itemId) { msg.textContent = 'Escolha o produto da lista em todas as linhas (ou remova a linha).'; return; }
+    const qtd = parseValorBR(l.qtd), preco = parseValorBR(l.preco);
+    if (!(qtd > 0)) { msg.textContent = 'Informe a quantidade de todos os produtos.'; return; }
+    if (!(preco > 0)) { msg.textContent = 'Informe o preço de todos os produtos.'; return; }
+    const it = Object.values(CATALOGO).flat().find(x => x.id === l.itemId);
+    itens.push({ itemId: l.itemId, nome: it?.nome || l.itemId, qtd, precoUnitario: preco, total: Math.round(qtd * preco * 100) / 100, custoAnterior: Number(itemState[l.itemId]?.custo) || null, vendaNaEpoca: _vendaItem(l.itemId) });
+  }
+  if (!itens.length) { msg.textContent = 'Lance pelo menos um produto.'; return; }
+  const btn = document.getElementById('btnConfEntNota');
+  btn.disabled = true; msg.style.color = '#555'; msg.textContent = 'Salvando...';
+  const agora = new Date().toISOString();
+  const ref = _colNotas.doc(id);
+  try {
+    // 1) marca a nota (falha se alguém já deu entrada nela)
+    await _db.runTransaction(async t => {
+      const s = await t.get(ref);
+      if (!s.exists) throw new Error('Lançamento não encontrado.');
+      if (s.data().entradaProdutos) throw new Error('Já foi dada entrada nos produtos desta nota.');
+      t.update(ref, {
+        entradaProdutos: { itens, em: agora, por: _quemEsta(), usuario: currentUser },
+        historico: firebase.firestore.FieldValue.arrayUnion({ acao: `Entrada de ${itens.length} produto(s) no estoque`, por: _quemEsta(), em: agora })
+      });
+    });
+  } catch(e) { msg.style.color = '#C62828'; msg.textContent = e.message; btn.disabled = false; return; }
+  try {
+    // 2) estoque central
+    const deltas = {};
+    itens.forEach(i => { deltas[i.itemId] = (deltas[i.itemId] || 0) + i.qtd; });
+    await ajustarSaldoAtomico(deltas);
+    // 3) custo = preço desta compra
+    await atualizarItemStateEmMassa(st => {
+      itens.forEach(i => { st[i.itemId] = { ...(st[i.itemId] || {}), custo: i.precoUnitario, custoEm: agora, custoFornecedor: n.fornecedor || '' }; });
+    });
+    // 4) histórico de entradas (mesmo formato da aba Entradas de Estoque)
+    let k = 0;
+    for (const i of itens) {
+      await saveDocument(`entrada:${i.itemId}:${Date.now() + (k++)}`, {
+        itemId: i.itemId, nome: i.nome, tipo: 'compra', qtd: i.qtd, obs: 'Nota ' + (n.fornecedor || ''), fornecedor: n.fornecedor || '',
+        precoUnitario: i.precoUnitario, notaId: id, usuario: currentUser, data: agora
+      });
+    }
+    try { registrarLog('entrada_nota', `📦 Entrada pela nota ${n.fornecedor}: ${itens.map(i => i.qtd + '× ' + i.nome).join(', ')}`, currentUser); } catch(e) {}
+    fecharModalNota();
+    alert(`✅ Entrada feita: ${itens.length} produto(s) somados ao estoque central e custos atualizados.`);
+  } catch(e) {
+    msg.style.color = '#C62828';
+    msg.textContent = '⚠️ A nota foi marcada, mas houve erro ao atualizar estoque/custo: ' + e.message + '. Avise o Borja antes de tentar de novo (para não somar duas vezes).';
+  }
+}
+
+function htmlProdutosNota(n) {
+  const e = n.entradaProdutos;
+  if (!e) return '';
+  return `<details style="margin-top:6px"><summary class="small" style="cursor:pointer;color:#2E7D32;font-weight:600">📦 ${e.itens.length} produto(s) com entrada no estoque — ${fmtBRL(e.itens.reduce((s, i) => s + i.total, 0))}</summary>
+    <div style="overflow-x:auto"><table style="font-size:12.5px;margin-top:4px"><thead><tr><th>Produto</th><th>Qtd</th><th>Custo</th><th>Venda</th><th>Margem</th></tr></thead><tbody>
+    ${e.itens.map(i => `<tr><td>${escHtml(i.nome)}</td><td>${fmtQtd(i.qtd)}</td><td>${fmtBRL(i.precoUnitario)}</td><td>${fmtBRL(i.vendaNaEpoca)}</td><td>${htmlSeloMargem(margemPct(i.precoUnitario, i.vendaNaEpoca))}</td></tr>`).join('')}
+    </tbody></table></div><div class="small">Lançado por ${escHtml(e.por)} em ${fmtDataHora(e.em)}</div></details>`;
+}
+
+// ═══ ABA 💹 MARGENS E CMV ═══════════════════════════════════════════════════
+// (1) Galpão: custo da última compra × preço de venda ao franqueado.
+// (2) Cardápio: fichas técnicas (ex.: Açaí 300ml = açaí + copo + tampa + saco +
+//     colher + guardanapo) → custo para o franqueado, CMV % sobre o preço do
+//     cardápio e quanto o galpão ganha nessa ficha.
+// Dados: doc 'configMargens' {metaGalpao, metaCmv} e doc 'fichasCardapio'
+// {id: ficha}. Cada ficha é gravada sozinha em transação.
+let _configMargens = { metaGalpao: 30, metaCmv: 35 };
+let _fichasCardapio = {};
+let _margensFiltro = { status: 'todos', busca: '', cat: '' };
+let _margensVista = 'galpao';
+let _fichaEdit = null;
+
+function metaMargemGalpao() { return Number(_configMargens.metaGalpao) || 30; }
+
+async function atualizarMapaAtomico(chave, id, dados) {
+  const docRef = _col.doc(toDocId(chave));
+  const final = await _db.runTransaction(async (t) => {
+    const snap = await t.get(docRef);
+    let val = snap.exists ? snap.data().value : '{}';
+    if (typeof val === 'string') { try { val = JSON.parse(val); } catch(e) { val = {}; } }
+    val = val || {};
+    if (dados) val[id] = dados; else delete val[id];
+    t.set(docRef, { value: JSON.stringify(val), originalKey: chave, updatedAt: firebase.firestore.FieldValue.serverTimestamp() });
+    return val;
+  });
+  if (_dataCache) _dataCache[chave] = final;
+  return final;
+}
+
+async function iniciarMargens() {
+  try { await loadItemState(); } catch(e) {}
+  try { const r = await safeGet('configMargens', true); if (r && r.value) _configMargens = { ..._configMargens, ...parseValue(r.value) }; } catch(e) {}
+  try { const r = await safeGet('fichasCardapio', true); if (r && r.value) _fichasCardapio = parseValue(r.value) || {}; } catch(e) {}
+  renderMargens();
+}
+
+async function salvarMetasMargem() {
+  const g = parseValorBR(document.getElementById('metaGalpaoIn').value);
+  const c = parseValorBR(document.getElementById('metaCmvIn').value);
+  if (!(g > 0 && g < 100) || !(c > 0 && c < 100)) { alert('Metas devem ser entre 1 e 99%.'); return; }
+  _configMargens = { metaGalpao: g, metaCmv: c };
+  try { await saveDocument('configMargens', _configMargens); } catch(e) { alert('Erro ao salvar: ' + e.message); }
+  renderMargens();
+}
+
+function _statusMargem(pct) {
+  const meta = metaMargemGalpao();
+  if (pct === null) return 'semcusto';
+  if (pct < meta / 2) return 'ajustar';
+  if (pct < meta) return 'atencao';
+  return 'saudavel';
+}
+
+function renderMargens() {
+  const el = document.getElementById('margensPainel');
+  if (!el) return;
+  const abas = `<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+    <button class="tab-btn ${_margensVista === 'galpao' ? 'active' : ''}" onclick="_margensVista='galpao';renderMargens()">🏭 Galpão: custo × venda</button>
+    <button class="tab-btn ${_margensVista === 'cmv' ? 'active' : ''}" onclick="_margensVista='cmv';renderMargens()">🍧 CMV do cardápio</button>
+  </div>
+  <details style="margin-bottom:12px"><summary class="small" style="cursor:pointer">⚙️ Metas: margem do galpão ${metaMargemGalpao()}% • CMV da loja até ${_configMargens.metaCmv}%</summary>
+    <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:8px">
+      <div class="field" style="margin:0"><label>Margem mínima do galpão (%)</label><input id="metaGalpaoIn" inputmode="decimal" value="${metaMargemGalpao()}" style="width:110px"></div>
+      <div class="field" style="margin:0"><label>CMV máximo da loja (%)</label><input id="metaCmvIn" inputmode="decimal" value="${_configMargens.metaCmv}" style="width:110px"></div>
+      <button class="btn btn-secondary" onclick="salvarMetasMargem()">Salvar metas</button>
+    </div></details>`;
+  el.innerHTML = abas + (_margensVista === 'galpao' ? htmlMargensGalpao() : htmlCmvCardapio());
+}
+
+function htmlMargensGalpao() {
+  const meta = metaMargemGalpao() / 100;
+  const linhas = Object.entries(CATALOGO).flatMap(([cat, its]) => its.map(it => {
+    const custo = Number(itemState[it.id]?.custo) || 0;
+    const venda = _vendaItem(it.id);
+    const pct = custo > 0 && venda > 0 ? margemPct(custo, venda) : null;
+    return { it, cat, custo, venda, pct, st: _statusMargem(pct), em: itemState[it.id]?.custoEm, forn: itemState[it.id]?.custoFornecedor };
+  }));
+  const cont = { todos: linhas.length, ajustar: 0, atencao: 0, saudavel: 0, semcusto: 0 };
+  linhas.forEach(l => cont[l.st]++);
+  const f = _margensFiltro, busca = f.busca.toLowerCase();
+  const vis = linhas.filter(l => (f.status === 'todos' || l.st === f.status) && (!f.cat || l.cat === f.cat) && (!busca || l.it.nome.toLowerCase().includes(busca)))
+    .sort((a, b) => (a.pct === null) - (b.pct === null) || (a.pct ?? 0) - (b.pct ?? 0));
+  const chip = (k, txt, cor) => `<button class="tab-btn ${f.status === k ? 'active' : ''}" style="${f.status === k ? '' : 'color:' + cor}" onclick="_margensFiltro.status='${k}';renderMargens()">${txt} (${cont[k]})</button>`;
+  return `<div class="small" style="margin-bottom:8px">Custo = preço da <strong>última compra</strong> (lançada nos produtos da nota ou em Gestão de Itens). Margem = (venda − custo) ÷ venda.</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
+      ${chip('todos', 'Todos', '#5B2D8E')}${chip('ajustar', '🔴 Ajustar', '#C62828')}${chip('atencao', '🟡 Atenção', '#F57F17')}${chip('saudavel', '🟢 Saudável', '#2E7D32')}${chip('semcusto', '⚪ Sem custo', '#777')}
+    </div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:10px">
+      <input type="text" id="margBusca" placeholder="🔍 Buscar item" value="${escHtml(f.busca)}" oninput="buscarMargens(this.value)" style="flex:2;min-width:160px">
+      <select onchange="_margensFiltro.cat=this.value;renderMargens()" style="flex:1;min-width:140px"><option value="">Todas as categorias</option>${Object.keys(CATALOGO).map(c => `<option ${f.cat === c ? 'selected' : ''}>${escHtml(c)}</option>`).join('')}</select>
+    </div>
+    <div style="overflow-x:auto"><table><thead><tr><th>Item</th><th style="text-align:right">Custo</th><th style="text-align:right">Venda loja</th><th>Margem</th><th style="text-align:right">Preço p/ meta</th></tr></thead><tbody>
+    ${vis.map(l => `<tr><td>${escHtml(l.it.nome)}${l.em ? `<div class="small">${fmtDataCurta(l.em)}${l.forn ? ' • ' + escHtml(l.forn) : ''}</div>` : ''}</td>
+      <td style="text-align:right">${l.custo ? fmtBRL(l.custo) : '—'}</td>
+      <td style="text-align:right">${fmtBRL(l.venda)}</td>
+      <td>${htmlSeloMargem(l.pct)}${l.custo && l.venda ? `<div class="small">${fmtBRL(l.venda - l.custo)}</div>` : ''}</td>
+      <td style="text-align:right">${l.custo ? `<strong style="color:${l.venda < l.custo / (1 - meta) ? '#C62828' : '#2E7D32'}">${fmtBRL(l.custo / (1 - meta))}</strong>` : '—'}</td></tr>`).join('') || '<tr><td colspan="5" class="small">Nenhum item.</td></tr>'}
+    </tbody></table></div>
+    <div class="small" style="margin-top:6px">"Preço p/ meta" = menor preço de venda ao franqueado que dá a margem mínima do galpão. Para alterar o preço, use ⚙️ Gestão de Itens.</div>`;
+}
+
+let _tmMargBusca = null;
+function buscarMargens(v) {
+  _margensFiltro.busca = v;
+  clearTimeout(_tmMargBusca);
+  _tmMargBusca = setTimeout(() => {
+    renderMargens();
+    const i = document.getElementById('margBusca');
+    if (i) { i.focus(); i.setSelectionRange(i.value.length, i.value.length); }
+  }, 350);
+}
+
+// ── Fichas técnicas do cardápio ──
+function _rendePeloNome(nome) { const m = String(nome || '').match(/c\/\s*(\d+)/i); return m ? Number(m[1]) : 1; }
+
+function calcularFicha(fi) {
+  const todos = Object.values(CATALOGO).flat();
+  let custoLoja = 0, custoGalpao = 0, faltaCusto = false;
+  const linhas = (fi.componentes || []).map(c => {
+    const it = todos.find(x => x.id === c.itemId);
+    const fr = (Number(c.usa) || 0) / (Number(c.rende) || 1);
+    const venda = _vendaItem(c.itemId), custo = Number(itemState[c.itemId]?.custo) || 0;
+    if (!custo) faltaCusto = true;
+    custoLoja += venda * fr; custoGalpao += custo * fr;
+    return { ...c, nome: it?.nome || c.itemId + ' (item removido)', vLoja: venda * fr, vGalpao: custo * fr };
+  });
+  const preco = Number(fi.precoCardapio) || 0;
+  const cmv = preco > 0 ? custoLoja / preco * 100 : null;
+  return { linhas, custoLoja, custoGalpao, faltaCusto, preco, cmv, ganhoGalpao: custoLoja - custoGalpao };
+}
+
+function htmlSeloCmv(cmv) {
+  if (cmv === null) return '<span class="badge" style="background:#eee;color:#666">sem preço</span>';
+  const meta = Number(_configMargens.metaCmv) || 35;
+  const [bg, cor, txt] = cmv <= meta ? ['#E8F5E9', '#2E7D32', 'saudável'] : cmv <= meta + 5 ? ['#FFFDE7', '#F57F17', 'atenção'] : ['#FFEBEE', '#C62828', 'alto'];
+  return `<span class="badge" style="background:${bg};color:${cor}">CMV ${cmv.toFixed(1).replace('.', ',')}% · ${txt}</span>`;
+}
+
+function htmlCmvCardapio() {
+  const fichas = Object.entries(_fichasCardapio).sort((a, b) => String(a[1].nome).localeCompare(String(b[1].nome), 'pt-BR'));
+  const meta = (Number(_configMargens.metaCmv) || 35) / 100;
+  return `<div class="small" style="margin-bottom:10px">Cada ficha soma o que a loja compra do galpão para montar 1 produto do cardápio. <strong>Custo p/ loja</strong> usa o preço de venda ao franqueado; <strong>custo do galpão</strong> usa o custo da última compra.</div>
+    <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
+      <button class="btn" onclick="abrirFicha(null)">➕ Nova ficha</button>
+      ${!fichas.length ? '<button class="btn btn-secondary" onclick="abrirFicha(null, true)">✨ Começar pelo exemplo Açaí 300ml</button>' : ''}
+    </div>
+    ${fichas.map(([id, fi]) => {
+      const r = calcularFicha(fi);
+      return `<div class="nota-card" style="border-left-color:#5B2D8E">
+        <div style="display:flex;justify-content:space-between;gap:8px;flex-wrap:wrap;align-items:center">
+          <strong style="font-size:15px">${escHtml(fi.nome)}</strong>${htmlSeloCmv(r.cmv)}</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:6px;margin-top:8px;font-size:13px">
+          <div><div class="small">Preço cardápio</div><strong>${fmtBRL(r.preco)}</strong></div>
+          <div><div class="small">Custo p/ loja</div><strong>${fmtBRL(r.custoLoja)}</strong></div>
+          <div><div class="small">Sobra p/ loja</div><strong style="color:#2E7D32">${fmtBRL(r.preco - r.custoLoja)}</strong></div>
+          <div><div class="small">Galpão ganha</div><strong style="color:${r.ganhoGalpao < 0 ? '#C62828' : '#5B2D8E'}">${r.faltaCusto ? '⚠️ ' : ''}${fmtBRL(r.ganhoGalpao)}</strong></div>
+        </div>
+        ${r.cmv !== null && r.cmv > meta * 100 ? `<div class="small" style="margin-top:6px;color:#C62828">Para CMV de ${meta * 100}%, o cardápio precisaria ser ${fmtBRL(r.custoLoja / meta)}.</div>` : ''}
+        ${r.faltaCusto ? '<div class="small" style="margin-top:4px;color:#F57F17">⚠️ Algum item sem custo de compra lançado — o ganho do galpão está incompleto.</div>' : ''}
+        <details style="margin-top:6px"><summary class="small" style="cursor:pointer">Ver composição (${r.linhas.length})</summary>
+          <div style="overflow-x:auto"><table style="font-size:12.5px;margin-top:4px"><thead><tr><th>Item</th><th>Usa</th><th style="text-align:right">Loja paga</th><th style="text-align:right">Galpão paga</th></tr></thead><tbody>
+          ${r.linhas.map(l => `<tr><td>${escHtml(l.nome)}</td><td>${fmtQtd(l.usa)} de ${fmtQtd(l.rende)}</td><td style="text-align:right">${fmtBRL(l.vLoja)}</td><td style="text-align:right">${l.vGalpao ? fmtBRL(l.vGalpao) : '—'}</td></tr>`).join('')}
+          </tbody></table></div></details>
+        <div style="display:flex;gap:6px;margin-top:8px">
+          <button class="btn btn-secondary btn-xs" onclick="abrirFicha('${escHtml(id)}')">✏️ Editar</button>
+          <button class="btn btn-secondary btn-xs" style="background:#FFEBEE;color:#C62828" onclick="excluirFicha('${escHtml(id)}')">🗑️ Excluir</button>
+        </div></div>`;
+    }).join('') || '<p class="small">Nenhuma ficha cadastrada ainda.</p>'}`;
+}
+
+function abrirFicha(id, exemplo) {
+  const base = id ? _fichasCardapio[id] : null;
+  _fichaEdit = base ? JSON.parse(JSON.stringify(base)) : { nome: '', precoCardapio: '', componentes: [] };
+  _fichaEdit._id = id || ('F' + Date.now());
+  if (exemplo) {
+    _fichaEdit.nome = 'Açaí 300ml';
+    _fichaEdit.precoCardapio = 23;
+    _fichaEdit.componentes = [
+      { itemId: 'PA246', usa: '', rende: 8 },     // açaí: preencha quantos kg vão no copo (ex.: 0,25)
+      { itemId: 'EMB5', usa: 1, rende: 25 },
+      { itemId: 'EMB16', usa: 1, rende: 60 },
+      { itemId: 'EMB24', usa: 1, rende: 100 },
+      { itemId: 'DESC40', usa: 1, rende: 50 },
+      { itemId: 'DESC43X', usa: 1, rende: '' }
+    ];
+  }
+  if (!_fichaEdit.componentes.length) _fichaEdit.componentes.push({ itemId: '', usa: 1, rende: '' });
+  const opts = _itensCatalogoOrdenados().map(i => `<option value="${escHtml(i.nome)} · ${escHtml(i.id)}"></option>`).join('');
+  abrirModalNota(`
+    <h3 style="margin:0 0 10px;color:#5B2D8E">🍧 Ficha técnica</h3>
+    <datalist id="dlItensFicha">${opts}</datalist>
+    <div style="display:flex;gap:8px;flex-wrap:wrap">
+      <div class="field" style="flex:2;min-width:160px"><label>Produto do cardápio</label><input id="fichaNome" value="${escHtml(_fichaEdit.nome)}" placeholder="Ex.: Açaí 300ml" oninput="_fichaEdit.nome=this.value"></div>
+      <div class="field" style="flex:1;min-width:110px"><label>Preço no cardápio (R$)</label><input id="fichaPreco" inputmode="decimal" value="${escHtml(String(_fichaEdit.precoCardapio).replace('.', ','))}" oninput="_fichaEdit.precoCardapio=parseValorBR(this.value);resumoFicha()"></div>
+    </div>
+    ${exemplo ? '<div class="small" style="background:#FFF8E1;padding:6px 8px;border-radius:6px;margin-bottom:8px">Exemplo montado: confira o preço do cardápio, informe quantos <strong>kg de açaí</strong> vão no copo e quantos guardanapos vêm na caixa.</div>' : ''}
+    <div class="small" style="margin-bottom:6px"><strong>Usa</strong> = quanto vai em 1 produto • <strong>De</strong> = quanto vem na unidade que a loja compra (ex.: copo: usa 1 de 25; açaí 8 kg: usa 0,25 de 8).</div>
+    <div id="fichaLinhas"></div>
+    <button class="btn btn-secondary btn-xs" style="margin-top:6px" onclick="_fichaEdit.componentes.push({itemId:'',usa:1,rende:''});renderLinhasFicha()">➕ Mais um item</button>
+    <div id="fichaResumo" style="margin-top:12px"></div>
+    <div id="fichaMsg" class="small" style="color:#C62828"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:10px">
+      <button class="btn btn-secondary" onclick="fecharModalNota()">Cancelar</button>
+      <button class="btn" onclick="salvarFicha()">💾 Salvar ficha</button>
+    </div>`);
+  renderLinhasFicha();
+}
+
+function renderLinhasFicha() {
+  const wrap = document.getElementById('fichaLinhas');
+  if (!wrap) return;
+  const todos = Object.values(CATALOGO).flat();
+  wrap.innerHTML = _fichaEdit.componentes.map((c, i) => {
+    const it = todos.find(x => x.id === c.itemId);
+    return `<div style="border:1px solid #eee;border-radius:8px;padding:8px;margin-bottom:6px">
+      <div style="display:flex;gap:6px">
+        <input list="dlItensFicha" placeholder="Item do catálogo" value="${it ? escHtml(it.nome + ' · ' + it.id) : ''}" onchange="const id=_idDoTextoItem(this.value);_fichaEdit.componentes[${i}].itemId=id;if(id&&!_fichaEdit.componentes[${i}].rende){const it=Object.values(CATALOGO).flat().find(x=>x.id===id);_fichaEdit.componentes[${i}].rende=_rendePeloNome(it&&it.nome)}renderLinhasFicha()" style="flex:1">
+        <button class="btn btn-secondary btn-xs" onclick="_fichaEdit.componentes.splice(${i},1);renderLinhasFicha()">✕</button>
+      </div>
+      <div style="display:flex;gap:6px;align-items:center;margin-top:6px;font-size:13px">
+        Usa <input inputmode="decimal" value="${escHtml(String(c.usa ?? '').replace('.', ','))}" oninput="_fichaEdit.componentes[${i}].usa=parseValorBR(this.value);resumoFicha()" style="width:80px">
+        de <input inputmode="decimal" value="${escHtml(String(c.rende ?? '').replace('.', ','))}" oninput="_fichaEdit.componentes[${i}].rende=parseValorBR(this.value);resumoFicha()" style="width:80px">
+        <span class="small" id="fichaLinhaVal${i}"></span>
+      </div></div>`;
+  }).join('');
+  resumoFicha();
+}
+
+function resumoFicha() {
+  const r = calcularFicha(_fichaEdit);
+  r.linhas.forEach((l, i) => { const e = document.getElementById('fichaLinhaVal' + i); if (e) e.textContent = l.itemId ? '= ' + fmtBRL(l.vLoja) : ''; });
+  const el = document.getElementById('fichaResumo');
+  if (el) el.innerHTML = `<div style="background:#F5F0FB;border-radius:8px;padding:8px 10px;font-size:13.5px">Custo p/ loja: <strong>${fmtBRL(r.custoLoja)}</strong> • ${htmlSeloCmv(r.cmv)}<br>Galpão ganha: <strong>${fmtBRL(r.ganhoGalpao)}</strong>${r.faltaCusto ? ' <span class="small">(algum item sem custo)</span>' : ''}</div>`;
+}
+
+async function salvarFicha() {
+  const fi = _fichaEdit, msg = document.getElementById('fichaMsg');
+  if (!String(fi.nome || '').trim()) { msg.textContent = 'Informe o nome do produto.'; return; }
+  const comps = fi.componentes.filter(c => c.itemId);
+  if (!comps.length) { msg.textContent = 'Inclua pelo menos um item.'; return; }
+  if (comps.some(c => !(Number(c.usa) > 0) || !(Number(c.rende) > 0))) { msg.textContent = 'Preencha "usa" e "de" em todos os itens.'; return; }
+  const dados = { nome: fi.nome.trim(), precoCardapio: Number(fi.precoCardapio) || 0, componentes: comps.map(c => ({ itemId: c.itemId, usa: Number(c.usa), rende: Number(c.rende) })), atualizadoEm: new Date().toISOString(), por: currentUser };
+  try { _fichasCardapio = await atualizarMapaAtomico('fichasCardapio', fi._id, dados); }
+  catch(e) { msg.textContent = 'Erro ao salvar: ' + e.message; return; }
+  fecharModalNota(); renderMargens();
+}
+
+async function excluirFicha(id) {
+  if (!confirm(`Excluir a ficha "${_fichasCardapio[id]?.nome}"?`)) return;
+  try { _fichasCardapio = await atualizarMapaAtomico('fichasCardapio', id, null); renderMargens(); }
+  catch(e) { alert('Erro: ' + e.message); }
 }
 
 function abrirModalNota(html) {
