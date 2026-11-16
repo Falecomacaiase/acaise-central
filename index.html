@@ -138,6 +138,12 @@
     #romaneioOverlay { position:static !important; background:none !important; padding:0 !important; display:block !important; }
     #romaneioConteudo { box-shadow:none !important; border-radius:0 !important; }
     .no-print { display:none !important; }
+    /* Quantidade e preço editáveis saem impressos como texto, sem caixinha */
+    #romaneioBody input { border:none !important; background:none !important; padding:0 !important; box-shadow:none !important; -webkit-appearance:none; -moz-appearance:textfield; appearance:none; color:#000; }
+    #romaneioBody input::-webkit-inner-spin-button, #romaneioBody input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
+    #romaneioConteudo { padding:0 !important; max-width:none !important; }
+    #romaneioOverlay { overflow:visible !important; }
+    @page { margin:12mm; }
   }
 </style>
 </head>
@@ -995,7 +1001,7 @@
         <button class="btn btn-secondary" onclick="window.print()">🖨️ Só imprimir</button>
       </div>
     </div>
-    <div id="romaneioStatusMsg" class="small" style="margin-bottom:8px"></div>
+    <div id="romaneioStatusMsg" class="small no-print" style="margin-bottom:8px"></div>
     <div id="romaneioBody"></div>
   </div>
 </div>
@@ -1004,7 +1010,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.16-1";
+const APP_VERSION = "2026.11.16-2";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -2467,7 +2473,7 @@ function renderRomaneioBody(jaDespachou, modoCorrecao) {
             oninput="atualizarPrecoItemRomaneio('${id}', this.value)" title="Ajustar preço deste item só neste pedido">
         </td>
         <td style="padding:7px 10px;border-bottom:1px solid #eee;text-align:right" id="romaneioTotal_${id}"><strong>R$ ${(it.total||0).toFixed(2).replace('.',',')}</strong></td>
-        <td style="padding:4px 6px;border-bottom:1px solid #eee">
+        <td class="no-print" style="padding:4px 6px;border-bottom:1px solid #eee">
           <button onclick="removerItemRomaneio('${id}')" title="Remover item" style="background:none;border:none;cursor:pointer;color:#C62828;font-size:16px">✕</button>
         </td>
       </tr>`;
@@ -2486,8 +2492,10 @@ function renderRomaneioBody(jaDespachou, modoCorrecao) {
   const descontoCalc = desc ? (desc.tipo === 'percentual' ? totalItens * (desc.valor/100) : desc.valor) : 0;
   const total = desc ? Math.max(0, totalItens - descontoCalc) : totalItens;
 
+  // class="no-print": quadros de edição/avisos internos não saem na impressão
+  // (o desconto continua aparecendo impresso no quadro do TOTAL).
   const descontoFormHtml = !jaDespachou ? `
-    <div style="background:#FCE4EC;border:1px solid #F48FB1;border-radius:6px;padding:10px 12px;margin-bottom:12px">
+    <div class="no-print" style="background:#FCE4EC;border:1px solid #F48FB1;border-radius:6px;padding:10px 12px;margin-bottom:12px">
       <div style="font-size:12px;font-weight:700;color:#AD1457;margin-bottom:8px">💰 Desconto / divisão de custo com a franqueadora</div>
       ${desc ? `<div style="font-size:13px;color:#AD1457;margin-bottom:8px">
         ✅ Desconto aplicado: ${desc.tipo === 'percentual' ? desc.valor + '%' : 'R$ ' + desc.valor.toFixed(2).replace('.',',')}
@@ -2504,26 +2512,26 @@ function renderRomaneioBody(jaDespachou, modoCorrecao) {
         <button onclick="aplicarDescontoRomaneio()" style="background:#AD1457;color:#fff;border:none;padding:6px 14px;border-radius:4px;font-size:13px;cursor:pointer;font-weight:600">${desc ? '🔄 Atualizar' : '✅ Aplicar'} desconto</button>
       </div>
     </div>` : (desc ? `
-    <div style="background:#FCE4EC;border:1px solid #F48FB1;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:#AD1457">
+    <div class="no-print" style="background:#FCE4EC;border:1px solid #F48FB1;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:13px;color:#AD1457">
       💰 <strong>Desconto aplicado neste pedido:</strong> ${desc.tipo === 'percentual' ? desc.valor + '%' : 'R$ ' + desc.valor.toFixed(2).replace('.',',')}
       (− R$ ${descontoCalc.toFixed(2).replace('.',',')}) — <em>${desc.motivo}</em>
       <div style="font-size:11px;color:#888;margin-top:2px">Aplicado por ${desc.aplicadoPor||'—'} em ${desc.data ? new Date(desc.data).toLocaleString('pt-BR') : '—'}</div>
     </div>` : '');
 
   const correcoesHtml = (jaDespachou && pedido.correcoes && pedido.correcoes.length) ? `
-    <div style="background:#FFF3E0;border:1px solid #FFB74D;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#E65100">
+    <div class="no-print" style="background:#FFF3E0;border:1px solid #FFB74D;border-radius:6px;padding:10px 12px;margin-bottom:12px;font-size:12px;color:#E65100">
       ✏️ <strong>Este pedido já foi corrigido após o despacho ${pedido.correcoes.length > 1 ? `(${pedido.correcoes.length} vezes)` : ''}:</strong>
       ${pedido.correcoes.map(c => `<div style="margin-top:4px">${new Date(c.data).toLocaleString('pt-BR')} por ${c.usuario} — total de R$ ${c.totalAntes.toFixed(2).replace('.',',')} para R$ ${c.totalDepois.toFixed(2).replace('.',',')}</div>`).join('')}
     </div>` : '';
 
   document.getElementById('romaneioBody').innerHTML = `
     ${correcoesHtml}
-    ${!jaDespachou ? `${modoCorrecao ? `<div style="background:#FFEBEE;border:1px solid #EF9A9A;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#C62828">
+    ${!jaDespachou ? `${modoCorrecao ? `<div class="no-print" style="background:#FFEBEE;border:1px solid #EF9A9A;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#C62828">
       ✏️ <strong>Modo de correção</strong> — este pedido JÁ FOI DESPACHADO. Ajuste os itens e clique em "Salvar correção e ajustar estoque"; o estoque central é corrigido pela diferença, não descontado do zero de novo.
-    </div>` : `<div style="background:#FFF8E1;border:1px solid #FFE082;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#F57F17">
+    </div>` : `<div class="no-print" style="background:#FFF8E1;border:1px solid #FFE082;border-radius:6px;padding:8px 12px;margin-bottom:12px;font-size:12px;color:#F57F17">
       ✏️ <strong>Antes de despachar</strong> — ajuste quantidades, remova itens (✕) ou adicione novos itens abaixo.
     </div>`}
-    ${(pedido.itensAvulsos && pedido.itensAvulsos.length) ? `<div style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:6px;padding:10px 12px;margin-bottom:12px">
+    ${(pedido.itensAvulsos && pedido.itensAvulsos.length) ? `<div class="no-print" style="background:#E3F2FD;border:1px solid #90CAF9;border-radius:6px;padding:10px 12px;margin-bottom:12px">
       <div style="font-size:12px;font-weight:700;color:#1565C0;margin-bottom:8px">📦 Itens fora do catálogo pedidos por ${pedido.unidade} — defina o preço pra incluir no romaneio</div>
       ${pedido.itensAvulsos.map((ia, i) => `
         <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px;flex-wrap:wrap">
@@ -2540,7 +2548,7 @@ function renderRomaneioBody(jaDespachou, modoCorrecao) {
         </div>
       `).join('')}
     </div>` : ''}
-    <div style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:6px;padding:10px 12px;margin-bottom:12px">
+    <div class="no-print" style="background:#E8F5E9;border:1px solid #A5D6A7;border-radius:6px;padding:10px 12px;margin-bottom:12px">
       <div style="font-size:12px;font-weight:700;color:#2E7D32;margin-bottom:6px">➕ Adicionar item ao pedido</div>
       <div style="display:flex;gap:6px;flex-wrap:wrap">
         <select id="romaneioAddItem" style="flex:2;min-width:180px;padding:6px;border:1px solid #A5D6A7;border-radius:4px;font-size:13px">
@@ -2569,7 +2577,7 @@ function renderRomaneioBody(jaDespachou, modoCorrecao) {
         <th style="padding:8px 10px;text-align:center">Qtd</th>
         <th style="padding:8px 10px;text-align:right">Preço unit.</th>
         <th style="padding:8px 10px;text-align:right">Total</th>
-        ${!jaDespachou ? '<th style="padding:8px 10px"></th>' : ''}
+        ${!jaDespachou ? '<th class="no-print" style="padding:8px 10px"></th>' : ''}
       </tr></thead>
       <tbody>${linhas}</tbody>
     </table>
