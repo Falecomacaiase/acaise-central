@@ -2,6 +2,8 @@
 <html lang="pt-BR">
 <head>
 <meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#5B2D8E">
 <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
 <meta http-equiv="Pragma" content="no-cache">
 <meta http-equiv="Expires" content="0">
@@ -70,6 +72,67 @@
   .item-disabled { opacity: 0.4; pointer-events: none; }
   .btn-xs { padding:4px 10px;font-size:12px;border-radius:4px; }
   @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+
+  /* ── Menu lateral do painel da franqueadora ──
+     Computador (≥ 900px): coluna fixa à esquerda.
+     Celular/tablet: gaveta que abre pelo botão ☰ da barra roxa. */
+  .menu-btn { display:none; position:relative; flex-shrink:0; width:42px; height:42px; border:none; border-radius:10px; background:rgba(255,255,255,.15); color:#fff; font-size:22px; line-height:1; cursor:pointer; }
+  .menu-btn:active { background:rgba(255,255,255,.3); }
+  .menu-dot { display:none; position:absolute; top:6px; right:6px; width:10px; height:10px; border-radius:50%; background:#FF5252; border:2px solid #5B2D8E; }
+  .menu-btn.tem-alerta .menu-dot { display:block; }
+  .admin-nav { position:fixed; top:0; left:0; bottom:0; width:250px; background:#fff; box-shadow:2px 0 12px rgba(0,0,0,.08); overflow-y:auto; -webkit-overflow-scrolling:touch; padding:14px 10px 24px; z-index:900; }
+  .admin-nav-head { display:flex; align-items:center; justify-content:space-between; gap:8px; padding:4px 8px 12px; margin-bottom:8px; border-bottom:1px solid #eee; }
+  .admin-nav-head img { height:30px; display:block; }
+  .admin-nav-fechar { display:none; width:38px; height:38px; border:none; border-radius:10px; background:#F5F0FB; color:#5B2D8E; font-size:18px; font-weight:700; cursor:pointer; }
+  .admin-nav-fundo { display:none; position:fixed; inset:0; background:rgba(0,0,0,.45); z-index:899; }
+  .tabs.tabs-lateral { flex-direction:column; flex-wrap:nowrap; gap:3px; margin:0; padding:0; border:none; }
+  .tabs-lateral .tab-btn { width:100%; justify-content:flex-start; text-align:left; white-space:normal; line-height:1.25; border-radius:10px; background:transparent; border-color:transparent; padding:12px 12px; font-size:14.5px; color:#3D1F61; }
+  .tabs-lateral .tab-btn:hover { background:#F5F0FB; }
+  .tabs-lateral .tab-btn.active { background:#5B2D8E; border-color:#5B2D8E; color:#fff; }
+  .tabs-lateral .tab-badge { margin-left:auto; }
+  .admin-titulo { margin:0 0 14px; font-size:20px; color:#3D1F61; }
+  body.tem-aviso-atualizacao .admin-nav { top:48px; }
+  @media (min-width: 900px) {
+    body.modo-admin { padding-left:250px; }
+    body.modo-admin .container { max-width:1200px; }
+  }
+  @media (max-width: 899px) {
+    body.modo-admin .menu-btn { display:inline-flex; align-items:center; justify-content:center; }
+    .admin-nav { width:min(84vw, 300px); transform:translateX(-105%); transition:transform .22s ease; z-index:2000; box-shadow:4px 0 24px rgba(0,0,0,.25); }
+    body.tem-aviso-atualizacao .admin-nav { top:0; }
+    .admin-nav-fechar { display:inline-block; }
+    body.menu-aberto .admin-nav { transform:translateX(0); }
+    body.menu-aberto .admin-nav-fundo { display:block; z-index:1999; }
+    body.menu-aberto { overflow:hidden; }
+    .tabs-lateral .tab-btn { padding:14px 12px; font-size:15.5px; }
+  }
+
+  /* ── Ajustes gerais para celular ── */
+  @media (max-width: 600px) {
+    .topbar { padding:10px 12px; gap:8px; }
+    .topbar h1 { font-size:15px; }
+    .topbar .sub { font-size:11.5px; }
+    .topbar img { height:24px !important; }
+    .topbar > div:first-child { gap:8px !important; min-width:0; }
+    .topbar > div:first-child > div:first-of-type { padding:4px 8px !important; }
+    .topbar .btn { padding:8px 12px; }
+    .container { padding:10px; }
+    .card { padding:14px; border-radius:12px; }
+    .admin-titulo { font-size:18px; }
+    /* 16px evita o zoom automático do iPhone ao tocar no campo */
+    input, select, textarea { font-size:16px; }
+    .btn { padding:11px 16px; }
+    th, td { padding:7px 8px; }
+    /* Tabelas largas rolam para o lado dentro da própria aba, sem empurrar a página */
+    #adminScreen > div[id^="tab"], #orderScreen, #notasScreen, #financeiroScreen { overflow-x:auto; -webkit-overflow-scrolling:touch; }
+    #romaneioConteudo, #romaneioLojaConteudo { padding:16px !important; }
+    #romaneioOverlay, #romaneioLojaOverlay { padding:8px !important; }
+  }
+  @media (max-width: 420px) {
+    .topbar h1 { font-size:14px; }
+    /* no painel, em telas bem estreitas, a logo sai da barra (ela aparece no menu lateral) */
+    body.modo-admin .topbar > div:first-child > div:first-of-type { display:none !important; }
+  }
   @media print {
     body > *:not(#romaneioOverlay) { display:none !important; }
     #romaneioOverlay { position:static !important; background:none !important; padding:0 !important; display:block !important; }
@@ -82,6 +145,7 @@
 
 <div class="topbar">
   <div style="display:flex;align-items:center;gap:12px">
+    <button class="menu-btn" id="menuBtn" onclick="abrirMenuAdmin()" aria-label="Abrir menu" title="Menu">☰<span class="menu-dot"></span></button>
     <div style="background:#fff;border-radius:8px;padding:5px 12px;display:flex;align-items:center;flex-shrink:0">
       <img src="acaise-logo.png" alt="Açaí-Se" style="height:32px;display:block">
     </div>
@@ -241,9 +305,15 @@
 
   <!-- ADMIN -->
   <div id="adminScreen" class="card hidden">
-    <h2 style="margin-top:0">Painel da Franqueadora</h2>
+    <h2 class="admin-titulo" id="adminTituloAba">📋 Pedidos das Lojas</h2>
 
-    <div class="tabs">
+    <div class="admin-nav-fundo" onclick="fecharMenuAdmin()"></div>
+    <nav class="admin-nav" id="adminNav" aria-label="Menu do painel">
+      <div class="admin-nav-head">
+        <img src="acaise-logo.png" alt="Açaí-Se">
+        <button class="admin-nav-fechar" onclick="fecharMenuAdmin()" aria-label="Fechar menu">✕</button>
+      </div>
+    <div class="tabs tabs-lateral">
       <button class="tab-btn active" id="tabBtnPedidos" onclick="switchAdminTab('pedidos')">📋 Pedidos das Lojas</button>
       <button class="tab-btn" id="tabBtnEntradas" onclick="switchAdminTab('entradas')">📦 Entradas de Estoque</button>
       <button class="tab-btn" id="tabBtnItens" onclick="switchAdminTab('itens')">⚙️ Gestão de Itens</button>
@@ -256,6 +326,7 @@
       <button class="tab-btn" id="tabBtnNotas" onclick="switchAdminTab('notas')">📄 Notas e Boletos</button>
       <button class="tab-btn" id="tabBtnFechamentos" onclick="switchAdminTab('fechamentos')">🏪 Acompanhamento Loja Boa Viagem</button>
     </div>
+    </nav>
 
     <div id="tabPedidos">
       <p class="small">Pedidos consolidados de todas as unidades. Itens em vermelho indicam que o total pedido ultrapassa o estoque atual da central.</p>
@@ -933,7 +1004,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.10.23-1";
+const APP_VERSION = "2026.11.16-1";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -1910,6 +1981,31 @@ function abrirRomaneioLojaObjeto(p) {
 
 function imprimirRomaneioLoja() { window.print(); }
 
+// ─── MENU LATERAL DO PAINEL ─────────────────────────────────────────────────
+function mostrarModoAdmin(ativo) {
+  document.body.classList.toggle('modo-admin', !!ativo);
+  if (!ativo) document.body.classList.remove('menu-aberto');
+}
+function abrirMenuAdmin() { document.body.classList.add('menu-aberto'); }
+function fecharMenuAdmin() { document.body.classList.remove('menu-aberto'); }
+document.addEventListener('keydown', e => { if (e.key === 'Escape') fecharMenuAdmin(); });
+
+// Título no topo do painel = nome da aba aberta (sem o contador de notas)
+function atualizarTituloAbaAdmin() {
+  const ativo = document.querySelector('#adminNav .tab-btn.active');
+  const titulo = document.getElementById('adminTituloAba');
+  if (!ativo || !titulo) return;
+  const copia = ativo.cloneNode(true);
+  copia.querySelectorAll('.tab-badge').forEach(b => b.remove());
+  titulo.textContent = copia.textContent.trim();
+}
+
+// Bolinha vermelha no ☰ quando há alguma aba com contador (ex.: notas novas)
+function atualizarAlertaMenu() {
+  const btn = document.getElementById('menuBtn');
+  if (btn) btn.classList.toggle('tem-alerta', !!document.querySelector('#adminNav .tab-badge'));
+}
+
 function switchAdminTab(tab) {
   ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Compras','Log','Notas','Fechamentos'].forEach(t => {
     const el = document.getElementById('tab'+t);
@@ -1917,6 +2013,9 @@ function switchAdminTab(tab) {
     if(el) el.classList.toggle('hidden', tab !== t.toLowerCase());
     if(btn) btn.classList.toggle('active', tab === t.toLowerCase());
   });
+  atualizarTituloAbaAdmin();
+  fecharMenuAdmin();
+  window.scrollTo(0, 0);
   if (tab === 'entradas') { iniciarEntradas(); }
   if (tab === 'itens') { iniciarGestaoItens(); }
   if (tab === 'cadastros') { iniciarCadastros(); }
@@ -4633,6 +4732,7 @@ async function doLogin() {
   } else if (currentRole === "admin") {
     document.getElementById('topbarSub').textContent = "Painel da Franqueadora";
     document.getElementById('adminScreen').classList.remove('hidden');
+    mostrarModoAdmin(true);
     loadExtraUnidades().then(() => loadAdminData()).then(() => aplicarMigracoesCatalogo());
   } else {
     document.getElementById('topbarSub').textContent = "Unidade: " + unit;
@@ -4683,6 +4783,7 @@ function logout() {
   _dataCache = null; // limpa cache ao sair
   document.getElementById('orderScreen').classList.add('hidden');
   document.getElementById('adminScreen').classList.add('hidden');
+  mostrarModoAdmin(false);
   document.getElementById('inventarioScreen').classList.add('hidden');
   document.getElementById('notasScreen').classList.add('hidden');
   document.getElementById('financeiroScreen').classList.add('hidden');
@@ -4715,6 +4816,7 @@ async function restaurarSessao() {
     abrirTelaNotas(savedRole);
   } else if (savedRole === 'admin') {
     document.getElementById('adminScreen').classList.remove('hidden');
+    mostrarModoAdmin(true);
     loadExtraUnidades().then(() => loadAdminData()).then(() => aplicarMigracoesCatalogo());
   } else if (savedRole === 'inventario') {
     document.getElementById('inventarioScreen').classList.remove('hidden');
@@ -6278,6 +6380,7 @@ function atualizarTelasNotas() {
   if (btn) {
     const n = _notasLista.filter(x => x.status === 'novo').length;
     btn.innerHTML = '📄 Notas e Boletos' + (n ? ` <span class="tab-badge">${n}</span>` : '');
+    atualizarAlertaMenu();
   }
 }
 
