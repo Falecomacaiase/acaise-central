@@ -340,7 +340,7 @@
       <button class="tab-btn" id="tabBtnLog" onclick="switchAdminTab('log')">📋 Log</button>
       <button class="tab-btn" id="tabBtnNotas" onclick="switchAdminTab('notas')">📄 Notas e Boletos</button>
       <button class="tab-btn" id="tabBtnFechamentos" onclick="switchAdminTab('fechamentos')">🏪 Acompanhamento Loja Boa Viagem</button>
-      <button class="tab-btn" id="tabBtnMargens" onclick="switchAdminTab('margens')">💹 Margens e CMV</button>
+      <button class="tab-btn" id="tabBtnMargens" onclick="switchAdminTab('margens')">💹 Margem do Galpão</button>
     </div>
     </nav>
 
@@ -1025,7 +1025,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.16-5";
+const APP_VERSION = "2026.11.16-6";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -7194,14 +7194,19 @@ function _vendaItem(id) {
   const it = Object.values(CATALOGO).flat().find(i => i.id === id);
   return Number(itemState[id]?.venda || it?.preco || 0);
 }
-// Margem do galpão sobre o preço de venda ao franqueado
-function margemPct(custo, venda) { return venda > 0 ? (venda - custo) / venda * 100 : null; }
+// Margem do galpão = quanto ganhamos EM CIMA DO CUSTO (como a equipe pensa):
+// compra a R$ 2,00 e vende ao franqueado a R$ 2,20 → 10%.
+function margemPct(custo, venda) { return custo > 0 ? (venda - custo) / custo * 100 : null; }
 function htmlSeloMargem(pct) {
-  if (pct === null || isNaN(pct)) return '<span class="badge" style="background:#eee;color:#666">sem custo</span>';
+  if (pct === null || isNaN(pct)) return '<span class="badge" style="background:#eee;color:#666">⚪ sem custo</span>';
   const meta = metaMargemGalpao();
-  const [bg, cor, txt] = pct < 0 ? ['#FFEBEE', '#C62828', 'prejuízo'] : pct < meta / 2 ? ['#FFEBEE', '#C62828', 'ajustar'] : pct < meta ? ['#FFFDE7', '#F57F17', 'atenção'] : ['#E8F5E9', '#2E7D32', 'saudável'];
-  return `<span class="badge" style="background:${bg};color:${cor}">${pct.toFixed(1).replace('.', ',')}% · ${txt}</span>`;
+  const [bg, cor, txt] = pct < 0 ? ['#FFEBEE', '#C62828', '🔴 prejuízo'] : pct < meta / 2 ? ['#FFEBEE', '#C62828', '🔴'] : pct < meta ? ['#FFFDE7', '#F57F17', '🟡'] : ['#E8F5E9', '#2E7D32', '🟢'];
+  return `<span class="badge" style="background:${bg};color:${cor};white-space:nowrap">${txt} ${pct.toFixed(1).replace('.', ',')}%</span>`;
 }
+
+// Para retomar o CMV do cardápio (fichas técnicas) no futuro, troque para true.
+// Borja pediu (16/11/2026) para focar só na margem do galpão por enquanto.
+const MOSTRAR_CMV_CARDAPIO = false;
 
 async function abrirEntradaProdutosNota(id) {
   const n = _nota(id);
@@ -7366,9 +7371,10 @@ async function iniciarMargens() {
 
 async function salvarMetasMargem() {
   const g = parseValorBR(document.getElementById('metaGalpaoIn').value);
-  const c = parseValorBR(document.getElementById('metaCmvIn').value);
-  if (!(g > 0 && g < 100) || !(c > 0 && c < 100)) { alert('Metas devem ser entre 1 e 99%.'); return; }
-  _configMargens = { metaGalpao: g, metaCmv: c };
+  const cIn = document.getElementById('metaCmvIn');
+  const c = cIn ? parseValorBR(cIn.value) : (Number(_configMargens.metaCmv) || 35);
+  if (!(g > 0 && g <= 500) || !(c > 0 && c < 100)) { alert('Confira as metas (margem do galpão entre 1% e 500%).'); return; }
+  _configMargens = { ..._configMargens, metaGalpao: g, metaCmv: c };
   try { await saveDocument('configMargens', _configMargens); } catch(e) { alert('Erro ao salvar: ' + e.message); }
   renderMargens();
 }
@@ -7384,15 +7390,17 @@ function _statusMargem(pct) {
 function renderMargens() {
   const el = document.getElementById('margensPainel');
   if (!el) return;
-  const abas = `<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
+  if (!MOSTRAR_CMV_CARDAPIO) _margensVista = 'galpao';
+  const meta = metaMargemGalpao();
+  const abas = (MOSTRAR_CMV_CARDAPIO ? `<div style="display:flex;gap:6px;margin-bottom:12px;flex-wrap:wrap">
     <button class="tab-btn ${_margensVista === 'galpao' ? 'active' : ''}" onclick="_margensVista='galpao';renderMargens()">🏭 Galpão: custo × venda</button>
     <button class="tab-btn ${_margensVista === 'cmv' ? 'active' : ''}" onclick="_margensVista='cmv';renderMargens()">🍧 CMV do cardápio</button>
-  </div>
-  <details style="margin-bottom:12px"><summary class="small" style="cursor:pointer">⚙️ Metas: margem do galpão ${metaMargemGalpao()}% • CMV da loja até ${_configMargens.metaCmv}%</summary>
+  </div>` : '') + `
+  <details style="margin-bottom:12px"><summary class="small" style="cursor:pointer">⚙️ Meta: margem mínima do galpão <strong>${meta}%</strong> sobre o custo — 🟢 a partir de ${meta}% • 🟡 de ${meta / 2}% a ${meta}% • 🔴 abaixo de ${meta / 2}%</summary>
     <div style="display:flex;gap:8px;align-items:flex-end;flex-wrap:wrap;margin-top:8px">
-      <div class="field" style="margin:0"><label>Margem mínima do galpão (%)</label><input id="metaGalpaoIn" inputmode="decimal" value="${metaMargemGalpao()}" style="width:110px"></div>
-      <div class="field" style="margin:0"><label>CMV máximo da loja (%)</label><input id="metaCmvIn" inputmode="decimal" value="${_configMargens.metaCmv}" style="width:110px"></div>
-      <button class="btn btn-secondary" onclick="salvarMetasMargem()">Salvar metas</button>
+      <div class="field" style="margin:0"><label>Margem mínima do galpão (%)</label><input id="metaGalpaoIn" inputmode="decimal" value="${meta}" style="width:110px"></div>
+      ${MOSTRAR_CMV_CARDAPIO ? `<div class="field" style="margin:0"><label>CMV máximo da loja (%)</label><input id="metaCmvIn" inputmode="decimal" value="${_configMargens.metaCmv}" style="width:110px"></div>` : ''}
+      <button class="btn btn-secondary" onclick="salvarMetasMargem()">Salvar meta</button>
     </div></details>`;
   el.innerHTML = abas + (_margensVista === 'galpao' ? htmlMargensGalpao() : htmlCmvCardapio());
 }
@@ -7402,7 +7410,7 @@ function htmlMargensGalpao() {
   const linhas = Object.entries(CATALOGO).flatMap(([cat, its]) => its.map(it => {
     const custo = Number(itemState[it.id]?.custo) || 0;
     const venda = _vendaItem(it.id);
-    const pct = custo > 0 && venda > 0 ? margemPct(custo, venda) : null;
+    const pct = custo > 0 ? margemPct(custo, venda) : null;
     return { it, cat, custo, venda, pct, st: _statusMargem(pct), em: itemState[it.id]?.custoEm, forn: itemState[it.id]?.custoFornecedor };
   }));
   const cont = { todos: linhas.length, ajustar: 0, atencao: 0, saudavel: 0, semcusto: 0 };
@@ -7411,7 +7419,7 @@ function htmlMargensGalpao() {
   const vis = linhas.filter(l => (f.status === 'todos' || l.st === f.status) && (!f.cat || l.cat === f.cat) && (!busca || l.it.nome.toLowerCase().includes(busca)))
     .sort((a, b) => (a.pct === null) - (b.pct === null) || (a.pct ?? 0) - (b.pct ?? 0));
   const chip = (k, txt, cor) => `<button class="tab-btn ${f.status === k ? 'active' : ''}" style="${f.status === k ? '' : 'color:' + cor}" onclick="_margensFiltro.status='${k}';renderMargens()">${txt} (${cont[k]})</button>`;
-  return `<div class="small" style="margin-bottom:8px">Custo = preço da <strong>última compra</strong> (lançada nos produtos da nota ou em Gestão de Itens). Margem = (venda − custo) ÷ venda.</div>
+  return `<div class="small" style="margin-bottom:8px">Custo = preço da <strong>última compra</strong> (lançada nos produtos da nota ou em Gestão de Itens). Margem = quanto ganhamos em cima do custo. Ex.: compra R$ 2,00 e vende R$ 2,20 → R$ 0,20 = 10%.</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap;margin-bottom:8px">
       ${chip('todos', 'Todos', '#5B2D8E')}${chip('ajustar', '🔴 Ajustar', '#C62828')}${chip('atencao', '🟡 Atenção', '#F57F17')}${chip('saudavel', '🟢 Saudável', '#2E7D32')}${chip('semcusto', '⚪ Sem custo', '#777')}
     </div>
@@ -7424,9 +7432,9 @@ function htmlMargensGalpao() {
       <td style="text-align:right">${l.custo ? fmtBRL(l.custo) : '—'}</td>
       <td style="text-align:right">${fmtBRL(l.venda)}</td>
       <td>${htmlSeloMargem(l.pct)}${l.custo && l.venda ? `<div class="small">${fmtBRL(l.venda - l.custo)}</div>` : ''}</td>
-      <td style="text-align:right">${l.custo ? `<strong style="color:${l.venda < l.custo / (1 - meta) ? '#C62828' : '#2E7D32'}">${fmtBRL(l.custo / (1 - meta))}</strong>` : '—'}</td></tr>`).join('') || '<tr><td colspan="5" class="small">Nenhum item.</td></tr>'}
+      <td style="text-align:right">${l.custo ? `<strong style="color:${l.venda < l.custo * (1 + meta) - 0.005 ? '#C62828' : '#2E7D32'}">${fmtBRL(l.custo * (1 + meta))}</strong>` : '—'}</td></tr>`).join('') || '<tr><td colspan="5" class="small">Nenhum item.</td></tr>'}
     </tbody></table></div>
-    <div class="small" style="margin-top:6px">"Preço p/ meta" = menor preço de venda ao franqueado que dá a margem mínima do galpão. Para alterar o preço, use ⚙️ Gestão de Itens.</div>`;
+    <div class="small" style="margin-top:6px">"Preço p/ meta" = custo + ${metaMargemGalpao()}%, o menor preço ao franqueado que deixa o item 🟢. Para alterar o preço, use ⚙️ Gestão de Itens.</div>`;
 }
 
 let _tmMargBusca = null;
