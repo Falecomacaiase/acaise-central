@@ -91,6 +91,27 @@
   .tabs-lateral .tab-btn.active { background:#5B2D8E; border-color:#5B2D8E; color:#fff; }
   .tabs-lateral .tab-badge { margin-left:auto; }
   .admin-titulo { margin:0 0 14px; font-size:20px; color:#3D1F61; }
+  /* Gestão de Itens — edição na linha */
+  .gi-in { width:96px; padding:6px 8px; text-align:right; }
+  #chkMostrarPausados { width:auto; margin:0; }
+  .gi-sujo { background:#FFF8E1 !important; }
+  .gi-salvar { white-space:nowrap; }
+  .gi-salvar:disabled { background:#E0E0E0; color:#888; cursor:default; }
+  .gi-salvar.gi-ok { background:#2E7D32; }
+  .gi-mais { display:block; font-size:11px; color:#888; margin-top:2px; }
+  .gi-margem { margin-top:3px; font-size:11px; }
+  #editPrecoBox:not(.hidden) { position:fixed; z-index:3000; left:50%; top:50%; transform:translate(-50%,-50%); width:min(460px, calc(100vw - 24px)); max-height:90vh; overflow:auto; margin:0 !important; box-shadow:0 0 0 100vmax rgba(0,0,0,.45), 0 8px 30px rgba(0,0,0,.3); }
+  @media (max-width: 700px) {
+    #gestaoItensTable thead { display:none; }
+    #gestaoItensTable table, #gestaoItensTable tbody { display:block; }
+    #gestaoItensTable tr { display:grid; grid-template-columns:1fr 1fr; gap:8px 12px; padding:12px 6px; border-bottom:1px solid #eee; }
+    #gestaoItensTable td { display:block; border:none; padding:0; }
+    #gestaoItensTable td[data-label]::before { content:attr(data-label); display:block; font-size:11px; color:#888; font-weight:600; margin-bottom:2px; }
+    #gestaoItensTable td.gi-nome { grid-column:1 / -1; font-weight:600; font-size:15px; }
+    #gestaoItensTable td.gi-acao { grid-column:1 / -1; }
+    #gestaoItensTable .gi-in { width:100%; }
+    #gestaoItensTable .gi-salvar { width:100%; padding:11px; font-size:14px; }
+  }
   .sino-btn { align-items:center; gap:6px; height:38px; padding:0 12px; border:none; border-radius:10px; background:rgba(255,255,255,.15); color:#fff; font-size:15px; font-weight:600; cursor:pointer; white-space:nowrap; }
   .sino-btn:active { background:rgba(255,255,255,.3); }
   .sino-num { min-width:20px; height:20px; padding:0 6px; border-radius:10px; background:#FF5252; color:#fff; font-size:12px; font-weight:700; line-height:20px; text-align:center; }
@@ -479,13 +500,14 @@
 
     <!-- ABA: GESTÃO DE ITENS -->
     <div id="tabItens" class="hidden">
-      <p class="small">Ative ou desative itens para os franqueados e edite preços. Para cadastrar novos produtos, use a aba <strong>📝 Cadastros</strong>.</p>
+      <p class="small">Edite custo, venda, disponível e lojas direto na linha e aperte <strong>💾 Salvar</strong> ao lado (a linha fica amarela até salvar; tudo fica no Log e os outros aparelhos se atualizam sozinhos). Para cadastrar novos produtos, use a aba <strong>📝 Cadastros</strong>.</p>
 
       <div class="field" style="max-width:260px">
         <label>Filtrar por categoria</label>
         <select id="filtroCategoria" onchange="renderGestaoItens()"></select>
       </div>
-      <div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">
+      <details style="margin-bottom:12px"><summary class="small" style="cursor:pointer;font-weight:600;color:#5B2D8E;padding:6px 0">⚙️ Ações em massa (reativar, restringir, resetar, exportar/importar)</summary>
+      <div style="display:flex;gap:8px;margin:8px 0 4px;flex-wrap:wrap">
         <button class="btn btn-secondary" onclick="reativarTodosItens()">✅ Reativar todos os itens</button>
         <button class="btn btn-secondary" onclick="restringirItensPausadosParaUnidade()" style="background:#EFEBE9;border:1px solid #BCAAA4">🏪 Restringir pausados a uma unidade</button>
         <button class="btn btn-secondary" onclick="sincronizarPrecosCatalogo()" style="background:#FFEBEE;border:1px solid #EF9A9A">⚠️ Resetar preços pro catálogo original</button>
@@ -493,7 +515,7 @@
         <button class="btn btn-secondary" onclick="document.getElementById('importCatalogoInput').click()" style="background:#E3F2FD;border:1px solid #90CAF9">📤 Importar atualização de preços (CSV)</button>
         <input type="file" id="importCatalogoInput" accept=".csv" style="display:none" onchange="importarAtualizacaoCatalogo(this.files[0])">
         <button class="btn btn-secondary" onclick="aplicarAtualizacaoPrecos20260930()" style="background:#D1C4E9;border:1px solid #9575CD">📋 Aplicar atualização de preços (30/09)</button>
-      </div>
+      </div></details>
       <div id="syncMsg" class="small" style="margin-bottom:8px"></div>
       <div id="importMsg" class="small" style="margin-bottom:8px"></div>
 
@@ -1030,7 +1052,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.16-7";
+const APP_VERSION = "2026.11.16-8";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -2089,7 +2111,7 @@ function switchAdminTab(tab) {
   fecharMenuAdmin();
   window.scrollTo(0, 0);
   if (tab === 'entradas') { iniciarEntradas(); }
-  if (tab === 'itens') { iniciarGestaoItens(); }
+  if (tab === 'itens') { iniciarGestaoItens(); iniciarEscutaItemStateGestao(); } else { pararEscutaItemStateGestao(); }
   if (tab === 'cadastros') { iniciarCadastros(); }
   if (tab === 'relatorios') { iniciarRelatorios(); }
   if (tab === 'boletos') { iniciarBoletos(); }
@@ -3966,7 +3988,7 @@ function renderGestaoItens() {
   if (itensZerados.length > 0) {
     avisoHtml = `<div style="background:#FFEBEE;border-left:4px solid #C62828;border-radius:0 6px 6px 0;padding:10px 14px;margin-bottom:14px;font-size:13px">
       <strong style="color:#C62828">⚠️ ${itensZerados.length} item(ns) disponível(is) com preço R$0,00:</strong>
-      <span style="color:#C62828"> ${itensZerados.join(', ')}</span> — provavelmente falta cadastrar o preço. Use "✏️ Editar" pra corrigir.
+      <span style="color:#C62828"> ${itensZerados.join(', ')}</span> — provavelmente falta cadastrar o preço. Corrija o preço na linha e aperte 💾 Salvar.
     </div>`;
   }
 
@@ -3975,31 +3997,7 @@ function renderGestaoItens() {
     Mostrar itens pausados (${totalPausados} oculto${totalPausados===1?'':'s'} agora)
   </label>`;
 
-  const linhaItem = (item, cat) => {
-    const st = getItemState(item.id, item);
-    const disp = st.disponivel;
-    const custo = st.custo !== null ? st.custo.toFixed(2) : '—';
-    const precoVenda = st.venda || item.preco || 0;
-    const venda = precoVenda.toFixed(2);
-    const zerado = disp && !precoVenda;
-    const restrito = st.restritoUnidades && st.restritoUnidades.length;
-    return `<tr style="${!disp ? 'opacity:.5' : ''}${zerado ? 'background:#FFF3E0' : ''}">
-        <td>${item.nome}${zerado ? ' <span title="Preço não cadastrado" style="color:#C62828">⚠️</span>' : ''}</td>
-        <td>R$ ${custo}</td>
-        <td><strong style="${zerado ? 'color:#C62828' : ''}">R$ ${venda}</strong></td>
-        <td>
-          <label class="toggle">
-            <input type="checkbox" ${disp ? 'checked' : ''} onchange="toggleDisponivel('${item.id}', this.checked)">
-            <span class="slider"></span>
-          </label>
-        </td>
-        <td>
-          <span class="small" title="${restrito ? st.restritoUnidades.join(', ') : ''}" style="${restrito ? 'color:#E65100;font-weight:600' : 'color:#888'}">${restrito ? (st.restritoUnidades.length <= 3 ? '🔒 Só: ' + st.restritoUnidades.join(', ') : '🔒 ' + st.restritoUnidades.length + ' lojas') : 'Todas as lojas'}</span>
-          <br><a href="#" onclick="editarRestricaoItem('${item.id}');return false;" style="font-size:11px">escolher lojas</a>
-        </td>
-        <td><button class="btn btn-secondary btn-xs" onclick="abrirEditPreco('${item.id}','${item.nome.replace(/'/g,"\\'")}',${st.custo||item.preco},${st.venda||item.preco},'${cat.replace(/'/g,"\\'")}')">✏️ Editar</button></td>
-      </tr>`;
-  };
+  const linhaItem = (item, cat) => htmlLinhaGestaoItem(item, cat);
 
   // Agrupado por categoria em blocos recolhíveis — mais fácil de escanear do
   // que uma tabela única gigante com a categoria só repetida numa coluna.
@@ -4036,7 +4034,9 @@ function listarLojasParaRestricao() {
 function editarRestricaoItem(id) {
   const item = Object.values(CATALOGO).flat().find(i => i.id === id);
   if (!item) return;
-  const st = getItemState(id, item);
+  const st0 = getItemState(id, item);
+  const rasc = _rascunhoItens[id] || {};
+  const st = { ...st0, ...('disponivel' in rasc ? { disponivel: rasc.disponivel } : {}), ...('restritoUnidades' in rasc ? { restritoUnidades: rasc.restritoUnidades } : {}) };
   const lojas = listarLojasParaRestricao();
   const norm = s => String(s).toUpperCase().replace(/\s+/g, '');
   const salvas = (st.restritoUnidades || []).map(norm);
@@ -4069,7 +4069,7 @@ function editarRestricaoItem(id) {
       <div class="small" style="color:#666;margin-bottom:14px">Marque as lojas que <strong>podem ver e pedir</strong>. As desmarcadas não enxergam o item. Com todas marcadas, qualquer loja vê.</div>
       <div style="display:flex;gap:8px;justify-content:flex-end">
         <button type="button" class="btn btn-secondary" onclick="document.getElementById('restricaoModal').remove()">Cancelar</button>
-        <button type="button" class="btn" onclick="salvarRestricaoModal('${id}')">✅ Salvar</button>
+        <button type="button" class="btn" onclick="salvarRestricaoModal('${id}')">✔ Confirmar</button>
       </div>
     </div>`;
   document.body.appendChild(modal);
@@ -4085,18 +4085,10 @@ async function salvarRestricaoModal(id) {
     return;
   }
   const lista = marcadas.length === todas.length ? [] : marcadas; // todas marcadas = sem restrição
-  try {
-    await atualizarItemStateAtomico(id, { restritoUnidades: lista, disponivel: ativo });
-    document.getElementById('restricaoModal').remove();
-    renderGestaoItens();
-    alert(!ativo
-      ? `✅ "${item.nome}" pausado pra todas as lojas.`
-      : lista.length
-        ? `✅ "${item.nome}" liberado só pra: ${lista.join(', ')}.\nAs lojas se atualizam sozinhas em até 1 minuto.`
-        : `✅ "${item.nome}" liberado pra todas as lojas.\nAs lojas se atualizam sozinhas em até 1 minuto.`);
-  } catch (e) {
-    alert('❌ Não foi possível salvar. Verifique sua internet e tente de novo.\n\nErro: ' + e.message);
-  }
+  // Não grava aqui: marca na linha e a gravação acontece no 💾 Salvar da linha.
+  _rascunhoItens[id] = { ...(_rascunhoItens[id] || {}), restritoUnidades: lista, disponivel: ativo };
+  document.getElementById('restricaoModal').remove();
+  _redesenharLinhaItem(id);
 }
 
 // Exporta a lista COMPLETA de itens (catálogo base + produtos cadastrados
@@ -4384,6 +4376,154 @@ async function importarAtualizacaoCatalogo(file) {
   }
 }
 
+// ─── GESTÃO DE ITENS: edição direto na linha ────────────────────────────────
+// Custo, venda, disponível e lojas ficam abertos na própria linha; nada é
+// gravado até apertar 💾 Salvar daquela linha (gravação atômica só desse item +
+// registro no Log). Enquanto há alteração não salva, a linha fica amarela e
+// NÃO é sobrescrita pela atualização em tempo real vinda de outro aparelho.
+let _rascunhoItens = {};   // id → { custo, venda, disponivel, restritoUnidades }
+let _unsubItemStateGestao = null;
+
+function _fmtNumIn(n) { return (n === null || n === undefined || n === '' || isNaN(n)) ? '' : Number(n).toFixed(2).replace('.', ','); }
+function _catDoItem(id) { for (const [c, its] of Object.entries(CATALOGO)) if (its.some(i => i.id === id)) return c; return ''; }
+
+function _textoLojas(lista) {
+  const restrito = lista && lista.length;
+  return `<span class="small" title="${restrito ? escHtml(lista.join(', ')) : ''}" style="${restrito ? 'color:#E65100;font-weight:600' : 'color:#888'}">${restrito ? (lista.length <= 3 ? '🔒 Só: ' + escHtml(lista.join(', ')) : '🔒 ' + lista.length + ' lojas') : 'Todas as lojas'}</span>`;
+}
+
+function htmlLinhaGestaoItem(item, cat) {
+  const st = getItemState(item.id, item);
+  const r = _rascunhoItens[item.id] || {};
+  const id = item.id;
+  const disp = 'disponivel' in r ? r.disponivel : st.disponivel;
+  const custoTxt = 'custo' in r ? r.custo : _fmtNumIn(st.custo);
+  const vendaTxt = 'venda' in r ? r.venda : _fmtNumIn(st.venda || item.preco || 0);
+  const lojas = 'restritoUnidades' in r ? r.restritoUnidades : (st.restritoUnidades || []);
+  const custoN = parseValorBR(custoTxt), vendaN = parseValorBR(vendaTxt);
+  const zerado = disp && !vendaN;
+  const sujo = !!_rascunhoItens[id];
+  return `<tr id="gi_${id}" class="${sujo ? 'gi-sujo' : ''}" style="${!disp ? 'opacity:.55' : ''}">
+      <td class="gi-nome">${escHtml(item.nome)}${zerado ? ' <span title="Preço não cadastrado" style="color:#C62828">⚠️</span>' : ''}
+        <a href="#" class="gi-mais" title="Editar nome e categoria" onclick="abrirEditPreco('${id}', _nomeItem('${id}'), ${st.custo ?? 'null'}, ${st.venda || item.preco || 0}, _catDoItem('${id}'));return false;">✏️ nome/categoria</a></td>
+      <td data-label="Custo (R$)"><input class="gi-in" inputmode="decimal" placeholder="—" value="${escHtml(custoTxt)}" oninput="marcarRascunhoItem('${id}','custo',this.value)"></td>
+      <td data-label="Venda (R$)"><input class="gi-in" inputmode="decimal" value="${escHtml(vendaTxt)}" oninput="marcarRascunhoItem('${id}','venda',this.value)" style="font-weight:700;${zerado ? 'color:#C62828' : ''}">
+        <div class="gi-margem" id="giMargem_${id}">${custoN > 0 ? htmlSeloMargem(margemPct(custoN, vendaN)) : ''}</div></td>
+      <td data-label="Disponível">
+        <label class="toggle">
+          <input type="checkbox" ${disp ? 'checked' : ''} onchange="marcarRascunhoItem('${id}','disponivel',this.checked)">
+          <span class="slider"></span>
+        </label>
+      </td>
+      <td data-label="Lojas">${_textoLojas(lojas)}
+        <br><a href="#" onclick="editarRestricaoItem('${id}');return false;" style="font-size:11px">escolher lojas</a>
+      </td>
+      <td class="gi-acao"><button class="btn btn-xs gi-salvar" ${sujo ? '' : 'disabled'} onclick="salvarLinhaItem('${id}')">💾 Salvar</button></td>
+    </tr>`;
+}
+
+function _nomeItem(id) { return Object.values(CATALOGO).flat().find(i => i.id === id)?.nome || ''; }
+
+function marcarRascunhoItem(id, campo, valor) {
+  _rascunhoItens[id] = { ...(_rascunhoItens[id] || {}), [campo]: valor };
+  const tr = document.getElementById('gi_' + id);
+  if (!tr) return;
+  tr.classList.add('gi-sujo');
+  const b = tr.querySelector('.gi-salvar'); if (b) { b.disabled = false; b.textContent = '💾 Salvar'; }
+  if (campo === 'disponivel') tr.style.opacity = valor ? '' : '.55';
+  if (campo === 'custo' || campo === 'venda') {
+    const ins = tr.querySelectorAll('.gi-in');
+    const c = parseValorBR(ins[0].value), v = parseValorBR(ins[1].value);
+    const m = document.getElementById('giMargem_' + id);
+    if (m) m.innerHTML = c > 0 ? htmlSeloMargem(margemPct(c, v)) : '';
+  }
+}
+
+function _redesenharLinhaItem(id) {
+  const tr = document.getElementById('gi_' + id);
+  const item = Object.values(CATALOGO).flat().find(i => i.id === id);
+  if (tr && item) tr.outerHTML = htmlLinhaGestaoItem(item, _catDoItem(id));
+}
+
+async function salvarLinhaItem(id) {
+  const item = Object.values(CATALOGO).flat().find(i => i.id === id);
+  const r = _rascunhoItens[id];
+  if (!item || !r) return;
+  const st = getItemState(id, item);
+  const patch = {};
+  const mud = [];
+  const f = n => (n === null || n === undefined) ? '—' : 'R$ ' + Number(n).toFixed(2).replace('.', ',');
+  if ('custo' in r) {
+    const txt = String(r.custo).trim();
+    const c = txt === '' ? null : parseValorBR(txt);
+    if (c !== null && !(c >= 0)) { alert('Custo inválido.'); return; }
+    if (c !== (st.custo ?? null)) { patch.custo = c; patch.custoEm = new Date().toISOString(); patch.custoFornecedor = 'Ajuste manual'; mud.push(`custo ${f(st.custo)} → ${f(c)}`); }
+  }
+  if ('venda' in r) {
+    const v = parseValorBR(r.venda);
+    if (!(v > 0)) { alert(`Informe um preço de venda válido para "${item.nome}".`); return; }
+    if (v !== Number(st.venda || item.preco)) { patch.venda = v; mud.push(`venda ${f(st.venda || item.preco)} → ${f(v)}`); }
+  }
+  if ('disponivel' in r && r.disponivel !== st.disponivel) { patch.disponivel = r.disponivel; mud.push(r.disponivel ? 'ativado' : 'pausado'); }
+  if ('restritoUnidades' in r) { patch.restritoUnidades = r.restritoUnidades; mud.push(r.restritoUnidades.length ? 'lojas: só ' + r.restritoUnidades.join(', ') : 'lojas: todas'); }
+  const btn = document.querySelector('#gi_' + id + ' .gi-salvar');
+  if (!Object.keys(patch).length) { delete _rascunhoItens[id]; _redesenharLinhaItem(id); return; }
+  if (btn) { btn.disabled = true; btn.textContent = 'Salvando...'; }
+  try {
+    await atualizarItemStateAtomico(id, patch);
+    if (patch.venda) item.preco = patch.venda;
+    delete _rascunhoItens[id];
+    try { registrarLog('item_editado', `✏️ ${item.nome}: ${mud.join(' • ')}`, currentUser); } catch(e) {}
+    _redesenharLinhaItem(id);
+    const b2 = document.querySelector('#gi_' + id + ' .gi-salvar');
+    if (b2) { b2.textContent = '✅ Salvo'; b2.classList.add('gi-ok'); setTimeout(() => { if (b2.isConnected && !_rascunhoItens[id]) { b2.textContent = '💾 Salvar'; b2.classList.remove('gi-ok'); } }, 2500); }
+  } catch(e) {
+    if (btn) { btn.disabled = false; btn.textContent = '💾 Salvar'; }
+    alert('❌ Não foi possível salvar. Verifique sua internet e tente de novo.\n\nErro: ' + e.message);
+  }
+}
+
+// Tempo real: enquanto a Gestão de Itens está aberta, mudanças feitas em outro
+// aparelho aparecem sozinhas (só nas linhas sem alteração pendente).
+function iniciarEscutaItemStateGestao() {
+  if (_unsubItemStateGestao) return;
+  _unsubItemStateGestao = _col.doc(toDocId('itemState')).onSnapshot(snap => {
+    if (!snap.exists) return;
+    let val = snap.data().value;
+    if (typeof val === 'string') { try { val = JSON.parse(val); } catch(e) { return; } }
+    if (!val) return;
+    const antes = JSON.stringify(itemState);
+    itemState = { ...itemState, ...val };
+    if (_dataCache) _dataCache['itemState'] = val;
+    if (JSON.stringify(itemState) === antes) return;
+    aplicarNomesCustom();
+    Object.values(CATALOGO).flat().forEach(it => {
+      if (_rascunhoItens[it.id]) return;
+      const tr = document.getElementById('gi_' + it.id);
+      if (tr && !tr.contains(document.activeElement)) _redesenharLinhaItem(it.id);
+    });
+  }, err => console.error('Escuta itemState:', err));
+}
+function pararEscutaItemStateGestao() { if (_unsubItemStateGestao) { _unsubItemStateGestao(); _unsubItemStateGestao = null; } }
+
+// Loja: quando a franqueadora salva um preço/disponibilidade, a tela da loja
+// se atualiza em segundos (antes: até 1 min), sem perder o que já foi digitado.
+let _unsubItemStateLoja = null, _tmItemStateLoja = null;
+function iniciarEscutaItemStateLoja() {
+  if (_unsubItemStateLoja) return;
+  let primeira = true;
+  _unsubItemStateLoja = _col.doc(toDocId('itemState')).onSnapshot(() => {
+    if (primeira) { primeira = false; return; }
+    clearTimeout(_tmItemStateLoja);
+    _tmItemStateLoja = setTimeout(() => { atualizarCatalogoLojaSemPerderDigitado(); }, 1500);
+  }, err => console.error('Escuta itemState (loja):', err));
+}
+function pararEscutaItemStateLoja() { if (_unsubItemStateLoja) { _unsubItemStateLoja(); _unsubItemStateLoja = null; } }
+
+window.addEventListener('beforeunload', e => {
+  if (Object.keys(_rascunhoItens).length) { e.preventDefault(); e.returnValue = ''; }
+});
+
 async function toggleDisponivel(itemId, valor) {
   try {
     await atualizarItemStateAtomico(itemId, { disponivel: valor });
@@ -4483,7 +4623,9 @@ async function salvarItem() {
     msg.textContent = '✅ Alterações salvas!';
     document.getElementById('editNomeItem').textContent = novoNome;
     popularSelectCategorias(document.getElementById('filtroCategoria'));
+    delete _rascunhoItens[itemId];
     renderGestaoItens();
+    document.getElementById('editPrecoBox').classList.add('hidden');
     alert(`✅ "${novoNome}" salvo com sucesso!\nPreço de venda: R$ ${venda.toFixed(2).replace('.',',')}${novaCategoria ? '\nCategoria: ' + novaCategoria : ''}`);
   } catch (e) {
     msg.style.color = '#C62828';
@@ -4820,6 +4962,7 @@ async function doLogin() {
       aplicarModoGalpao();
       if (_lojaPollInterval) clearInterval(_lojaPollInterval);
       _lojaPollInterval = setInterval(atualizarCatalogoLojaSemPerderDigitado, 60000); // a cada 1min
+      iniciarEscutaItemStateLoja();
       const situacao = await verificarBoletosUnidade(unit);
       const avisoEl = document.getElementById('ordemBloqueada');
       const msgEl = document.getElementById('ordemBloqueadaMsg');
@@ -4870,6 +5013,7 @@ function logout() {
   document.getElementById('loginPass').value = "";
   if (_adminPollInterval) { clearInterval(_adminPollInterval); _adminPollInterval = null; }
   if (_lojaPollInterval) { clearInterval(_lojaPollInterval); _lojaPollInterval = null; }
+  pararEscutaItemStateGestao(); pararEscutaItemStateLoja();
 }
 
 // Restaura sessão ao recarregar a página
@@ -4907,6 +5051,7 @@ async function restaurarSessao() {
       aplicarModoGalpao();
       if (_lojaPollInterval) clearInterval(_lojaPollInterval);
       _lojaPollInterval = setInterval(atualizarCatalogoLojaSemPerderDigitado, 60000); // a cada 1min
+      iniciarEscutaItemStateLoja();
       const situacao = await verificarBoletosUnidade(savedUser);
       // aplica avisos de boleto se necessário
     });
