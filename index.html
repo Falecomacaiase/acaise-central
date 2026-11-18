@@ -1052,7 +1052,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.16-8";
+const APP_VERSION = "2026.11.17-1";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -3877,8 +3877,18 @@ const MIGRACOES_CATALOGO = {
   '20261005-pote-cx4': {
     PA96: { venda: 112, nomeCustom: 'Açaí Pote 1,5lt (cx c/4)' },
     PA97: { venda: 120, nomeCustom: 'Açaí Pote 1,5lt Nuts (cx c/4)' }
+  },
+  // 17/11/2026 — 4 cadastros do mesmo chips. Fica só o original PROD227 (tem o
+  // estoque e o histórico), renomeado; os 3 duplicados são pausados (não
+  // apagados, para não perder histórico de pedidos antigos).
+  '20261117-chips-unificado': {
+    PROD227: { nomeCustom: 'Chips de Batata 200g', disponivel: true },
+    Prot_1787062424006: { disponivel: false },
+    Prod_1787062268219: { disponivel: false },
+    Prod_1786983304770: { disponivel: false }
   }
 };
+
 async function aplicarMigracoesCatalogo() {
   try {
     const ref = _col.doc(toDocId('migracoesCatalogo'));
