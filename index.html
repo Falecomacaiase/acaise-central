@@ -197,6 +197,7 @@
   <div style="display:flex;align-items:center;gap:12px">
     <span id="saveIndicator" style="display:none;font-size:12px;font-weight:600"></span>
     <button class="sino-btn" id="sinoContas" onclick="abrirPopupVencimentos()" style="display:none" aria-label="Contas a pagar">🔔<span class="sino-txt">A pagar</span><span class="sino-num">0</span></button>
+    <button class="btn btn-secondary" id="funcaoBtn" onclick="menuFuncaoAdmin()" style="display:none;white-space:nowrap"></button>
     <button class="btn btn-secondary" id="logoutBtn" onclick="logout()" style="display:none">Sair</button>
   </div>
 </div>
@@ -1052,7 +1053,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.23-1";
+const APP_VERSION = "2026.11.23-2";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -1193,14 +1194,175 @@ const SENHAS_HASH = {
 // contra alguém com conhecimento técnico (a regra do Firestore está aberta).
 const SENHA_MASTER_HASH = 'b01fe05940a1eb5a2b18ab988a71aae254bdaaca8f1a9ac1869286281d2d5915';
 
+// ─── FUNÇÃO NO LOGIN DA FRANQUEADORA: Sócio x Colaborador ────────────────────
+// Depois de entrar como "Franqueadora (Admin)", a pessoa escolhe:
+//   👑 Sócio (superadministrador) — PIN curto de números, uma vez por sessão;
+//      acesso completo e as ações de senha master não pedem mais nada.
+//   👥 Colaborador (equipe) — sem PIN; não vê Cadastros nem Bloqueio de Pedidos,
+//      e desconto/desbloqueio pedem o PIN dos sócios.
+// O PIN fica só como hash no documento 'acessoSocios' do banco (não no código
+// público) e é um só para todos os sócios. É uma barreira para a equipe, não
+// proteção contra quem tem conhecimento técnico (a regra do Firestore é aberta).
+const ABAS_SO_SOCIOS = ['cadastros', 'boletos'];
+let _funcaoAdmin = null; // 'socio' | 'colab'
+
+async function pinSociosHash() {
+  try { const r = await safeGet('acessoSocios', true); return (r && parseValue(r.value) || {}).pinHash || null; } catch(e) { return null; }
+}
+
+function aplicarFuncaoAdmin(persistir = true) {
+  const socio = _funcaoAdmin === 'socio';
+  ABAS_SO_SOCIOS.forEach(t => {
+    const btn = document.getElementById('tabBtn' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (btn) btn.style.display = socio ? '' : 'none';
+    const aba = document.getElementById('tab' + t.charAt(0).toUpperCase() + t.slice(1));
+    if (!socio && aba && !aba.classList.contains('hidden')) switchAdminTab('pedidos');
+  });
+  const b = document.getElementById('funcaoBtn');
+  if (b) {
+    b.style.display = currentRole === 'admin' ? '' : 'none';
+    b.textContent = socio ? '👑 Sócio' : '👥 Colaborador';
+    b.title = 'Trocar função (sócio / colaborador)';
+  }
+  if (persistir) { try { sessionStorage.setItem('acaise_funcao', _funcaoAdmin || ''); } catch(e) {} }
+}
+
+// Chamado ao entrar (ou recarregar) como admin.
+async function iniciarFuncaoAdmin() {
+  const pinHash = await pinSociosHash();
+  // Sessão já escolhida nesta aba
+  let salvo = null; try { salvo = sessionStorage.getItem('acaise_funcao'); } catch(e) {}
+  let ok = null; try { ok = sessionStorage.getItem('acaise_socio_k'); } catch(e) {}
+  if (salvo === 'colab') { _funcaoAdmin = 'colab'; aplicarFuncaoAdmin(); return; }
+  if (salvo === 'socio' && pinHash && ok === pinHash) { _funcaoAdmin = 'socio'; aplicarFuncaoAdmin(); return; }
+  // Celular pessoal lembrado por 30 dias
+  try {
+    const lembr = JSON.parse(localStorage.getItem('acaise_socio_lembrar') || 'null');
+    if (lembr && pinHash && lembr.h === pinHash && lembr.ate > Date.now()) {
+      _funcaoAdmin = 'socio'; sessionStorage.setItem('acaise_socio_k', pinHash); aplicarFuncaoAdmin(); return;
+    }
+  } catch(e) {}
+  _funcaoAdmin = 'colab'; aplicarFuncaoAdmin(); // até escolher, fica no modo restrito
+  escolherFuncaoAdmin();
+}
+
+function escolherFuncaoAdmin() {
+  const m = document.createElement('div');
+  m.id = 'funcaoModal';
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:420px;width:100%;padding:22px;box-shadow:0 8px 30px rgba(0,0,0,.3)">
+    <div style="font-size:18px;font-weight:700;color:#333">Selecione a função de acesso</div>
+    <div class="small" style="margin:4px 0 16px">Franqueadora Açaí-Se</div>
+    <label class="nota-opcao" style="margin-bottom:10px !important;align-items:flex-start">
+      <input type="radio" name="funcaoAdm" value="socio" style="margin-top:4px !important">
+      <span><strong>👑 Sócio (superadministrador)</strong><br><span class="small" style="font-weight:400">Acesso completo, inclusive Cadastros, Bloqueio de Pedidos, descontos e desbloqueios.</span></span>
+    </label>
+    <label class="nota-opcao" style="align-items:flex-start">
+      <input type="radio" name="funcaoAdm" value="colab" style="margin-top:4px !important">
+      <span><strong>👥 Colaborador (equipe)</strong><br><span class="small" style="font-weight:400">Pedidos, romaneio, despacho, estoque e produção do dia a dia.</span></span>
+    </label>
+    <div id="funcaoPinBox" class="hidden" style="margin-top:14px">
+      <label class="small" style="font-weight:600">PIN dos sócios</label>
+      <input type="password" id="funcaoPin" inputmode="numeric" autocomplete="off" maxlength="12" placeholder="••••" style="font-size:20px;letter-spacing:4px;text-align:center">
+      <label style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px"><input type="checkbox" id="funcaoLembrar" style="width:auto;margin:0"> Este é meu celular/computador pessoal — lembrar por 30 dias</label>
+    </div>
+    <div class="error" id="funcaoErr"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:16px">
+      <button class="btn" id="funcaoOk" style="min-width:110px">OK</button>
+    </div></div>`;
+  document.body.appendChild(m);
+  const radios = m.querySelectorAll('input[name="funcaoAdm"]');
+  radios.forEach(r => r.onchange = () => {
+    const socio = r.value === 'socio' && r.checked;
+    m.querySelector('#funcaoPinBox').classList.toggle('hidden', !socio);
+    if (socio) setTimeout(() => m.querySelector('#funcaoPin').focus(), 50);
+  });
+  const confirmar = async () => {
+    const escolha = m.querySelector('input[name="funcaoAdm"]:checked')?.value;
+    const err = m.querySelector('#funcaoErr');
+    if (!escolha) { err.textContent = 'Escolha uma das opções.'; return; }
+    if (escolha === 'colab') {
+      _funcaoAdmin = 'colab';
+      try { sessionStorage.removeItem('acaise_socio_k'); } catch(e) {}
+      m.remove(); aplicarFuncaoAdmin(); return;
+    }
+    const pinHash = await pinSociosHash();
+    if (!pinHash) { m.remove(); definirPinSocios(true); return; }
+    const h = await hashSenha('SOCIO', m.querySelector('#funcaoPin').value.trim());
+    if (h !== pinHash) { err.textContent = 'PIN incorreto.'; m.querySelector('#funcaoPin').select(); return; }
+    _funcaoAdmin = 'socio';
+    try {
+      sessionStorage.setItem('acaise_socio_k', pinHash);
+      if (m.querySelector('#funcaoLembrar').checked) localStorage.setItem('acaise_socio_lembrar', JSON.stringify({ h: pinHash, ate: Date.now() + 30 * 86400000 }));
+    } catch(e) {}
+    try { registrarLog('acesso_socio', '👑 Entrou como sócio', currentUser); } catch(e) {}
+    m.remove(); aplicarFuncaoAdmin();
+  };
+  m.querySelector('#funcaoOk').onclick = confirmar;
+  m.querySelector('#funcaoPin').addEventListener('keydown', e => { if (e.key === 'Enter') confirmar(); });
+}
+
+// Clique no selo da função (topo): trocar de função ou trocar o PIN.
+function menuFuncaoAdmin() {
+  if (_funcaoAdmin !== 'socio') { escolherFuncaoAdmin(); return; }
+  const op = prompt('Você está como 👑 Sócio.\n\n1 = Mudar para Colaborador\n2 = Trocar o PIN dos sócios\n3 = Esquecer este aparelho (parar de lembrar)\n\nDigite o número:');
+  if (op === '1') { _funcaoAdmin = 'colab'; try { sessionStorage.removeItem('acaise_socio_k'); } catch(e) {} aplicarFuncaoAdmin(); }
+  else if (op === '2') definirPinSocios(false);
+  else if (op === '3') { try { localStorage.removeItem('acaise_socio_lembrar'); } catch(e) {} alert('Pronto: este aparelho não será mais lembrado.'); }
+}
+
+// Define (primeira vez, com a senha master) ou troca (com o PIN atual) o PIN.
+function definirPinSocios(primeiraVez) {
+  const m = document.createElement('div');
+  m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5001;display:flex;align-items:center;justify-content:center;padding:16px';
+  m.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:400px;width:100%;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.3)">
+    <div style="font-size:17px;font-weight:700;color:#5B2D8E">🔑 ${primeiraVez ? 'Criar o PIN dos sócios' : 'Trocar o PIN dos sócios'}</div>
+    <div class="small" style="margin:6px 0 12px">${primeiraVez ? 'Primeira vez: confirme com a senha master (a longa) e escolha um PIN curto de 4 a 6 números.' : 'Digite o PIN atual e o novo.'}</div>
+    <input type="password" id="pinAtual" ${primeiraVez ? 'autocomplete="off" placeholder="Senha master"' : 'inputmode="numeric" autocomplete="off" placeholder="PIN atual"'}>
+    <input type="password" id="pinNovo" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="Novo PIN (4 a 6 números)" style="margin-top:8px">
+    <input type="password" id="pinNovo2" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="Repita o novo PIN" style="margin-top:8px">
+    <div class="error" id="pinErr"></div>
+    <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
+      <button class="btn btn-secondary" data-r="0">Cancelar</button>
+      <button class="btn" data-r="1">Salvar PIN</button>
+    </div></div>`;
+  document.body.appendChild(m);
+  setTimeout(() => m.querySelector('#pinAtual').focus(), 50);
+  m.querySelector('[data-r="0"]').onclick = () => { m.remove(); if (primeiraVez) escolherFuncaoAdmin(); };
+  m.querySelector('[data-r="1"]').onclick = async () => {
+    const err = m.querySelector('#pinErr');
+    const atual = m.querySelector('#pinAtual').value, novo = m.querySelector('#pinNovo').value.trim(), novo2 = m.querySelector('#pinNovo2').value.trim();
+    const pinHash = await pinSociosHash();
+    const confere = primeiraVez ? (await hashSenha('MASTER', atual)) === SENHA_MASTER_HASH : (await hashSenha('SOCIO', atual.trim())) === pinHash;
+    if (!confere) { err.textContent = primeiraVez ? 'Senha master incorreta.' : 'PIN atual incorreto.'; return; }
+    if (!/^\d{4,6}$/.test(novo)) { err.textContent = 'O PIN precisa ter de 4 a 6 números.'; return; }
+    if (novo !== novo2) { err.textContent = 'Os dois PINs não são iguais.'; return; }
+    const h = await hashSenha('SOCIO', novo);
+    try {
+      await saveDocument('acessoSocios', { pinHash: h, atualizadoEm: new Date().toISOString() });
+      try { localStorage.removeItem('acaise_socio_lembrar'); } catch(e) {}
+      try { registrarLog('acesso_socio', primeiraVez ? '🔑 PIN dos sócios criado' : '🔑 PIN dos sócios trocado', currentUser); } catch(e) {}
+      _funcaoAdmin = 'socio';
+      try { sessionStorage.setItem('acaise_socio_k', h); } catch(e) {}
+      m.remove(); aplicarFuncaoAdmin();
+      alert('✅ PIN salvo! A partir de agora, ao entrar como sócio, use esse PIN.');
+    } catch(e) { err.textContent = 'Não foi possível salvar: ' + e.message; }
+  };
+}
+
 function pedirSenhaMaster(acao) {
+  // Sócio já identificado nesta sessão: não pede nada de novo.
+  if (_funcaoAdmin === 'socio') {
+    try { registrarLog('senha_master', '👑 Ação de sócio: ' + acao, currentUser); } catch(e) {}
+    return Promise.resolve(true);
+  }
   return new Promise(resolve => {
     const m = document.createElement('div');
     m.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.55);z-index:5000;display:flex;align-items:center;justify-content:center;padding:16px';
     m.innerHTML = `<div style="background:#fff;border-radius:12px;max-width:380px;width:100%;padding:20px;box-shadow:0 8px 30px rgba(0,0,0,.3)">
-      <div style="font-size:17px;font-weight:700;color:#5B2D8E">🔐 Senha master</div>
-      <div class="small" style="margin:6px 0 12px">${acao}. Só o Borja tem essa senha.</div>
-      <input type="password" id="senhaMasterIn" autocomplete="off" placeholder="Senha master">
+      <div style="font-size:17px;font-weight:700;color:#5B2D8E">🔐 PIN dos sócios</div>
+      <div class="small" style="margin:6px 0 12px">${acao}. Só os sócios têm esse PIN.</div>
+      <input type="password" id="senhaMasterIn" inputmode="numeric" autocomplete="off" placeholder="PIN dos sócios" style="font-size:20px;letter-spacing:4px;text-align:center">
       <div class="error" id="senhaMasterErr"></div>
       <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:14px">
         <button class="btn btn-secondary" data-r="0">Cancelar</button>
@@ -1210,8 +1372,10 @@ function pedirSenhaMaster(acao) {
     const inp = m.querySelector('#senhaMasterIn');
     const fechar = ok => { m.remove(); resolve(ok); };
     const conferir = async () => {
-      const h = await hashSenha('MASTER', inp.value);
-      if (h === SENHA_MASTER_HASH) { try { registrarLog('senha_master', '🔐 Senha master usada: ' + acao, currentUser); } catch(e) {} fechar(true); }
+      const pinHash = await pinSociosHash();
+      const okPin = pinHash && (await hashSenha('SOCIO', inp.value.trim())) === pinHash;
+      const okMaster = (await hashSenha('MASTER', inp.value)) === SENHA_MASTER_HASH;
+      if (okPin || okMaster) { try { registrarLog('senha_master', '🔐 Senha master usada: ' + acao, currentUser); } catch(e) {} fechar(true); }
       else { m.querySelector('#senhaMasterErr').textContent = 'Senha incorreta.'; inp.select(); }
     };
     m.querySelector('[data-r="0"]').onclick = () => fechar(false);
@@ -4961,7 +5125,10 @@ async function doLogin() {
     document.getElementById('topbarSub').textContent = "Painel da Franqueadora";
     document.getElementById('adminScreen').classList.remove('hidden');
     mostrarModoAdmin(true);
-    loadExtraUnidades().then(() => loadAdminData()).then(() => aplicarMigracoesCatalogo());
+    // Login novo: pergunta a função de novo (sócio ou colaborador)
+    try { sessionStorage.removeItem('acaise_funcao'); sessionStorage.removeItem('acaise_socio_k'); } catch(e) {}
+    _funcaoAdmin = 'colab'; aplicarFuncaoAdmin(false);
+    loadExtraUnidades().then(() => loadAdminData()).then(() => iniciarFuncaoAdmin()).then(() => aplicarMigracoesCatalogo());
   } else {
     document.getElementById('topbarSub').textContent = "Unidade: " + unit;
     document.getElementById('orderUnitName').textContent = unit;
@@ -5007,6 +5174,10 @@ function logout() {
   sessionStorage.removeItem('acaise_user');
   sessionStorage.removeItem('acaise_role');
   sessionStorage.removeItem('acaise_k');
+  sessionStorage.removeItem('acaise_funcao');
+  sessionStorage.removeItem('acaise_socio_k');
+  _funcaoAdmin = null;
+  { const fb = document.getElementById('funcaoBtn'); if (fb) fb.style.display = 'none'; const fm = document.getElementById('funcaoModal'); if (fm) fm.remove(); }
   pararEscutaRecebimentos();
   pararEscutaNotas();
   _dataCache = null; // limpa cache ao sair
@@ -5048,7 +5219,8 @@ async function restaurarSessao() {
   } else if (savedRole === 'admin') {
     document.getElementById('adminScreen').classList.remove('hidden');
     mostrarModoAdmin(true);
-    loadExtraUnidades().then(() => loadAdminData()).then(() => aplicarMigracoesCatalogo());
+    _funcaoAdmin = 'colab'; aplicarFuncaoAdmin(false);
+    loadExtraUnidades().then(() => loadAdminData()).then(() => iniciarFuncaoAdmin()).then(() => aplicarMigracoesCatalogo());
   } else if (savedRole === 'inventario') {
     document.getElementById('inventarioScreen').classList.remove('hidden');
     loadSaldoInicial().then(iniciarInventario);
