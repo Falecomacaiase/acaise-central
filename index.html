@@ -1052,7 +1052,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.17-1";
+const APP_VERSION = "2026.11.23-1";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -6990,7 +6990,43 @@ function toggleBoletoNota() {
 }
 
 // ── Envio (funcionário) ─────────────────────────────────────────────────────
-async function enviarNota() {
+// ── Duplicidade ─────────────────────────────────────────────────────────────
+// A loja fotografa ao receber e, às vezes, a Jéssica lança o mesmo documento de
+// novo no início da semana. Antes de gravar, procura lançamentos parecidos:
+//   • mesmo código de barras/Pix           → certeza: bloqueia
+//   • mesmo valor e mesmo vencimento       → provável: avisa
+//   • mesmo fornecedor, sem boleto, mesmo local, até 3 dias → provável: avisa
+// "Mesmo fornecedor + mesmo valor" sozinho NÃO conta: parcelas e compras
+// recorrentes (ex: MXM R$ 300, Refricon R$ 73,92) têm o mesmo valor com
+// vencimentos diferentes, e o aviso viraria ruído.
+function normFornecedor(s) {
+  return String(s || '').normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase().replace(/[^a-z0-9]/g, '');
+}
+function mesmoFornecedor(a, b) {
+  const x = normFornecedor(a), y = normFornecedor(b);
+  return !!x && !!y && (x === y || (Math.min(x.length, y.length) >= 4 && (x.includes(y) || y.includes(x))));
+}
+function possiveisDuplicados(n, ignorarId) {
+  const dig = s => String(s || '').replace(/\D/g, '');
+  const ts = s => new Date(s || 0).getTime();
+  const agora = ts(n.lancadoEm) || Date.now();
+  const achados = [];
+  _notasLista.forEach(o => {
+    if (o.id === ignorarId || o.id === n.id) return;
+    let motivo = '', certeza = false;
+    if (n.codigo && o.codigo && (dig(n.codigo) && dig(n.codigo) === dig(o.codigo) || n.codigo === o.codigo)) { motivo = 'mesmo código de barras/Pix'; certeza = true; }
+    else if (n.temBoleto && o.temBoleto && n.valor > 0 && Math.abs(n.valor - (o.valor || 0)) < 0.01 && n.vencimento && n.vencimento === o.vencimento) motivo = 'mesmo valor e mesmo vencimento';
+    else if (!n.temBoleto && !o.temBoleto && n.local === o.local && mesmoFornecedor(n.fornecedor, o.fornecedor) && Math.abs(agora - ts(o.lancadoEm)) < 3 * 86400000) motivo = 'mesmo fornecedor, mesmo local, lançado há poucos dias';
+    if (motivo) achados.push({ nota: o, motivo, certeza });
+  });
+  return achados.sort((a, b) => (b.certeza ? 1 : 0) - (a.certeza ? 1 : 0));
+}
+function htmlResumoNotaDup(o) {
+  return `<strong>${escHtml(o.fornecedor)}</strong> • ${o.local === 'GALPÃO' ? '🏭 Galpão' : '🏪 Boa Viagem'}${o.temBoleto ? ` • ${fmtBRL(o.valor)} • vence ${fmtDataCurta(o.vencimento)}` : ' • só documento'}
+    <div class="small">Lançado por <strong>${escHtml(o.lancadoPor)}</strong> em ${fmtDataHora(o.lancadoEm)} • ${htmlStatusNota(o)}</div>`;
+}
+
+async function enviarNota(lancarMesmoAssim) {
   const msg = document.getElementById('notaMsg');
   const erro = t => { msg.style.color = '#C62828'; msg.textContent = '⚠️ ' + t; };
   const lancadoPor = document.getElementById('notaLancadoPor').value.trim();
@@ -7020,6 +7056,39 @@ async function enviarNota() {
     if (!vencimento) return erro('Informe o vencimento do boleto.');
   }
 
+  // Checagem de duplicidade antes de enviar qualquer foto
+  const dups = possiveisDuplicados({ fornecedor, local, temBoleto, valor, vencimento, codigo, lancadoEm: new Date().toISOString() });
+  const certos = dups.filter(d => d.certeza);
+  if (certos.length) {
+    const o = certos[0].nota;
+    abrirModalNota(`
+      <h3 style="margin:0 0 6px;color:#C62828">⛔ Este boleto já foi lançado</h3>
+      <div class="small" style="margin-bottom:10px">O código de barras/Pix é exatamente o mesmo de um lançamento que já existe. Para não pagar duas vezes, ele não será lançado de novo.</div>
+      <div style="background:#FFEBEE;border-radius:8px;padding:10px">${htmlResumoNotaDup(o)}</div>
+      <div style="display:flex;gap:8px;justify-content:flex-end;margin-top:12px">
+        ${(o.fotos || []).length ? `<button class="btn btn-secondary" onclick="verFotosNota('${escHtml(o.id)}')">📷 Ver o lançamento existente</button>` : ''}
+        <button class="btn" onclick="fecharModalNota()">Entendi</button>
+      </div>`);
+    return erro('Boleto já lançado anteriormente — não foi enviado de novo.');
+  }
+  if (dups.length && !lancarMesmoAssim) {
+    abrirModalNota(`
+      <h3 style="margin:0 0 6px;color:#E65100">⚠️ Parece que este documento já foi lançado</h3>
+      <div class="small" style="margin-bottom:10px">Encontramos ${dups.length === 1 ? 'um lançamento parecido' : dups.length + ' lançamentos parecidos'}. Confira antes de enviar para não lançar em duplicidade.</div>
+      ${dups.slice(0, 4).map(d => `<div style="background:#FFF3E0;border-radius:8px;padding:10px;margin-bottom:6px">
+        <div class="small" style="color:#E65100;font-weight:700;margin-bottom:4px">Motivo: ${escHtml(d.motivo)}</div>
+        ${htmlResumoNotaDup(d.nota)}
+        ${(d.nota.fotos || []).length ? `<button class="btn btn-secondary btn-xs" style="margin-top:6px" onclick="verFotosNota('${escHtml(d.nota.id)}')">📷 Ver fotos</button>` : ''}
+      </div>`).join('')}
+      <div style="display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:12px">
+        <button class="btn" style="background:#2E7D32" onclick="fecharModalNota()">✋ É o mesmo — não lançar</button>
+        <button class="btn btn-secondary" onclick="fecharModalNota();enviarNota(true)">É outro documento — lançar mesmo assim</button>
+      </div>`);
+    msg.style.color = '#E65100';
+    msg.textContent = '⚠️ Possível duplicidade — confira o aviso antes de enviar.';
+    return;
+  }
+
   try { localStorage.setItem('acaise_nota_nome', lancadoPor); localStorage.setItem('acaise_nota_local', local); } catch(e) {}
   const btn = document.getElementById('btnEnviarNota');
   btn.disabled = true;
@@ -7043,7 +7112,8 @@ async function enviarNota() {
       temBoleto, valor, vencimento, codigo, codigoTipo, observacao,
       status: temBoleto ? 'novo' : 'arquivo',
       fotos,
-      historico: [{ acao: 'Lançado', por: lancadoPor, em: agora }]
+      historico: [{ acao: dups.length ? 'Lançado mesmo com aviso de possível duplicidade' : 'Lançado', por: lancadoPor, em: agora }],
+      ...(dups.length ? { avisoDuplicidade: dups.map(d => d.nota.id) } : {})
     });
     _notasFotos = { doc: [], boleto: [] };
     renderPreviewsNota();
@@ -7198,6 +7268,14 @@ function htmlCardNota(n) {
     <button class="btn btn-secondary btn-xs" onclick="mudarStatusNota('${id}', 'novo')">↩ Voltar para novo</button>`;
   if (n.status === 'pago') acoes += `<button class="btn btn-secondary btn-xs" onclick="mudarStatusNota('${id}', 'programado')">↩ Desfazer pagamento</button>`;
   const ultimo = (n.historico || []).slice(-1)[0];
+  // Aviso de possível duplicidade (inclusive de lançamentos antigos), para a
+  // Jéssica conferir e excluir o repetido antes de programar o pagamento.
+  const dups = n.status === 'pago' ? [] : possiveisDuplicados(n);
+  const avisoDup = dups.length ? `<div style="margin-top:6px;background:${dups.some(d => d.certeza) ? '#FFEBEE' : '#FFF3E0'};border-left:4px solid ${dups.some(d => d.certeza) ? '#C62828' : '#E65100'};border-radius:6px;padding:6px 10px;font-size:13px">
+      <strong>${dups.some(d => d.certeza) ? '⛔ Duplicado' : '⚠️ Possível duplicado'}</strong> de:
+      ${dups.slice(0, 3).map(d => `<div>• ${escHtml(d.nota.fornecedor)}${d.nota.temBoleto ? ' ' + fmtBRL(d.nota.valor) + ' (vence ' + fmtDataCurta(d.nota.vencimento) + ')' : ''} — lançado por ${escHtml(d.nota.lancadoPor)} em ${fmtDataHora(d.nota.lancadoEm)} <span class="small">(${escHtml(d.motivo)})</span></div>`).join('')}
+      <div class="small" style="margin-top:2px">Confira as fotos e exclua o repetido para não pagar duas vezes.</div>
+    </div>` : '';
   return `<div class="nota-card" style="border-left-color:${corBorda}">
     <div style="display:flex;justify-content:space-between;gap:6px;flex-wrap:wrap;align-items:center">
       <div><strong style="font-size:15px">${escHtml(n.fornecedor)}</strong>
@@ -7205,6 +7283,7 @@ function htmlCardNota(n) {
         ${htmlStatusNota(n)}</div>
       <span class="small">Recebido por <strong>${escHtml(n.lancadoPor)}</strong> em ${fmtDataHora(n.lancadoEm)}</span>
     </div>
+    ${avisoDup}
     ${n.temBoleto ? `<div style="margin-top:6px">${htmlVencimentoNota(n)}</div>` : ''}
     ${n.codigo ? `<div style="margin-top:6px;display:flex;gap:6px;align-items:center;flex-wrap:wrap">
         <code style="font-size:12px;background:#f5f5f5;padding:4px 6px;border-radius:4px;word-break:break-all;flex:1;min-width:200px">${escHtml(n.codigo)}</code>
