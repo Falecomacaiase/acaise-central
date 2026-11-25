@@ -374,6 +374,7 @@
       <button class="tab-btn" id="tabBtnNotas" onclick="switchAdminTab('notas')">📄 Notas e Boletos</button>
       <button class="tab-btn" id="tabBtnFechamentos" onclick="switchAdminTab('fechamentos')">🏪 Acompanhamento Loja Boa Viagem</button>
       <button class="tab-btn" id="tabBtnMargens" onclick="switchAdminTab('margens')">💹 Margem do Galpão</button>
+      <button class="tab-btn" id="tabBtnSupervisoes" onclick="switchAdminTab('supervisoes')">🔍 Supervisões</button>
     </div>
     </nav>
 
@@ -929,6 +930,11 @@
     </div>
 
     <!-- ABA: MARGENS E CMV (custo da última compra × venda ao franqueado; fichas do cardápio) -->
+    <!-- ABA: SUPERVISÕES (formulário, histórico, pendências e ranking) -->
+    <div id="tabSupervisoes" class="hidden">
+      <div id="supervPainel"></div>
+    </div>
+
     <div id="tabMargens" class="hidden">
       <div id="margensPainel"><p class="small">Carregando...</p></div>
     </div>
@@ -1059,7 +1065,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.25-3";
+const APP_VERSION = "2026.11.25-4";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -1698,19 +1704,33 @@ async function supervRest(caminho) {
 
 // Nota de uma visita (mesma conta da página de supervisão): cada item vale 0, 1
 // ou 2; "na" não conta. Retorna % geral e % por grupo.
-function notaSupervisao(items) {
+// Nota de uma visita no formulário novo (nov/2026):
+//  • cada pergunta vale 2 (conforme), 1 (parcial) ou 0 (não conforme);
+//    "não deu para avaliar" (na) sai da conta, sem peso;
+//  • nota de cada critério = soma ÷ máximo possível;
+//  • nota geral = média ponderada dos critérios avaliados (SUPERV_PESOS);
+//  • pergunta crítica "não conforme" limita a nota a 70%.
+// Só contam as perguntas do formulário atual — visitas antigas importadas
+// são recalculadas da mesma forma, para o ranking ser justo.
+function notaSupervisao(respostas) {
   const porGrupo = {};
-  let soma = 0, qtd = 0;
-  Object.entries(items || {}).forEach(([k, v]) => {
-    const g = k.split('__')[0];
-    if (!SUPERV_GRUPOS.some(x => x[0] === g) || v === 'na' || v === undefined || v === null) return;
-    porGrupo[g] = porGrupo[g] || { soma: 0, qtd: 0 };
-    porGrupo[g].soma += Number(v); porGrupo[g].qtd++;
-    soma += Number(v); qtd++;
+  let critico = false;
+  SUPERV_FORM.forEach(q => {
+    const v = (respostas || {})[q.id];
+    if (v === 'na' || v === undefined || v === null || v === '') return;
+    porGrupo[q.g] = porGrupo[q.g] || { soma: 0, qtd: 0 };
+    porGrupo[q.g].soma += Number(v); porGrupo[q.g].qtd++;
+    if (q.critico && Number(v) === 0) critico = true;
   });
-  const pct = (s, q) => q ? s / (q * 2) * 100 : null;
-  const grupos = {}; Object.entries(porGrupo).forEach(([g, x]) => grupos[g] = pct(x.soma, x.qtd));
-  return { geral: pct(soma, qtd), grupos };
+  const grupos = {};
+  let somaPeso = 0, somaNota = 0;
+  Object.entries(porGrupo).forEach(([g, x]) => {
+    grupos[g] = x.qtd ? x.soma / (x.qtd * 2) * 100 : null;
+    if (grupos[g] != null) { somaPeso += SUPERV_PESOS[g] || 0; somaNota += grupos[g] * (SUPERV_PESOS[g] || 0); }
+  });
+  let geral = somaPeso ? somaNota / somaPeso : null;
+  if (geral != null && critico) geral = Math.min(geral, SUPERV_TETO_CRITICO);
+  return { geral, grupos, critico };
 }
 
 function classificaSupervisao(pct) {
@@ -1721,24 +1741,434 @@ function classificaSupervisao(pct) {
   return ['Crítico', '#C62828', '#FFEBEE'];
 }
 
+
+// ─── SUPERVISÕES (dentro da Central) ─────────────────────────────────────────
+// Formulário revisado com o Borja em 25/11/2026 (52 perguntas, 5 críticas,
+// pesos por critério). Substitui a página separada acaise-supervisao.html.
+// Feito por sócio ou colaborador (o funcionário que supervisiona entra como
+// colaborador). Dados em coleções próprias, fora da 'acaise' (para não pesar o
+// loadAllData):
+//   acaise_supervisoes     → uma visita por documento (respostas, nota, ...)
+//   acaise_superv_tarefas  → o que a loja precisa corrigir (pendente/feita)
+// As fotos de itens não conformes vão para acaise_fotos (mesma do módulo Notas).
+const SUPERV_FORM = [
+  { id: 'operacao__0', g: 'operacao', t: 'Horário de funcionamento correto na fachada, no iFood e no 99Food, e loja aberta no horário da visita' },
+  { id: 'operacao__1', g: 'operacao', t: 'Todos os funcionários uniformizados corretamente' },
+  { id: 'operacao__2', g: 'operacao', t: 'Equipe com postura adequada (aparência, higiene pessoal)' },
+  { id: 'operacao__3', g: 'operacao', t: 'Atendimento cordial e dentro do padrão da marca no pedido teste feito na visita' },
+  { id: 'operacao__4', g: 'operacao', t: 'Pedido teste preparado e entregue dentro do tempo padrão' },
+  { id: 'operacao__5', g: 'operacao', t: 'Cardápio atualizado e visível (físico e/ou digital)' },
+  { id: 'operacao__6', g: 'operacao', t: '99Food e iFood ativos, com horário de funcionamento correto' },
+  { id: 'operacao__7', g: 'operacao', t: 'Avaliações recentes do iFood e do 99Food respondidas pela loja' },
+  { id: 'operacao__8', g: 'operacao', t: 'Música ambiente adequada ao perfil da marca' },
+  { id: 'operacao__9', g: 'operacao', t: 'Iluminação da loja funcionando e adequada' },
+  { id: 'operacao__10', g: 'operacao', t: 'Equipamentos operacionais funcionando (liquidificador, freezer, etc)' },
+  { id: 'operacao__11', g: 'operacao', t: 'Funcionário responsável (líder/gerente) identificado e presente' },
+  { id: 'operacao__12', g: 'operacao', t: 'Registro de abertura e fechamento dos últimos 7 dias existe e está preenchido' },
+  { id: 'limpeza__0', g: 'limpeza', t: 'Fachada da loja limpa e em bom estado' },
+  { id: 'limpeza__1', g: 'limpeza', t: 'Vidros e vitrine limpos (sem manchas, gordura ou marcas)' },
+  { id: 'limpeza__2', g: 'limpeza', t: 'Balcão de atendimento limpo e organizado' },
+  { id: 'limpeza__3', g: 'limpeza', t: 'Mesas e cadeiras limpas e organizadas (se houver)' },
+  { id: 'limpeza__4', g: 'limpeza', t: 'Piso limpo e sem resíduos visíveis' },
+  { id: 'limpeza__5', g: 'limpeza', t: 'Área de produção limpa e organizada' },
+  { id: 'limpeza__6', g: 'limpeza', t: 'Equipamentos limpos (liquidificador, piteira, freezer)' },
+  { id: 'limpeza__7', g: 'limpeza', t: 'Lixeiras com tampa, limpas e posicionadas corretamente' },
+  { id: 'limpeza__8', g: 'limpeza', t: 'Identidade visual aplicada corretamente (adesivos, banners, logos)' },
+  { id: 'limpeza__9', g: 'limpeza', t: 'Não há personalização não autorizada pela franqueadora', critico: true },
+  { id: 'limpeza__10', g: 'limpeza', t: 'Embalagens e materiais de marca dentro do padrão' },
+  { id: 'limpeza__11', g: 'limpeza', t: 'Guardanapos, colheres e canudos disponíveis e organizados' },
+  { id: 'estoque__2', g: 'estoque', t: 'Estoque de açaí dentro do volume adequado para o período' },
+  { id: 'estoque__3', g: 'estoque', t: 'Nenhum produto fora do prazo de validade', critico: true },
+  { id: 'estoque__4', g: 'estoque', t: 'Produtos armazenados corretamente (temperatura, organização)' },
+  { id: 'estoque__5', g: 'estoque', t: 'FIFO sendo aplicado nas proteínas' },
+  { id: 'estoque__6', g: 'estoque', t: 'Nenhum produto com embalagem violada, danificada ou sem identificação' },
+  { id: 'estoque__7', g: 'estoque', t: 'Nível de embalagens (copos, tampas, sacolas) dentro do mínimo' },
+  { id: 'estoque__8', g: 'estoque', t: 'Não há excesso visível de estoque de insumos não perecíveis' },
+  { id: 'estoque__9', g: 'estoque', t: 'Insumos comprados localmente dentro do padrão da franqueadora', critico: true },
+  { id: 'estoque__10', g: 'estoque', t: 'Registro de desperdício e descarte existe e está atualizado' },
+  { id: 'financeiro__0', g: 'financeiro', t: 'Registro de abertura e fechamento de caixa do dia anterior disponível para conferência' },
+  { id: 'financeiro__1', g: 'financeiro', t: 'Sangrias de caixa sendo realizadas e documentadas' },
+  { id: 'financeiro__3', g: 'financeiro', t: 'Nenhuma venda sendo realizada fora dos canais autorizados', critico: true },
+  { id: 'financeiro__5', g: 'financeiro', t: 'Compras locais documentadas e dentro do orçamento aprovado' },
+  { id: 'financeiro__7', g: 'financeiro', t: 'Equipe presente sabe dizer a meta de faturamento do mês' },
+  { id: 'produto__0', g: 'produto', t: 'Açaí do pedido teste com textura, sabor e temperatura dentro do padrão' },
+  { id: 'produto__1', g: 'produto', t: 'Toppings disponíveis e frescos (granola, frutas, etc)' },
+  { id: 'produto__2', g: 'produto', t: 'Porcionamento do pedido teste conforme a ficha técnica (conferir o peso)' },
+  { id: 'produto__3', g: 'produto', t: 'Montagem do pedido teste seguindo o padrão visual da marca' },
+  { id: 'produto__4', g: 'produto', t: 'Wrap e pão sendo preparados corretamente (temperatura, montagem)' },
+  { id: 'produto__5', g: 'produto', t: 'Saladas com ingredientes frescos e dentro do padrão' },
+  { id: 'produto__6', g: 'produto', t: 'Smoothies sendo preparados corretamente' },
+  { id: 'produto__8', g: 'produto', t: 'Embalagem de delivery lacrada e identificada corretamente' },
+  { id: 'produto__9', g: 'produto', t: 'Temperatura dos freezers e geladeiras dentro do adequado', critico: true },
+  { id: 'marca__0', g: 'marca', t: 'Funcionário presente sabe contar a história e os valores da Açaí-se' },
+  { id: 'marca__2', g: 'marca', t: 'Redes sociais da unidade ativas e dentro do padrão da marca' },
+  { id: 'marca__3', g: 'marca', t: 'Nenhuma publicação não autorizada nas redes sociais da unidade' },
+  { id: 'marca__4', g: 'marca', t: 'Programa de fidelidade (se ativo) sendo comunicado aos clientes' },
+];
+const SUPERV_PESOS = { operacao: 20, limpeza: 20, estoque: 10, financeiro: 10, produto: 25, marca: 15 };
+const SUPERV_TETO_CRITICO = 70;
+const SUPERV_VALIDADE_DIAS = 60;
+const SUPERV_RESP = [[2, '✅ Conforme', 'ok'], [1, '⚠️ Parcial', 'parcial'], [0, '❌ Não conforme', 'nao'], ['na', 'Não deu para avaliar', 'na']];
+const _colSuperv = _db.collection('acaise_supervisoes');
+const _colSupervTarefas = _db.collection('acaise_superv_tarefas');
+let _superv = { visitas: null, tarefas: null, tela: 'lista', unidade: null, rascunho: null };
+
+async function supervCarregar(forcar) {
+  if (_superv.visitas && !forcar) return _superv;
+  const [v, t] = await Promise.all([_colSuperv.get(), _colSupervTarefas.get()]);
+  _superv.visitas = []; v.forEach(d => _superv.visitas.push({ id: d.id, ...d.data() }));
+  _superv.tarefas = []; t.forEach(d => _superv.tarefas.push({ id: d.id, ...d.data() }));
+  _superv.visitas.sort((a, b) => String(a.data).localeCompare(String(b.data)) || String(a.criadoEm).localeCompare(String(b.criadoEm)));
+  return _superv;
+}
+async function supervTarefasDe(unidade) {
+  const s = await _colSupervTarefas.where('unidade', '==', unidade).get();
+  const out = []; s.forEach(d => out.push({ id: d.id, ...d.data() }));
+  return out.sort((a, b) => String(b.criadoEm).localeCompare(String(a.criadoEm)));
+}
+
+function supervUnidadesAtivas() {
+  return Object.keys(SUPERV_MAPA).filter(u => !UNIDADES_INATIVAS.includes(u));
+}
+
+// Ranking: nota da última visita de cada unidade ativa (empates dividem a posição).
+function supervRanking(visitas) {
+  const ultima = {};
+  (visitas || []).forEach(v => { ultima[v.unidade] = v; });
+  const out = {};
+  supervUnidadesAtivas().forEach(u => {
+    const v = ultima[u];
+    if (!v) return;
+    out[u] = { visita: v, nota: notaSupervisao(v.respostas) };
+  });
+  const notas = Object.values(out).map(x => x.nota.geral).filter(n => n != null);
+  Object.values(out).forEach(x => { x.posicao = x.nota.geral == null ? null : notas.filter(n => n > x.nota.geral + 1e-9).length + 1; });
+  return out;
+}
+
+function supervDiasDesde(iso) {
+  if (!iso) return null;
+  const [a, m, d] = String(iso).slice(0, 10).split('-').map(Number);
+  const hoje = new Date(); hoje.setHours(0, 0, 0, 0);
+  return Math.round((hoje - new Date(a, m - 1, d)) / 86400000);
+}
+function supervDataBR(iso) { return iso ? String(iso).slice(0, 10).split('-').reverse().join('/') : '—'; }
+function supervCorNota(p) { return p == null ? '#888' : p >= 90 ? '#2E7D32' : p >= 75 ? '#558B2F' : p >= 60 ? '#E65100' : '#C62828'; }
+
+// ── Tela principal da aba ───────────────────────────────────────────────────
+async function iniciarSupervisoes(forcar) {
+  const alvo = document.getElementById('supervPainel');
+  if (!alvo) return;
+  if (_superv.tela === 'form') { renderSupervForm(); return; }
+  alvo.innerHTML = '<p class="small">Carregando supervisões...</p>';
+  try { await supervCarregar(forcar); } catch(e) { alvo.innerHTML = `<p class="small" style="color:#C62828">Não foi possível carregar: ${escHtml(e.message)}</p>`; return; }
+  if (_superv.tela === 'unidade' && _superv.unidade) renderSupervUnidade(_superv.unidade);
+  else renderSupervLista();
+}
+
+async function renderSupervLista() {
+  _superv.tela = 'lista';
+  const alvo = document.getElementById('supervPainel');
+  const rk = supervRanking(_superv.visitas);
+  let importado = true;
+  try { const r = await safeGet('supervisaoImportada', true); importado = !!(r && r.value); } catch(e) { importado = false; }
+  const linhas = supervUnidadesAtivas().map(u => {
+    const info = rk[u];
+    const pend = _superv.tarefas.filter(t => t.unidade === u && t.status !== 'feita').length;
+    const dias = info ? supervDiasDesde(info.visita.data) : null;
+    return { u, info, pend, dias };
+  }).sort((a, b) => (a.info?.posicao ?? 999) - (b.info?.posicao ?? 999) || a.u.localeCompare(b.u));
+  alvo.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      <button class="btn" onclick="novaSupervisao()">➕ Nova supervisão</button>
+      <button class="btn btn-secondary" onclick="iniciarSupervisoes(true)">🔄 Atualizar</button>
+      ${!importado && _funcaoAdmin === 'socio' ? `<button class="btn btn-secondary" onclick="importarSupervisoesAntigas()">📥 Trazer o histórico da página antiga</button>` : ''}
+    </div>
+    <p class="small" style="margin:0 0 10px">Ranking pela nota da última supervisão de cada unidade. A nota vale por ${SUPERV_VALIDADE_DIAS} dias; depois disso a unidade aparece como <strong>vencida</strong> e precisa de nova visita.</p>
+    <div style="overflow-x:auto"><table style="width:100%;font-size:14px">
+      <thead><tr><th>#</th><th>Unidade</th><th style="text-align:right">Nota</th><th>Última visita</th><th>Pendências</th><th></th></tr></thead>
+      <tbody>${linhas.map(l => {
+        const n = l.info?.nota.geral;
+        const venc = l.dias != null && l.dias > SUPERV_VALIDADE_DIAS;
+        return `<tr>
+          <td style="font-weight:700">${l.info?.posicao ? l.info.posicao + 'º' : '—'}</td>
+          <td><strong>${escHtml(l.u)}</strong>${l.info?.nota.critico ? ' <span class="nota-status" style="background:#FFEBEE;color:#C62828">item crítico</span>' : ''}</td>
+          <td style="text-align:right;font-weight:700;color:${supervCorNota(n)}">${n == null ? '—' : Math.round(n) + '%'}</td>
+          <td>${l.info ? supervDataBR(l.info.visita.data) + ` <span class="small">(${l.dias} d)</span>` : '<span class="small">sem visita</span>'}
+            ${venc ? ' <span class="nota-status" style="background:#FFF3E0;color:#E65100">vencida</span>' : ''}</td>
+          <td>${l.pend ? `<span class="nota-status" style="background:#FFF8E1;color:#F57F17">${l.pend}</span>` : '<span class="small">0</span>'}</td>
+          <td><button class="btn btn-secondary btn-xs" onclick="abrirSupervUnidade('${escHtml(l.u)}')">Ver</button></td>
+        </tr>`; }).join('')}</tbody>
+    </table></div>`;
+}
+
+function abrirSupervUnidade(u) { _superv.unidade = u; renderSupervUnidade(u); }
+
+function renderSupervUnidade(u) {
+  _superv.tela = 'unidade';
+  const alvo = document.getElementById('supervPainel');
+  const visitas = _superv.visitas.filter(v => v.unidade === u).slice().reverse();
+  const tarefas = _superv.tarefas.filter(t => t.unidade === u).sort((a, b) => String(b.criadoEm).localeCompare(String(a.criadoEm)));
+  const pend = tarefas.filter(t => t.status !== 'feita'), feitas = tarefas.filter(t => t.status === 'feita');
+  alvo.innerHTML = `
+    <div style="display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:12px">
+      <button class="btn btn-secondary" onclick="_superv.tela='lista';renderSupervLista()">← Voltar</button>
+      <h3 style="margin:0;flex:1">${escHtml(u)}</h3>
+      <button class="btn" onclick="novaSupervisao('${escHtml(u)}')">➕ Nova supervisão</button>
+    </div>
+    <div class="card" style="margin-bottom:12px">
+      <h3 style="margin:0 0 8px;font-size:15px">🛠️ Pendências (${pend.length})</h3>
+      ${pend.length ? pend.map(t => `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid #f0f0f0">
+          <div style="flex:1;font-size:14px">${escHtml(t.texto)}<div class="small">desde ${supervDataBR(t.criadoEm)}${t.fotoId ? ` • <a href="#" onclick="verFotoSuperv('${escHtml(t.fotoId)}');return false">ver foto</a>` : ''}</div></div>
+          <button class="btn btn-xs" style="background:#2E7D32" onclick="marcarTarefaSuperv('${escHtml(t.id)}', true)">✓ Resolvida</button></div>`).join('')
+        : '<p class="small" style="margin:0">Nenhuma pendência em aberto.</p>'}
+      ${feitas.length ? `<details style="margin-top:8px"><summary class="small" style="cursor:pointer">Resolvidas (${feitas.length})</summary>
+        ${feitas.map(t => `<div class="small" style="padding:4px 0">✓ ${escHtml(t.texto)} <span>(resolvida em ${supervDataBR(t.feitaEm)})</span> <a href="#" onclick="marcarTarefaSuperv('${escHtml(t.id)}', false);return false">reabrir</a></div>`).join('')}</details>` : ''}
+    </div>
+    <div class="card">
+      <h3 style="margin:0 0 8px;font-size:15px">📋 Histórico de visitas</h3>
+      ${visitas.length ? visitas.map(v => { const n = notaSupervisao(v.respostas); return `<details style="border-bottom:1px solid #f0f0f0;padding:6px 0">
+          <summary style="cursor:pointer"><strong>${supervDataBR(v.data)}</strong> — <span style="color:${supervCorNota(n.geral)};font-weight:700">${n.geral == null ? '—' : Math.round(n.geral) + '%'}</span>
+            <span class="small">${v.supervisor ? 'por ' + escHtml(v.supervisor) : ''}${v.origem === 'importado' ? ' • página antiga' : ''}${n.critico ? ' • item crítico' : ''}</span></summary>
+          <div style="padding:6px 0 6px 12px;font-size:13px">
+            ${SUPERV_GRUPOS.map(([g, nome]) => `<div>${nome}: <strong>${n.grupos[g] == null ? '—' : Math.round(n.grupos[g]) + '%'}</strong></div>`).join('')}
+            ${SUPERV_FORM.filter(q => Number((v.respostas || {})[q.id]) === 0 && (v.respostas || {})[q.id] !== 'na' && (v.respostas || {})[q.id] !== undefined).length ? `<div style="margin-top:6px"><strong>Não conformes:</strong><ul style="margin:4px 0;padding-left:18px">${SUPERV_FORM.filter(q => (v.respostas || {})[q.id] === 0).map(q => `<li>${escHtml(q.t)}${q.critico ? ' <strong style="color:#C62828">(crítico)</strong>' : ''}</li>`).join('')}</ul></div>` : ''}
+            ${v.observacao ? `<div style="margin-top:6px">💬 ${escHtml(v.observacao)}</div>` : ''}
+          </div></details>`; }).join('')
+        : '<p class="small" style="margin:0">Nenhuma visita registrada.</p>'}
+    </div>`;
+}
+
+async function marcarTarefaSuperv(id, feita) {
+  try {
+    await _colSupervTarefas.doc(id).update(feita ? { status: 'feita', feitaEm: new Date().toISOString() } : { status: 'pendente', feitaEm: firebase.firestore.FieldValue.delete() });
+    const t = _superv.tarefas.find(x => x.id === id);
+    if (t) { t.status = feita ? 'feita' : 'pendente'; t.feitaEm = feita ? new Date().toISOString() : null; }
+    renderSupervUnidade(_superv.unidade);
+  } catch(e) { alert('Não foi possível salvar: ' + e.message); }
+}
+
+async function verFotoSuperv(id) {
+  try { const d = await _colFotos.doc(id).get(); if (d.exists) abrirFotoViewer([{ src: d.data().data, legenda: 'Foto da supervisão' }], 0); }
+  catch(e) { alert('Não foi possível abrir a foto.'); }
+}
+
+// ── Formulário ──────────────────────────────────────────────────────────────
+// O rascunho fica no aparelho (localStorage) enquanto a visita acontece: se a
+// página recarregar no meio, nada se perde.
+function supervSalvarRascunho() { try { localStorage.setItem('acaise_superv_rascunho', JSON.stringify(_superv.rascunho)); } catch(e) {} }
+
+function novaSupervisao(unidade) {
+  let r = null;
+  try { r = JSON.parse(localStorage.getItem('acaise_superv_rascunho') || 'null'); } catch(e) {}
+  if (r && r.respostas && Object.keys(r.respostas).length && !(unidade && r.unidade !== unidade)) {
+    _superv.rascunho = r;
+  } else {
+    let sup = ''; try { sup = localStorage.getItem('acaise_superv_nome') || ''; } catch(e) {}
+    _superv.rascunho = { unidade: unidade || '', data: fechIso(new Date()), supervisor: sup, respostas: {}, detalhes: {}, observacao: '' };
+  }
+  _superv.tela = 'form';
+  renderSupervForm();
+}
+
+function renderSupervForm() {
+  const alvo = document.getElementById('supervPainel');
+  const r = _superv.rascunho;
+  const n = notaSupervisao(r.respostas);
+  const respondidas = SUPERV_FORM.filter(q => r.respostas[q.id] !== undefined).length;
+  alvo.innerHTML = `
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:12px;flex-wrap:wrap">
+      <button class="btn btn-secondary" onclick="sairSupervForm()">← Sair</button>
+      <h3 style="margin:0;flex:1">Nova supervisão</h3>
+    </div>
+    <div class="card" style="margin-bottom:12px;display:flex;gap:10px;flex-wrap:wrap">
+      <div class="field" style="flex:1;min-width:160px;margin:0"><label>Unidade</label>
+        <select id="svUnidade" onchange="_superv.rascunho.unidade=this.value;supervSalvarRascunho()">
+          <option value="">— escolha —</option>${supervUnidadesAtivas().map(u => `<option ${u === r.unidade ? 'selected' : ''}>${escHtml(u)}</option>`).join('')}
+        </select></div>
+      <div class="field" style="flex:1;min-width:140px;margin:0"><label>Data da visita</label>
+        <input type="date" id="svData" value="${escHtml(r.data)}" onchange="_superv.rascunho.data=this.value;supervSalvarRascunho()"></div>
+      <div class="field" style="flex:1;min-width:160px;margin:0"><label>Quem está supervisionando</label>
+        <input type="text" id="svSupervisor" value="${escHtml(r.supervisor)}" oninput="_superv.rascunho.supervisor=this.value;supervSalvarRascunho()"></div>
+    </div>
+    <p class="small" style="margin:0 0 10px">Faça um <strong>pedido teste</strong> logo no início: várias perguntas de atendimento e produto são avaliadas nele. O que não der para ver na visita, marque <strong>"Não deu para avaliar"</strong> — não conta na nota.</p>
+    ${SUPERV_GRUPOS.map(([g, nome]) => {
+      const qs = SUPERV_FORM.filter(q => q.g === g);
+      const feitas = qs.filter(q => r.respostas[q.id] !== undefined).length;
+      return `<details class="card" style="margin-bottom:10px;padding:0" ${feitas < qs.length ? 'open' : ''}>
+        <summary style="cursor:pointer;padding:12px 14px;font-weight:700">${nome} <span class="small" style="font-weight:400">• peso ${SUPERV_PESOS[g]}% • ${feitas}/${qs.length}${n.grupos[g] != null ? ' • ' + Math.round(n.grupos[g]) + '%' : ''}</span></summary>
+        <div style="padding:0 14px 8px">${qs.map(q => htmlPerguntaSuperv(q, r)).join('')}</div>
+      </details>`;
+    }).join('')}
+    <div class="card" style="margin-bottom:12px">
+      <label class="small" style="font-weight:600">Observação geral da visita (opcional)</label>
+      <textarea id="svObs" rows="3" style="width:100%;box-sizing:border-box" oninput="_superv.rascunho.observacao=this.value;supervSalvarRascunho()">${escHtml(r.observacao)}</textarea>
+    </div>
+    <div style="position:sticky;bottom:0;background:#fff;border-top:2px solid #5B2D8E;padding:12px 0;display:flex;gap:10px;align-items:center;flex-wrap:wrap">
+      <div style="flex:1;min-width:160px"><div class="small">${respondidas} de ${SUPERV_FORM.length} respondidas</div>
+        <div style="font-size:20px;font-weight:800;color:${supervCorNota(n.geral)}">${n.geral == null ? '—' : Math.round(n.geral) + '%'}${n.critico ? ' <span style="font-size:12px;color:#C62828">(limitada a 70% por item crítico)</span>' : ''}</div></div>
+      <button class="btn" id="svSalvar" onclick="salvarSupervisao()" style="padding:12px 20px">💾 Salvar supervisão</button>
+    </div>
+    <div id="svMsg" class="small"></div>`;
+}
+
+function htmlPerguntaSuperv(q, r) {
+  const v = r.respostas[q.id];
+  const det = r.detalhes[q.id] || {};
+  const botoes = SUPERV_RESP.map(([val, rot, cls]) => {
+    const ativo = v === val;
+    const cores = { ok: ['#E8F5E9', '#2E7D32'], parcial: ['#FFF8E1', '#F57F17'], nao: ['#FFEBEE', '#C62828'], na: ['#ECEFF1', '#546E7A'] }[cls];
+    return `<button type="button" class="btn btn-xs" style="${ativo ? `background:${cores[0]};color:${cores[1]};border:2px solid ${cores[1]}` : 'background:#fff;color:#555;border:1px solid #ddd'}" onclick="responderSuperv('${q.id}', ${typeof val === 'number' ? val : "'na'"})">${rot}</button>`;
+  }).join('');
+  return `<div style="padding:10px 0;border-bottom:1px solid #f0f0f0">
+    <div style="font-size:14px;margin-bottom:6px">${escHtml(q.t)}${q.critico ? ' <span class="nota-status" style="background:#FFEBEE;color:#C62828">crítico</span>' : ''}</div>
+    <div style="display:flex;gap:6px;flex-wrap:wrap">${botoes}</div>
+    ${v === 0 ? `<div style="margin-top:8px;display:grid;gap:6px">
+      <input type="text" placeholder="O que a loja precisa corrigir? (vira pendência)" value="${escHtml(det.texto || '')}" oninput="supervDetalhe('${q.id}', 'texto', this.value)" style="width:100%;box-sizing:border-box">
+      <div style="display:flex;gap:8px;align-items:center">
+        <input type="file" accept="image/*" capture="environment" id="svFoto_${q.id}" style="display:none" onchange="supervFoto('${q.id}', this)">
+        <button type="button" class="btn btn-secondary btn-xs" onclick="document.getElementById('svFoto_${q.id}').click()">📷 ${det.foto ? 'Trocar foto' : 'Foto (opcional)'}</button>
+        ${det.foto ? `<img src="${det.foto}" style="height:40px;border-radius:4px">` : ''}
+      </div></div>` : ''}
+  </div>`;
+}
+
+function responderSuperv(id, val) {
+  const r = _superv.rascunho;
+  if (r.respostas[id] === val) delete r.respostas[id]; else r.respostas[id] = val;
+  supervSalvarRascunho();
+  const y = window.scrollY; renderSupervForm(); window.scrollTo(0, y);
+}
+function supervDetalhe(id, campo, valor) {
+  const r = _superv.rascunho;
+  r.detalhes[id] = r.detalhes[id] || {};
+  r.detalhes[id][campo] = valor;
+  supervSalvarRascunho();
+}
+async function supervFoto(id, input) {
+  const f = input.files && input.files[0];
+  if (!f) return;
+  try {
+    const data = await comprimirImagem(f);
+    supervDetalhe(id, 'foto', data);
+    const y = window.scrollY; renderSupervForm(); window.scrollTo(0, y);
+  } catch(e) { alert('Não foi possível usar a foto: ' + e.message); }
+}
+
+function sairSupervForm() {
+  const r = _superv.rascunho;
+  const temAlgo = r && Object.keys(r.respostas || {}).length;
+  if (temAlgo && !confirm('Sair da supervisão? O que já foi marcado fica guardado neste aparelho e volta quando você abrir "Nova supervisão" de novo.')) return;
+  _superv.tela = 'lista';
+  iniciarSupervisoes();
+}
+
+async function salvarSupervisao() {
+  const r = _superv.rascunho;
+  const msg = document.getElementById('svMsg');
+  const erro = t => { msg.style.color = '#C62828'; msg.textContent = '⚠️ ' + t; };
+  if (!r.unidade) return erro('Escolha a unidade.');
+  if (!r.data) return erro('Informe a data da visita.');
+  if (!r.supervisor.trim()) return erro('Informe quem está supervisionando.');
+  const faltam = SUPERV_FORM.filter(q => r.respostas[q.id] === undefined);
+  if (faltam.length) return erro(`Faltam ${faltam.length} pergunta(s). Se não der para ver, marque "Não deu para avaliar".`);
+  const n = notaSupervisao(r.respostas);
+  if (!confirm(`Salvar a supervisão de ${r.unidade} com nota ${n.geral == null ? '—' : Math.round(n.geral) + '%'}?`)) return;
+  const btn = document.getElementById('svSalvar'); btn.disabled = true;
+  msg.style.color = '#5B2D8E'; msg.textContent = 'Salvando...';
+  try {
+    try { localStorage.setItem('acaise_superv_nome', r.supervisor.trim()); } catch(e) {}
+    const ref = _colSuperv.doc();
+    const agora = new Date().toISOString();
+    const detalhes = {};
+    const tarefas = [];
+    for (const q of SUPERV_FORM) {
+      if (r.respostas[q.id] !== 0) continue;
+      const d = r.detalhes[q.id] || {};
+      let fotoId = null;
+      if (d.foto) {
+        const fRef = _colFotos.doc();
+        await fRef.set({ notaId: ref.id, tipo: 'supervisao', data: d.foto, criadoEm: agora });
+        fotoId = fRef.id;
+      }
+      detalhes[q.id] = { texto: (d.texto || '').trim(), fotoId };
+      tarefas.push({ unidade: r.unidade, texto: (d.texto || '').trim() || q.t, status: 'pendente', criadoEm: agora, visitaId: ref.id, itemId: q.id, fotoId });
+    }
+    const batch = _db.batch();
+    batch.set(ref, {
+      unidade: r.unidade, data: r.data, supervisor: r.supervisor.trim(), respostas: r.respostas, detalhes,
+      observacao: (r.observacao || '').trim(), nota: n.geral, grupos: n.grupos, critico: n.critico,
+      formVersao: 2, origem: 'central', criadoEm: agora, criadoPor: _funcaoAdmin === 'socio' ? 'Sócio' : 'Colaborador'
+    });
+    tarefas.forEach(t => batch.set(_colSupervTarefas.doc(), t));
+    await batch.commit();
+    try { localStorage.removeItem('acaise_superv_rascunho'); } catch(e) {}
+    try { registrarLog('supervisao', `🔍 Supervisão ${r.unidade}: ${n.geral == null ? '—' : Math.round(n.geral) + '%'} (${tarefas.length} pendência(s))`, currentUser); } catch(e) {}
+    _superv.rascunho = null;
+    _superv.unidade = r.unidade;
+    _superv.tela = 'unidade';
+    alert(`✅ Supervisão de ${r.unidade} salva! Nota ${n.geral == null ? '—' : Math.round(n.geral) + '%'}, ${tarefas.length} pendência(s) criada(s).`);
+    await iniciarSupervisoes(true);
+  } catch(e) {
+    erro('Não foi possível salvar: ' + e.message + '. Nada se perdeu: o rascunho continua neste aparelho.');
+    btn.disabled = false;
+  }
+}
+
+// ── Importação única do histórico da página antiga (Supabase) ───────────────
+// Copia as visitas e as tarefas para as coleções da Central. Ids fixos
+// ("imp-<id antigo>"), então rodar de novo não duplica nada.
+async function importarSupervisoesAntigas() {
+  if (_funcaoAdmin !== 'socio') return;
+  if (!confirm('Trazer todas as supervisões e tarefas da página antiga para a Central? A página antiga não é alterada.')) return;
+  const alvo = document.getElementById('supervPainel');
+  alvo.innerHTML = '<p class="small">Importando o histórico...</p>';
+  try {
+    const porSlug = {}; Object.entries(SUPERV_MAPA).forEach(([u, s]) => porSlug[s] = u);
+    const checks = await supervRest('supervisao_checks?select=*&order=visit_date.asc');
+    const tasks = await supervRest('supervisao_tasks?select=*');
+    let nv = 0, nt = 0;
+    const docs = [];
+    checks.forEach(c => {
+      const u = porSlug[c.unit_slug]; if (!u) return;
+      const n = notaSupervisao(c.items);
+      docs.push([_colSuperv.doc('imp-' + c.id), {
+        unidade: u, data: String(c.visit_date || c.created_at).slice(0, 10), supervisor: c.supervisor_name || '',
+        respostas: c.items || {}, detalhes: {}, observacao: [c.observation, c.missing_products && 'Produtos em falta: ' + c.missing_products, c.negative_reviews && 'Avaliações negativas: ' + c.negative_reviews].filter(Boolean).join(' • '),
+        nota: n.geral, grupos: n.grupos, critico: n.critico, formVersao: 1, origem: 'importado', criadoEm: c.created_at || new Date().toISOString()
+      }]); nv++;
+    });
+    tasks.forEach(t => {
+      const u = porSlug[t.unit_slug]; if (!u) return;
+      docs.push([_colSupervTarefas.doc('imp-' + t.id), {
+        unidade: u, texto: t.text || '', status: t.status === 'done' ? 'feita' : 'pendente', criadoEm: t.created_at || '', feitaEm: t.completed_at || null, origem: 'importado'
+      }]); nt++;
+    });
+    for (let i = 0; i < docs.length; i += 400) {
+      const b = _db.batch();
+      docs.slice(i, i + 400).forEach(([ref, d]) => b.set(ref, d));
+      await b.commit();
+    }
+    await saveDocument('supervisaoImportada', { em: new Date().toISOString(), visitas: nv, tarefas: nt });
+    alert(`✅ Histórico importado: ${nv} visitas e ${nt} tarefas.`);
+    await iniciarSupervisoes(true);
+  } catch(e) {
+    alvo.innerHTML = `<p class="small" style="color:#C62828">A importação falhou: ${escHtml(e.message)}. Nada foi perdido; tente de novo.</p>`;
+  }
+}
+
 async function carregarMinhaAvaliacao() {
   const alvo = document.getElementById('avaliacaoPainel');
   const meuSlug = SUPERV_MAPA[currentUser];
   if (!meuSlug) { alvo.innerHTML = '<p class="small">Esta unidade ainda não participa das supervisões.</p>'; return; }
   alvo.innerHTML = '<p class="small">Carregando sua avaliação...</p>';
   try {
-    // Unidades inativas não entram no ranking
-    const ativos = Object.entries(SUPERV_MAPA).filter(([u]) => !UNIDADES_INATIVAS.includes(u)).map(([, s]) => s);
-    const visitas = await supervRest('supervisao_checks?select=unit_slug,visit_date,created_at,supervisor_name,items&order=visit_date.asc,created_at.asc');
-    const ultima = {};
-    visitas.forEach(v => { if (ativos.includes(v.unit_slug) || v.unit_slug === meuSlug) ultima[v.unit_slug] = v; });
-    const notas = Object.entries(ultima).filter(([s]) => ativos.includes(s)).map(([s, v]) => ({ s, n: notaSupervisao(v.items).geral })).filter(x => x.n != null);
-    const minha = ultima[meuSlug];
-    const nota = minha ? notaSupervisao(minha.items) : { geral: null, grupos: {} };
-    // Posição: quantas unidades têm nota MAIOR que a minha + 1 (empates dividem a posição)
-    const posicao = nota.geral != null && ativos.includes(meuSlug) ? notas.filter(x => x.n > nota.geral + 1e-9).length + 1 : null;
-    const total = notas.length;
-    const tarefas = (await supervRest(`supervisao_tasks?select=text,status,created_at&unit_slug=eq.${encodeURIComponent(meuSlug)}&status=eq.pending&order=created_at.desc`)) || [];
+    const { visitas } = await supervCarregar();
+    const rk = supervRanking(visitas);
+    const minhaInfo = rk[currentUser];
+    const nota = minhaInfo ? minhaInfo.nota : { geral: null, grupos: {} };
+    const posicao = minhaInfo ? minhaInfo.posicao : null;
+    const tarefas = (await supervTarefasDe(currentUser)).filter(t => t.status !== 'feita').map(t => ({ text: t.texto }));
     const [rotulo, cor, fundo] = classificaSupervisao(nota.geral);
     const medalha = posicao === 1 ? '🥇' : posicao === 2 ? '🥈' : posicao === 3 ? '🥉' : '🏅';
     const barras = SUPERV_GRUPOS.map(([g, nome]) => {
@@ -2392,7 +2822,7 @@ function atualizarAlertaMenu() {
 }
 
 function switchAdminTab(tab) {
-  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Compras','Log','Notas','Fechamentos','Margens'].forEach(t => {
+  ['Pedidos','Entradas','Itens','Cadastros','Relatorios','Boletos','Producao','Compras','Log','Notas','Fechamentos','Margens','Supervisoes'].forEach(t => {
     const el = document.getElementById('tab'+t);
     const btn = document.getElementById('tabBtn'+t);
     if(el) el.classList.toggle('hidden', tab !== t.toLowerCase());
@@ -2412,6 +2842,7 @@ function switchAdminTab(tab) {
   if (tab === 'notas') { iniciarEscutaNotas(); renderPainelNotas(); }
   if (tab === 'fechamentos') { iniciarFechamentos(); }
   if (tab === 'margens') { iniciarMargens(); }
+  if (tab === 'supervisoes') { iniciarSupervisoes(); }
 }
 
 // ─── CADASTROS ───────────────────────────────────────────────────────────────
