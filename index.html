@@ -1069,7 +1069,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.25-6";
+const APP_VERSION = "2026.11.25-7";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -1923,7 +1923,8 @@ function renderSupervUnidade(u) {
     <div class="card" style="margin-bottom:12px">
       <h3 style="margin:0 0 8px;font-size:15px">🛠️ Pendências (${pend.length})</h3>
       ${pend.length ? pend.map(t => `<div style="display:flex;gap:8px;align-items:flex-start;padding:6px 0;border-bottom:1px solid #f0f0f0">
-          <div style="flex:1;font-size:14px">${escHtml(t.texto)}<div class="small">desde ${supervDataBR(t.criadoEm)}${t.fotoId ? ` • <a href="#" onclick="verFotoSuperv('${escHtml(t.fotoId)}');return false">ver foto</a>` : ''}</div></div>
+          <div style="flex:1;font-size:14px">${escHtml(textoPendenciaSuperv(t))}<div class="small">desde ${supervDataBR(t.criadoEm)}${t.fotoId ? ` • <a href="#" onclick="verFotoSuperv('${escHtml(t.fotoId)}');return false">ver foto</a>` : ''}</div></div>
+          <button class="btn btn-secondary btn-xs" onclick="editarTarefaSuperv('${escHtml(t.id)}')">✏️ Editar</button>
           <button class="btn btn-xs" style="background:#2E7D32" onclick="marcarTarefaSuperv('${escHtml(t.id)}', true)">✓ Resolvida</button></div>`).join('')
         : '<p class="small" style="margin:0">Nenhuma pendência em aberto.</p>'}
       ${feitas.length ? `<details style="margin-top:8px"><summary class="small" style="cursor:pointer">Resolvidas (${feitas.length})</summary>
@@ -1989,6 +1990,28 @@ function imprimirPdfSuperv() {
   const limpar = () => { document.body.classList.remove('imprimindo-superv'); window.removeEventListener('afterprint', limpar); };
   window.addEventListener('afterprint', limpar);
   window.print();
+}
+
+// Texto da pendência como o franqueado lê. Se o supervisor não descreveu o
+// problema, a pendência guardou o texto da pergunta (que é positivo) — então
+// deixa explícito que aquilo estava FORA do padrão.
+function textoPendenciaSuperv(t) {
+  const q = t.itemId ? SUPERV_FORM.find(x => x.id === t.itemId) : null;
+  const txt = String(t.texto || '').trim();
+  if (q && (!txt || txt === q.t)) return 'Fora do padrão na supervisão: ' + q.t;
+  return txt;
+}
+
+async function editarTarefaSuperv(id) {
+  const t = _superv.tarefas.find(x => x.id === id);
+  if (!t) return;
+  const novo = prompt('Reescreva a pendência do jeito que a loja deve ler (o que precisa corrigir):', textoPendenciaSuperv(t));
+  if (novo === null || !novo.trim()) return;
+  try {
+    await _colSupervTarefas.doc(id).update({ texto: novo.trim(), editadaEm: new Date().toISOString() });
+    t.texto = novo.trim();
+    renderSupervUnidade(_superv.unidade);
+  } catch(e) { alert('Não foi possível salvar: ' + e.message); }
 }
 
 async function marcarTarefaSuperv(id, feita) {
@@ -2076,7 +2099,7 @@ function htmlPerguntaSuperv(q, r) {
     <div style="font-size:14px;margin-bottom:6px">${escHtml(q.t)}${q.critico ? ' <span class="nota-status" style="background:#FFEBEE;color:#C62828">crítico</span>' : ''}</div>
     <div style="display:flex;gap:6px;flex-wrap:wrap">${botoes}</div>
     ${v === 0 ? `<div style="margin-top:8px;display:grid;gap:6px">
-      <input type="text" placeholder="O que a loja precisa corrigir? (vira pendência)" value="${escHtml(det.texto || '')}" oninput="supervDetalhe('${q.id}', 'texto', this.value)" style="width:100%;box-sizing:border-box">
+      <input type="text" placeholder="Obrigatório: o que a loja precisa corrigir? (ex.: smoothie sem a fruta da ficha técnica)" value="${escHtml(det.texto || '')}" oninput="supervDetalhe('${q.id}', 'texto', this.value)" style="width:100%;box-sizing:border-box">
       <div style="display:flex;gap:8px;align-items:center">
         <input type="file" accept="image/*" capture="environment" id="svFoto_${q.id}" style="display:none" onchange="supervFoto('${q.id}', this)">
         <button type="button" class="btn btn-secondary btn-xs" onclick="document.getElementById('svFoto_${q.id}').click()">📷 ${det.foto ? 'Trocar foto' : 'Foto (opcional)'}</button>
@@ -2124,6 +2147,11 @@ async function salvarSupervisao() {
   if (!r.supervisor.trim()) return erro('Informe quem está supervisionando.');
   const faltam = SUPERV_FORM.filter(q => r.respostas[q.id] === undefined);
   if (faltam.length) return erro(`Faltam ${faltam.length} pergunta(s). Se não der para ver, marque "Não deu para avaliar".`);
+  // Todo "Não conforme" precisa dizer o que corrigir: é esse texto que o
+  // franqueado lê como pendência (o texto da pergunta, escrito no positivo,
+  // confundia — ex.: "Smoothies sendo preparados corretamente").
+  const semDetalhe = SUPERV_FORM.filter(q => r.respostas[q.id] === 0 && !String((r.detalhes[q.id] || {}).texto || '').trim());
+  if (semDetalhe.length) return erro(`Escreva o que a loja precisa corrigir em ${semDetalhe.length} item(ns) "Não conforme": ${semDetalhe.map(q => '"' + q.t + '"').join(', ')}.`);
   const n = notaSupervisao(r.respostas);
   if (!confirm(`Salvar a supervisão de ${r.unidade} com nota ${n.geral == null ? '—' : Math.round(n.geral) + '%'}?`)) return;
   const btn = document.getElementById('svSalvar'); btn.disabled = true;
@@ -2221,7 +2249,7 @@ async function carregarMinhaAvaliacao() {
     const minhaInfo = rk[unidade];
     const nota = minhaInfo ? minhaInfo.nota : { geral: null, grupos: {} };
     const posicao = minhaInfo ? minhaInfo.posicao : null;
-    const tarefas = (await supervTarefasDe(unidade)).filter(t => t.status !== 'feita').map(t => ({ text: t.texto }));
+    const tarefas = (await supervTarefasDe(unidade)).filter(t => t.status !== 'feita').map(t => ({ text: textoPendenciaSuperv(t) }));
     if (currentUser !== unidade) return;
     const [rotulo, cor, fundo] = classificaSupervisao(nota.geral);
     const medalha = posicao === 1 ? '🥇' : posicao === 2 ? '🥈' : posicao === 3 ? '🥉' : '🏅';
