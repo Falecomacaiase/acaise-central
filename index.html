@@ -177,6 +177,10 @@
     #romaneioBody input::-webkit-inner-spin-button, #romaneioBody input::-webkit-outer-spin-button { -webkit-appearance:none; margin:0; }
     #romaneioConteudo { padding:0 !important; max-width:none !important; }
     #romaneioOverlay { overflow:visible !important; }
+    /* Relatório de supervisão (Supervisões → Baixar PDF) */
+    body.imprimindo-superv > *:not(#supervPrintOverlay) { display:none !important; }
+    body.imprimindo-superv #supervPrintOverlay { position:static !important; background:none !important; padding:0 !important; display:block !important; overflow:visible !important; }
+    body.imprimindo-superv #supervPrintConteudo { max-width:none !important; padding:0 !important; border-radius:0 !important; box-shadow:none !important; }
     @page { margin:12mm; }
   }
 </style>
@@ -1065,7 +1069,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.25-4";
+const APP_VERSION = "2026.11.25-5";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -1931,12 +1935,60 @@ function renderSupervUnidade(u) {
           <summary style="cursor:pointer"><strong>${supervDataBR(v.data)}</strong> — <span style="color:${supervCorNota(n.geral)};font-weight:700">${n.geral == null ? '—' : Math.round(n.geral) + '%'}</span>
             <span class="small">${v.supervisor ? 'por ' + escHtml(v.supervisor) : ''}${v.origem === 'importado' ? ' • página antiga' : ''}${n.critico ? ' • item crítico' : ''}</span></summary>
           <div style="padding:6px 0 6px 12px;font-size:13px">
+            <button class="btn btn-secondary btn-xs" style="margin-bottom:6px" onclick="baixarPdfSuperv('${escHtml(v.id)}')">📄 Baixar PDF</button>
             ${SUPERV_GRUPOS.map(([g, nome]) => `<div>${nome}: <strong>${n.grupos[g] == null ? '—' : Math.round(n.grupos[g]) + '%'}</strong></div>`).join('')}
             ${SUPERV_FORM.filter(q => Number((v.respostas || {})[q.id]) === 0 && (v.respostas || {})[q.id] !== 'na' && (v.respostas || {})[q.id] !== undefined).length ? `<div style="margin-top:6px"><strong>Não conformes:</strong><ul style="margin:4px 0;padding-left:18px">${SUPERV_FORM.filter(q => (v.respostas || {})[q.id] === 0).map(q => `<li>${escHtml(q.t)}${q.critico ? ' <strong style="color:#C62828">(crítico)</strong>' : ''}</li>`).join('')}</ul></div>` : ''}
             ${v.observacao ? `<div style="margin-top:6px">💬 ${escHtml(v.observacao)}</div>` : ''}
           </div></details>`; }).join('')
         : '<p class="small" style="margin:0">Nenhuma visita registrada.</p>'}
     </div>`;
+}
+
+// Relatório de uma visita para baixar em PDF (pela impressão do navegador:
+// "Salvar como PDF"). Mostra tudo o que foi avaliado, nota por critério,
+// o que ficou não conforme e a observação.
+function baixarPdfSuperv(visitaId) {
+  const v = _superv.visitas.find(x => x.id === visitaId);
+  if (!v) return;
+  const n = notaSupervisao(v.respostas);
+  const rot = { 2: ['Conforme', '#2E7D32'], 1: ['Parcial', '#E65100'], 0: ['Não conforme', '#C62828'], na: ['Não avaliado', '#888'] };
+  const resp = q => { const x = (v.respostas || {})[q.id]; return x === undefined ? ['—', '#888'] : rot[x] || ['—', '#888']; };
+  const antigo = document.getElementById('supervPrintOverlay'); if (antigo) antigo.remove();
+  const ov = document.createElement('div');
+  ov.id = 'supervPrintOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1000;overflow-y:auto;padding:20px;display:flex;justify-content:center;align-items:flex-start';
+  ov.innerHTML = `<div id="supervPrintConteudo" style="background:#fff;border-radius:10px;padding:28px;max-width:760px;width:100%;color:#222">
+    <div class="no-print" style="display:flex;gap:8px;justify-content:flex-end;margin-bottom:14px">
+      <button class="btn" onclick="imprimirPdfSuperv()">📄 Baixar PDF / Imprimir</button>
+      <button class="btn btn-secondary" onclick="document.getElementById('supervPrintOverlay').remove()">✕ Fechar</button>
+    </div>
+    <div style="display:flex;align-items:center;gap:14px;border-bottom:3px solid #5B2D8E;padding-bottom:12px">
+      <img src="acaise-logo.png" alt="Açaí-Se" style="height:44px">
+      <div style="flex:1"><div style="font-size:20px;font-weight:800;color:#5B2D8E">Relatório de Supervisão</div>
+        <div style="font-size:13px;color:#555">${escHtml(v.unidade)} • visita em ${supervDataBR(v.data)}${v.supervisor ? ' • por ' + escHtml(v.supervisor) : ''}</div></div>
+      <div style="text-align:right"><div style="font-size:12px;color:#555">Nota geral</div>
+        <div style="font-size:30px;font-weight:800;color:${supervCorNota(n.geral)}">${n.geral == null ? '—' : Math.round(n.geral) + '%'}</div></div>
+    </div>
+    ${n.critico ? `<div style="margin-top:10px;padding:8px 10px;background:#FFEBEE;color:#B71C1C;border-radius:6px;font-size:13px"><strong>Item crítico não conforme:</strong> a nota desta visita fica limitada a ${SUPERV_TETO_CRITICO}%.</div>` : ''}
+    <table style="width:100%;margin-top:12px;font-size:13px;border-collapse:collapse">
+      ${SUPERV_GRUPOS.map(([g, nome]) => `<tr><td style="padding:4px 0">${nome} <span style="color:#888">(peso ${SUPERV_PESOS[g]}%)</span></td><td style="text-align:right;font-weight:700;color:${supervCorNota(n.grupos[g])}">${n.grupos[g] == null ? '—' : Math.round(n.grupos[g]) + '%'}</td></tr>`).join('')}
+    </table>
+    ${SUPERV_GRUPOS.map(([g, nome]) => `<h3 style="font-size:14px;color:#5B2D8E;margin:18px 0 6px;border-bottom:1px solid #E0D7EE;padding-bottom:4px">${nome}</h3>
+      <table style="width:100%;font-size:12.5px;border-collapse:collapse">${SUPERV_FORM.filter(q => q.g === g).map(q => {
+        const [r, cor] = resp(q); const det = (v.detalhes || {})[q.id];
+        return `<tr style="border-bottom:1px solid #f2f2f2"><td style="padding:5px 8px 5px 0">${escHtml(q.t)}${q.critico ? ' <strong style="color:#C62828">(crítico)</strong>' : ''}${det && det.texto ? `<div style="color:#C62828;font-size:12px">↳ ${escHtml(det.texto)}</div>` : ''}</td>
+          <td style="padding:5px 0;text-align:right;white-space:nowrap;font-weight:600;color:${cor}">${r}</td></tr>`; }).join('')}</table>`).join('')}
+    ${v.observacao ? `<h3 style="font-size:14px;color:#5B2D8E;margin:18px 0 6px">Observação</h3><div style="font-size:13px;white-space:pre-wrap">${escHtml(v.observacao)}</div>` : ''}
+    ${v.formVersao === 1 ? '<p style="font-size:11px;color:#888;margin-top:14px">Visita feita no formulário antigo: as perguntas que saíram do formulário atual não aparecem aqui e não entram na nota.</p>' : ''}
+    <div style="margin-top:18px;font-size:11px;color:#888;text-align:center">Açaí-Se Franquias • Central de Pedidos</div>
+  </div>`;
+  document.body.appendChild(ov);
+}
+function imprimirPdfSuperv() {
+  document.body.classList.add('imprimindo-superv');
+  const limpar = () => { document.body.classList.remove('imprimindo-superv'); window.removeEventListener('afterprint', limpar); };
+  window.addEventListener('afterprint', limpar);
+  window.print();
 }
 
 async function marcarTarefaSuperv(id, feita) {
