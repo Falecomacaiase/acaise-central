@@ -1059,7 +1059,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.25-2";
+const APP_VERSION = "2026.11.25-3";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -1740,7 +1740,6 @@ async function carregarMinhaAvaliacao() {
     const total = notas.length;
     const tarefas = (await supervRest(`supervisao_tasks?select=text,status,created_at&unit_slug=eq.${encodeURIComponent(meuSlug)}&status=eq.pending&order=created_at.desc`)) || [];
     const [rotulo, cor, fundo] = classificaSupervisao(nota.geral);
-    const dataVisita = minha ? String(minha.visit_date || minha.created_at).slice(0, 10).split('-').reverse().join('/') : null;
     const medalha = posicao === 1 ? '🥇' : posicao === 2 ? '🥈' : posicao === 3 ? '🥉' : '🏅';
     const barras = SUPERV_GRUPOS.map(([g, nome]) => {
       const p = nota.grupos[g];
@@ -1762,7 +1761,6 @@ async function carregarMinhaAvaliacao() {
           <div style="font-size:42px;font-weight:800;color:${cor};line-height:1.1;margin-top:6px">${nota.geral == null ? '—' : Math.round(nota.geral) + '%'}</div>
         </div>
       </div>
-      ${dataVisita ? `<p class="small" style="margin:0 0 12px">Última supervisão em <strong>${dataVisita}</strong>${minha.supervisor_name ? ' por ' + escHtml(minha.supervisor_name) : ''}.</p>` : ''}
       <div class="card" style="margin-bottom:12px">
         <h3 style="margin:0 0 12px;font-size:15px">📋 Nota por critério</h3>
         ${barras}
