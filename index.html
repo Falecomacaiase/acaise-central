@@ -1069,7 +1069,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.25-5";
+const APP_VERSION = "2026.11.25-6";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -2214,13 +2214,15 @@ async function carregarMinhaAvaliacao() {
   const meuSlug = SUPERV_MAPA[currentUser];
   if (!meuSlug) { alvo.innerHTML = '<p class="small">Esta unidade ainda não participa das supervisões.</p>'; return; }
   alvo.innerHTML = '<p class="small">Carregando sua avaliação...</p>';
+  const unidade = currentUser; // a loja que pediu; se trocar no meio, não mostra
   try {
-    const { visitas } = await supervCarregar();
+    const { visitas } = await supervCarregar(true); // sempre os dados mais recentes
     const rk = supervRanking(visitas);
-    const minhaInfo = rk[currentUser];
+    const minhaInfo = rk[unidade];
     const nota = minhaInfo ? minhaInfo.nota : { geral: null, grupos: {} };
     const posicao = minhaInfo ? minhaInfo.posicao : null;
-    const tarefas = (await supervTarefasDe(currentUser)).filter(t => t.status !== 'feita').map(t => ({ text: t.texto }));
+    const tarefas = (await supervTarefasDe(unidade)).filter(t => t.status !== 'feita').map(t => ({ text: t.texto }));
+    if (currentUser !== unidade) return;
     const [rotulo, cor, fundo] = classificaSupervisao(nota.geral);
     const medalha = posicao === 1 ? '🥇' : posicao === 2 ? '🥈' : posicao === 3 ? '🥉' : '🏅';
     const barras = SUPERV_GRUPOS.map(([g, nome]) => {
@@ -5789,6 +5791,12 @@ function logout() {
   sessionStorage.removeItem('acaise_socio_k');
   _funcaoAdmin = null;
   { const fb = document.getElementById('funcaoBtn'); if (fb) fb.style.display = 'none'; const fm = document.getElementById('funcaoModal'); if (fm) fm.remove(); }
+  // Volta a tela da loja para o início e limpa o que era da loja anterior —
+  // sem isso, quem saía com "Minha Avaliação" aberta e entrava em outra loja
+  // continuava vendo a avaliação da loja anterior.
+  try { switchLojaTab('fazerPedido'); } catch(e) {}
+  { const ap = document.getElementById('avaliacaoPainel'); if (ap) ap.innerHTML = '<p class="small">Carregando...</p>'; }
+  { const mp = document.getElementById('meusPedidosLista'); if (mp) { mp.innerHTML = '<p class="small">Carregando...</p>'; mp._pedidos = []; } }
   pararEscutaRecebimentos();
   pararEscutaNotas();
   _dataCache = null; // limpa cache ao sair
