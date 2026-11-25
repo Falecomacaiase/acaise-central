@@ -1059,7 +1059,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.25-1";
+const APP_VERSION = "2026.11.25-2";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -1754,14 +1754,12 @@ async function carregarMinhaAvaliacao() {
       <div style="display:flex;gap:12px;flex-wrap:wrap;margin:12px 0">
         <div style="flex:1;min-width:220px;background:linear-gradient(135deg,#5B2D8E,#7B4BB0);color:#fff;border-radius:12px;padding:18px;text-align:center">
           <div style="font-size:13px;opacity:.9">Sua posição na rede Açaí-Se</div>
-          ${posicao ? `<div style="font-size:46px;font-weight:800;line-height:1.1;margin-top:6px">${medalha} ${posicao}º</div>
-            <div style="font-size:13px;opacity:.9">de ${total} unidades avaliadas</div>`
+          ${posicao ? `<div style="font-size:46px;font-weight:800;line-height:1.1;margin-top:6px">${medalha} ${posicao}º</div>`
           : `<div style="font-size:20px;font-weight:700;margin-top:10px">Aguardando a primeira avaliação</div>`}
         </div>
         <div style="flex:1;min-width:220px;background:${fundo};border-radius:12px;padding:18px;text-align:center">
           <div style="font-size:13px;color:#555">Reputação perante a franqueadora</div>
           <div style="font-size:42px;font-weight:800;color:${cor};line-height:1.1;margin-top:6px">${nota.geral == null ? '—' : Math.round(nota.geral) + '%'}</div>
-          <div style="font-size:15px;font-weight:700;color:${cor}">${rotulo}</div>
         </div>
       </div>
       ${dataVisita ? `<p class="small" style="margin:0 0 12px">Última supervisão em <strong>${dataVisita}</strong>${minha.supervisor_name ? ' por ' + escHtml(minha.supervisor_name) : ''}.</p>` : ''}
