@@ -258,3 +258,25 @@ table.tabela-painel td { padding: 10px 8px; border-bottom: 1px solid var(--linha
 .overlay-confirmacao .detalhe { color: #E4C9DD; font-size: 0.95rem; }
 
 .form-desabilitado { opacity: 0.5; pointer-events: none; }
+
+/* --- consumo do mês (aviso ao lançar) --- */
+.consumo-box { border-radius: 12px; padding: 12px 14px; margin-top: 12px; border: 2px solid var(--verde); background: var(--verde-bg); }
+.consumo-box.quase { border-color: var(--amarelo); background: var(--amarelo-bg); }
+.consumo-box.estourou { border-color: var(--vermelho); background: var(--vermelho-bg); }
+.consumo-box .cb-titulo { font-size: 0.78rem; font-weight: 700; text-transform: uppercase; color: var(--texto-suave); letter-spacing: 0.3px; }
+.consumo-box .cb-valor { font-size: 1.35rem; font-weight: 800; color: var(--texto); margin: 2px 0; }
+.consumo-box .cb-saldo { font-size: 0.95rem; font-weight: 700; color: var(--verde); }
+.consumo-box.quase .cb-saldo { color: var(--amarelo); }
+.consumo-box.estourou .cb-saldo { color: var(--vermelho); }
+.cobrar-box { border-radius: 12px; padding: 14px; margin-top: 14px; background: var(--vermelho); color: white; text-align: center; }
+.cobrar-box .cb-grande { font-size: 1.5rem; font-weight: 800; margin: 4px 0; }
+.cobrar-box .cb-peq { font-size: 0.85rem; opacity: 0.95; }
+.modal-consumo { position: fixed; inset: 0; background: rgba(42, 32, 39, 0.6); z-index: 998; display: flex; align-items: center; justify-content: center; padding: 16px; animation: aparecer 0.15s ease-out; }
+.modal-consumo .mc-caixa { background: white; border-radius: var(--raio); padding: 18px; width: 100%; max-width: 420px; max-height: 92vh; overflow-y: auto; box-shadow: 0 10px 40px rgba(0,0,0,0.25); }
+.modal-consumo h2 { font-size: 1.1rem; margin-bottom: 4px; }
+.modal-consumo .mc-linha { display: flex; justify-content: space-between; gap: 10px; padding: 7px 0; border-bottom: 1px solid var(--linha); font-size: 0.92rem; }
+.modal-consumo .mc-linha strong { white-space: nowrap; }
+.modal-consumo .mc-check { display: flex; gap: 10px; align-items: flex-start; margin-top: 14px; font-size: 0.92rem; font-weight: 600; text-transform: none; color: var(--texto); cursor: pointer; }
+.modal-consumo .mc-check input { width: 22px; height: 22px; flex-shrink: 0; margin: 0; }
+.modal-consumo .mc-botoes { display: flex; gap: 10px; margin-top: 16px; }
+.modal-consumo .mc-botoes .btn { margin-top: 0; }

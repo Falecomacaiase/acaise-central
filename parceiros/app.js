@@ -113,16 +113,17 @@ async function copiarTexto(texto) {
 }
 
 // ---------- confirmação grande de pedido lançado ----------
-function mostrarConfirmacaoGrande(parceiroNome, valorTotal) {
+function mostrarConfirmacaoGrande(parceiroNome, valorTotal, linhaConsumo) {
   const overlay = document.createElement('div');
   overlay.className = 'overlay-confirmacao';
   overlay.innerHTML = `
     <div class="check">✅</div>
     <div class="titulo">PEDIDO LANÇADO</div>
     <div class="detalhe">${escapeHtml(parceiroNome)} · R$ ${formatarMoeda(valorTotal)}</div>
+    ${linhaConsumo ? `<div class="detalhe" style="color:white;font-weight:600;">${escapeHtml(linhaConsumo)}</div>` : ''}
   `;
   document.body.appendChild(overlay);
-  setTimeout(() => overlay.remove(), 2200);
+  setTimeout(() => overlay.remove(), linhaConsumo ? 3500 : 2200);
 }
 
 // ---------- dados ----------
@@ -224,26 +225,84 @@ async function selecionarParceiroLancar(parceiro) {
   document.getElementById('buscaParceiroLancar').value = parceiro.nome;
   document.getElementById('resultadoBuscaLancar').innerHTML = '';
 
-  const pedidos = await getConsumoMensal(parceiro.id, mesSelecionadoLancar());
+  const div = document.getElementById('resumoParceiroSelecionado');
+  div.style.display = 'block';
+  div.innerHTML = '<div class="vazio">Buscando o consumo do mês...</div>';
+
+  const mes = mesSelecionadoLancar();
+  const pedidos = await getConsumoMensal(parceiro.id, mes);
+  if (state.parceiroSelecionadoLancar !== parceiro) return;
   const consumido = pedidos.reduce((s, p) => s + Number(p.valor_total), 0);
   const limite = limiteDoParceiro(parceiro);
 
-  const div = document.getElementById('resumoParceiroSelecionado');
   const catLabel = state.categorias[parceiro.categoria]?.label || parceiro.categoria;
   const pct = limite > 0 ? Math.min(100, (consumido / limite) * 100) : 0;
-  const cor = consumido > limite ? 'var(--vermelho)' : pct > 80 ? 'var(--amarelo)' : 'var(--verde)';
-  div.style.display = 'block';
+  const estourou = consumido >= limite;
+  const quase = !estourou && pct > 80;
+  const cor = estourou ? 'var(--vermelho)' : quase ? 'var(--amarelo)' : 'var(--verde)';
+  const saldo = Math.max(0, limite - consumido);
   div.innerHTML = `
     <div class="bowl-wrap" style="margin-top:10px;">
       ${bowlSvg(pct, cor)}
       <div class="bowl-info">
         <div class="nome">${escapeHtml(parceiro.nome)} <span class="tag">${catLabel}</span></div>
-        <div class="detalhe">Já consumiu R$ ${formatarMoeda(consumido)} de R$ ${formatarMoeda(limite)} este mês</div>
-        <div class="barra"><div class="preenchido" style="width:${pct}%; background:${cor}"></div></div>
+        <div class="detalhe">${pedidos.length} pedido${pedidos.length === 1 ? '' : 's'} em ${nomeDoMes(mes)}</div>
       </div>
+    </div>
+    <div class="consumo-box ${estourou ? 'estourou' : quase ? 'quase' : ''}">
+      <div class="cb-titulo">Consumo de ${nomeDoMes(mes)}</div>
+      <div class="cb-valor">R$ ${formatarMoeda(consumido)} <span style="font-size:0.9rem;font-weight:600;color:var(--texto-suave);">de R$ ${formatarMoeda(limite)}</span></div>
+      <div class="barra"><div class="preenchido" style="width:${pct}%; background:${cor}"></div></div>
+      <div class="cb-saldo" style="margin-top:6px;">${estourou
+        ? `⚠️ LIMITE DO MÊS JÁ ATINGIDO${consumido > limite ? ` (passou R$ ${formatarMoeda(consumido - limite)})` : ''}. Qualquer pedido agora deve ser COBRADO do parceiro.`
+        : `Ainda pode consumir R$ ${formatarMoeda(saldo)} este mês sem pagar.`}</div>
     </div>`;
 
   atualizarResumoTotal();
+}
+
+// Quanto deste pedido é cortesia (dentro do limite) e quanto o parceiro precisa pagar
+function calcularExcedente(consumidoAtual, limite, totalPedido) {
+  const saldo = Math.max(0, limite - consumidoAtual);
+  const cortesia = Math.min(totalPedido, saldo);
+  const cobrar = Math.max(0, totalPedido - cortesia);
+  return { saldo, cortesia, cobrar, novoTotal: consumidoAtual + totalPedido };
+}
+
+// Aviso obrigatório antes de registrar: mostra o consumo do mês e, se passar do limite, quanto cobrar.
+function confirmarConsumoModal(parceiro, mes, consumidoAtual, limite, totalPedido) {
+  const { cortesia, cobrar, novoTotal } = calcularExcedente(consumidoAtual, limite, totalPedido);
+  return new Promise(resolve => {
+    const m = document.createElement('div');
+    m.className = 'modal-consumo';
+    m.innerHTML = `
+      <div class="mc-caixa">
+        <h2>Confira o consumo antes de registrar</h2>
+        <div class="detalhe" style="margin-bottom:8px;">${escapeHtml(parceiro.nome)} · ${nomeDoMes(mes)}</div>
+        <div class="mc-linha"><span>Limite do mês</span><strong>R$ ${formatarMoeda(limite)}</strong></div>
+        <div class="mc-linha"><span>Já consumido antes deste pedido</span><strong>R$ ${formatarMoeda(consumidoAtual)}</strong></div>
+        <div class="mc-linha"><span>Este pedido</span><strong>R$ ${formatarMoeda(totalPedido)}</strong></div>
+        <div class="mc-linha"><span>Consumo do mês com este pedido</span><strong style="color:${novoTotal > limite ? 'var(--vermelho)' : 'var(--verde)'}">R$ ${formatarMoeda(novoTotal)}</strong></div>
+        ${cobrar > 0 ? `
+          <div class="cobrar-box">
+            <div class="cb-peq">PASSOU DO LIMITE. COBRE DO PARCEIRO:</div>
+            <div class="cb-grande">R$ ${formatarMoeda(cobrar)}</div>
+            <div class="cb-peq">${cortesia > 0 ? `Cortesia (dentro do limite): R$ ${formatarMoeda(cortesia)}` : 'O limite já tinha acabado: este pedido inteiro é pago pelo parceiro.'}</div>
+          </div>
+          <label class="mc-check"><input type="checkbox" id="mcCobrei"> Cobrei (ou estou cobrando agora) R$ ${formatarMoeda(cobrar)} do parceiro.</label>`
+        : `<div class="alerta ok">✅ Dentro do limite. Depois deste pedido ainda restam R$ ${formatarMoeda(limite - novoTotal)} no mês.</div>`}
+        <div class="mc-botoes">
+          <button class="btn btn-secundario" id="mcVoltar">Voltar</button>
+          <button class="btn btn-primario" id="mcOk" ${cobrar > 0 ? 'disabled' : ''}>Registrar pedido</button>
+        </div>
+      </div>`;
+    document.body.appendChild(m);
+    const fechar = r => { m.remove(); resolve(r); };
+    m.querySelector('#mcVoltar').addEventListener('click', () => fechar(null));
+    m.querySelector('#mcOk').addEventListener('click', () => fechar({ cobrar }));
+    const chk = m.querySelector('#mcCobrei');
+    if (chk) chk.addEventListener('change', () => { m.querySelector('#mcOk').disabled = !chk.checked; });
+  });
 }
 
 function atualizarResumoTotal() {
@@ -266,15 +325,22 @@ function atualizarResumoTotal() {
   alertaDiv.innerHTML = '';
   const parceiro = state.parceiroSelecionadoLancar;
   if (parceiro && valorPedido > 0) {
+    const meuToken = (state.tokenAlerta = (state.tokenAlerta || 0) + 1);
     getConsumoMensal(parceiro.id, mesSelecionadoLancar()).then(pedidos => {
+      if (meuToken !== state.tokenAlerta) return; // já digitaram outro valor
       const consumidoAtual = pedidos.reduce((s, p) => s + Number(p.valor_total), 0);
       const limite = limiteDoParceiro(parceiro);
-      const novoTotal = consumidoAtual + total;
-      if (novoTotal > limite) {
-        const excedente = novoTotal - limite;
-        alertaDiv.innerHTML = `<div class="alerta perigo">⚠️ Este pedido ultrapassa o limite mensal em R$ ${formatarMoeda(excedente)}.</div>`;
+      const { cortesia, cobrar, novoTotal } = calcularExcedente(consumidoAtual, limite, total);
+      if (cobrar > 0) {
+        alertaDiv.innerHTML = `<div class="cobrar-box">
+          <div class="cb-peq">COM ESTE PEDIDO O PARCEIRO PASSA DO LIMITE. COBRAR DELE:</div>
+          <div class="cb-grande">R$ ${formatarMoeda(cobrar)}</div>
+          <div class="cb-peq">Consumo do mês ficaria R$ ${formatarMoeda(novoTotal)} de R$ ${formatarMoeda(limite)}${cortesia > 0 ? ` · cortesia: R$ ${formatarMoeda(cortesia)}` : ''}</div>
+        </div>`;
       } else if (limite > 0 && novoTotal > limite * 0.8) {
-        alertaDiv.innerHTML = `<div class="alerta aviso">Atenção: com este pedido o parceiro chega a R$ ${formatarMoeda(novoTotal)} de R$ ${formatarMoeda(limite)} no mês.</div>`;
+        alertaDiv.innerHTML = `<div class="alerta aviso">Atenção: com este pedido o parceiro chega a R$ ${formatarMoeda(novoTotal)} de R$ ${formatarMoeda(limite)} no mês (restam R$ ${formatarMoeda(limite - novoTotal)}).</div>`;
+      } else {
+        alertaDiv.innerHTML = `<div class="alerta ok">Dentro do limite: com este pedido fica R$ ${formatarMoeda(novoTotal)} de R$ ${formatarMoeda(limite)} no mês.</div>`;
       }
     });
   }
@@ -306,7 +372,7 @@ async function salvarPedido() {
   if (!colaborador) { alert('Informe seu nome.'); return; }
   if (!valorPedido || valorPedido <= 0) { alert('Informe o valor do pedido.'); return; }
 
-  const itensPedido = document.getElementById('inpItensPedido').value.trim();
+  let itensPedido = document.getElementById('inpItensPedido').value.trim();
   if (!itensPedido) { alert('Preenche o que foi pedido (ex: açaí 300, wrap de frango...).'); return; }
 
   const dataPedido = document.getElementById('inpDataPedido').value || hojeISO();
@@ -334,10 +400,11 @@ async function salvarPedido() {
   const limite = limiteDoParceiro(parceiro);
   const novoTotal = consumidoAtual + total;
 
-  if (novoTotal > limite) {
-    const excedente = (novoTotal - limite).toFixed(2).replace('.', ',');
-    const confirmar = confirm(`Este parceiro vai ultrapassar o limite mensal em R$ ${excedente}. Registrar mesmo assim?`);
-    if (!confirmar) return;
+  // Sempre mostra o consumo do mês antes de registrar (e quanto cobrar se passar do limite)
+  const decisao = await confirmarConsumoModal(parceiro, mesSelecionadoLancar(), consumidoAtual, limite, total);
+  if (!decisao) return;
+  if (decisao.cobrar > 0) {
+    itensPedido += ` · 💰 Excedente cobrado do parceiro: R$ ${formatarMoeda(decisao.cobrar)}`;
   }
 
   localStorage.setItem('parc_loja', loja);
@@ -368,7 +435,9 @@ async function salvarPedido() {
 
   if (error) { alert('Erro ao salvar: ' + error.message); return; }
 
-  mostrarConfirmacaoGrande(parceiro.nome, total);
+  mostrarConfirmacaoGrande(parceiro.nome, total,
+    `Consumo de ${nomeDoMes(mesSelecionadoLancar())}: R$ ${formatarMoeda(novoTotal)} de R$ ${formatarMoeda(limite)}` +
+    (decisao.cobrar > 0 ? ` · cobrado do parceiro: R$ ${formatarMoeda(decisao.cobrar)}` : ''));
   limparFormularioLancar();
 }
 
@@ -403,6 +472,7 @@ async function renderListaParceiros() {
       <div class="bowl-info">
         <div class="nome">${escapeHtml(p.nome)}</div>
         <div class="detalhe">${catLabel}${p.loja ? ' · ' + escapeHtml(p.loja) : ''}</div>
+        <div class="detalhe" style="color:${consumido > limite ? 'var(--vermelho)' : 'var(--texto)'};font-weight:600;">R$ ${formatarMoeda(consumido)} de R$ ${formatarMoeda(limite)} no mês${consumido > limite ? ' · passou do limite' : ''}</div>
         <div class="barra"><div class="preenchido" style="width:${pct}%;background:${cor}"></div></div>
       </div>
     </div>`;
