@@ -1081,7 +1081,7 @@
 // Versao do app - incremente este numero a cada alteracao publicada no arquivo.
 // O verificador de atualizacao compara este valor com o do arquivo publicado no servidor,
 // em vez de comparar o HTML renderizado (que muda o tempo todo com os dados dos pedidos).
-const APP_VERSION = "2026.11.26-1";
+const APP_VERSION = "2026.11.26-2";
 
 const UNIDADES = ["BOA VIAGEM","BV 2","C. DOURADA","C. GRANDE","CARUARU","D. LINDÚ","EVENTOS","FPS","GRAÇAS II","JAQUEIRA","MACEIÓ","PIEDADE","PORTO","STADIUM","REDMART","GALPÃO"];
 // Clientes (não são franquias): compram de nós como revenda.
@@ -2496,6 +2496,7 @@ async function carregarMinhaAvaliacao() {
     const posicao = minhaInfo ? minhaInfo.posicao : null;
     const tarefas = (await supervTarefasDe(unidade)).filter(t => t.status !== 'feita').map(t => ({ text: textoPendenciaSuperv(t) }));
     if (currentUser !== unidade) return;
+    const ultimaVisita = visitas.filter(v => v.unidade === unidade).pop() || null; // visitas vêm em ordem de data
     const [rotulo, cor, fundo] = classificaSupervisao(nota.geral);
     const medalha = posicao === 1 ? '🥇' : posicao === 2 ? '🥈' : posicao === 3 ? '🥉' : '🏅';
     const barras = SUPERV_GRUPOS.map(([g, nome]) => {
@@ -2527,6 +2528,11 @@ async function carregarMinhaAvaliacao() {
         ${tarefas.length ? `<ul style="margin:0;padding-left:18px;font-size:14px">${tarefas.map(t => `<li style="margin-bottom:4px">${escHtml(t.text)}</li>`).join('')}</ul>`
           : '<p class="small" style="margin:0">Nenhuma pendência em aberto. 👏</p>'}
       </div>
+      ${ultimaVisita ? `<div class="card" style="margin-bottom:12px">
+        <h3 style="margin:0 0 6px;font-size:15px">📄 Relatório da supervisão</h3>
+        <p class="small" style="margin:0 0 10px">Todas as respostas, observações e considerações da franqueadora na última supervisão da sua loja.</p>
+        <button class="btn" onclick="baixarPdfSuperv('${escHtml(ultimaVisita.id)}')">📄 Ver e baixar o PDF</button>
+      </div>` : ''}
       <p class="small">A posição é calculada pela nota da última supervisão de cada unidade. Em breve o ranking também vai considerar faturamento, ações e avaliações nas plataformas.</p>`;
   } catch(e) {
     alvo.innerHTML = `<p class="small" style="color:#C62828">Não foi possível carregar sua avaliação agora (${escHtml(e.message)}). Tente de novo em instantes.</p>
@@ -6071,6 +6077,7 @@ function logout() {
   try { switchLojaTab('fazerPedido'); } catch(e) {}
   { const ap = document.getElementById('avaliacaoPainel'); if (ap) ap.innerHTML = '<p class="small">Carregando...</p>'; }
   { const ag = document.getElementById('agendaPainelLoja'); if (ag) ag.innerHTML = ''; agendaFecharForm(); }
+  { const po = document.getElementById('supervPrintOverlay'); if (po) po.remove(); }
   { const mp = document.getElementById('meusPedidosLista'); if (mp) { mp.innerHTML = '<p class="small">Carregando...</p>'; mp._pedidos = []; } }
   pararEscutaRecebimentos();
   pararEscutaNotas();
