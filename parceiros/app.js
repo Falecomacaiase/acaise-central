@@ -288,20 +288,17 @@ function confirmarConsumoModal(parceiro, mes, consumidoAtual, limite, totalPedid
             <div class="cb-peq">PASSOU DO LIMITE. COBRE DO PARCEIRO:</div>
             <div class="cb-grande">R$ ${formatarMoeda(cobrar)}</div>
             <div class="cb-peq">${cortesia > 0 ? `Cortesia (dentro do limite): R$ ${formatarMoeda(cortesia)}` : 'O limite já tinha acabado: este pedido inteiro é pago pelo parceiro.'}</div>
-          </div>
-          <label class="mc-check"><input type="checkbox" id="mcCobrei"> Cobrei (ou estou cobrando agora) R$ ${formatarMoeda(cobrar)} do parceiro.</label>`
+          </div>`
         : `<div class="alerta ok">✅ Dentro do limite. Depois deste pedido ainda restam R$ ${formatarMoeda(limite - novoTotal)} no mês.</div>`}
         <div class="mc-botoes">
           <button class="btn btn-secundario" id="mcVoltar">Voltar</button>
-          <button class="btn btn-primario" id="mcOk" ${cobrar > 0 ? 'disabled' : ''}>Registrar pedido</button>
+          <button class="btn btn-primario" id="mcOk">Registrar pedido</button>
         </div>
       </div>`;
     document.body.appendChild(m);
     const fechar = r => { m.remove(); resolve(r); };
     m.querySelector('#mcVoltar').addEventListener('click', () => fechar(null));
     m.querySelector('#mcOk').addEventListener('click', () => fechar({ cobrar }));
-    const chk = m.querySelector('#mcCobrei');
-    if (chk) chk.addEventListener('change', () => { m.querySelector('#mcOk').disabled = !chk.checked; });
   });
 }
 
@@ -404,7 +401,7 @@ async function salvarPedido() {
   const decisao = await confirmarConsumoModal(parceiro, mesSelecionadoLancar(), consumidoAtual, limite, total);
   if (!decisao) return;
   if (decisao.cobrar > 0) {
-    itensPedido += ` · 💰 Excedente cobrado do parceiro: R$ ${formatarMoeda(decisao.cobrar)}`;
+    itensPedido += ` · 💰 Excedente a cobrar do parceiro: R$ ${formatarMoeda(decisao.cobrar)}`;
   }
 
   localStorage.setItem('parc_loja', loja);
@@ -437,7 +434,7 @@ async function salvarPedido() {
 
   mostrarConfirmacaoGrande(parceiro.nome, total,
     `Consumo de ${nomeDoMes(mesSelecionadoLancar())}: R$ ${formatarMoeda(novoTotal)} de R$ ${formatarMoeda(limite)}` +
-    (decisao.cobrar > 0 ? ` · cobrado do parceiro: R$ ${formatarMoeda(decisao.cobrar)}` : ''));
+    (decisao.cobrar > 0 ? ` · cobrar do parceiro: R$ ${formatarMoeda(decisao.cobrar)}` : ''));
   limparFormularioLancar();
 }
 
